@@ -408,6 +408,32 @@
         transform: translateY(-1px);
       }
 
+      .row-actions {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+      }
+
+      .revert-button {
+        background: var(--ghost);
+        color: var(--muted);
+        cursor: not-allowed;
+        font-size: 0.8rem;
+        padding: 8px 10px;
+      }
+
+      .revert-button.is-ready {
+        color: var(--ink);
+        cursor: pointer;
+      }
+
+      .revert-button.is-ready:hover {
+        background: var(--pill-bg);
+        color: var(--pill-ink);
+        transform: translateY(-1px);
+      }
+
       .favorites-shell {
         display: grid;
         gap: 10px;
@@ -790,6 +816,19 @@
         display: none;
       }
 
+      .unit-custom-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 6px;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+
+      .unit-custom-row input {
+        min-width: 0;
+        padding: 8px 10px;
+      }
+
       .settings-inline {
         display: flex;
         flex-wrap: wrap;
@@ -814,6 +853,66 @@
 
       .expression-suggestions[hidden] {
         display: none;
+      }
+
+      .function-helper {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 320px;
+        z-index: 2050;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        padding: 10px 12px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .function-helper[hidden] {
+        display: none;
+      }
+
+      .function-helper-title {
+        margin: 0;
+        font-size: 0.9rem;
+        font-weight: 650;
+      }
+
+      .function-signature {
+        margin: 0;
+        font-family: "Consolas", "SFMono-Regular", monospace;
+        font-size: 0.86rem;
+        color: var(--pill-ink);
+        line-height: 1.45;
+      }
+
+      .function-signature .active-arg {
+        text-decoration: underline;
+        text-decoration-thickness: 2px;
+        color: var(--accent-strong);
+      }
+
+      .function-helper-text {
+        margin: 0;
+        font-size: 0.84rem;
+        color: var(--muted);
+        line-height: 1.4;
+      }
+
+      .function-helper-args {
+        display: grid;
+        gap: 4px;
+      }
+
+      .function-helper-arg {
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+
+      .function-helper-arg.active {
+        color: var(--accent-strong);
       }
 
       .expression-suggestion {
@@ -1027,6 +1126,7 @@
               <p>Update the expression or comment for any existing user parameter and click Save.</p>
             </div>
             <div class="actions">
+              <button id="toggleRevertButtonsButton" class="ghost" type="button">Show Revert: On</button>
               <button id="autoFitColumnsButton" class="ghost" type="button">Auto Fit</button>
               <button id="refreshButton" class="ghost" type="button">Refresh</button>
             </div>
@@ -1078,6 +1178,7 @@
         </section>
       </div>
       <div id="overlayRoot" class="overlay-root"></div>
+      <div id="functionHelper" class="function-helper" hidden></div>
       <div id="reorderMenu" class="reorder-menu" hidden>
         <div class="reorder-menu-actions">
           <button id="moveRowTopButton" class="ghost" type="button">Move to Top</button>
@@ -1229,6 +1330,9 @@
         Velocity: false
       };
 
+      const DEFAULT_CUSTOM_UNITS = [];
+      const DEFAULT_SHOW_REVERT_BUTTONS = true;
+
       const DEFAULT_TABLE_COLUMNS = {
         name: 21,
         expression: 27,
@@ -1253,6 +1357,35 @@
         "round", "sign", "sin", "sinh", "sqrt", "tan", "tanh"
       ]);
 
+      const FUNCTION_HELP = {
+        abs: { summary: "Returns the absolute value.", example: "abs(-12 mm)", args: [{ name: "value", text: "Number to convert to a non-negative value." }] },
+        acos: { summary: "Returns inverse cosine.", example: "acos(0.5)", args: [{ name: "value", text: "Input in range -1 to 1." }] },
+        acosh: { summary: "Returns inverse hyperbolic cosine.", example: "acosh(2)", args: [{ name: "value", text: "Input greater than or equal to 1." }] },
+        asin: { summary: "Returns inverse sine.", example: "asin(0.5)", args: [{ name: "value", text: "Input in range -1 to 1." }] },
+        asinh: { summary: "Returns inverse hyperbolic sine.", example: "asinh(2)", args: [{ name: "value", text: "Any numeric value." }] },
+        atan: { summary: "Returns inverse tangent.", example: "atan(1)", args: [{ name: "value", text: "Any numeric value." }] },
+        atanh: { summary: "Returns inverse hyperbolic tangent.", example: "atanh(0.5)", args: [{ name: "value", text: "Input in range -1 to 1." }] },
+        ceil: { summary: "Rounds up to next integer.", example: "ceil(12.1 mm)", args: [{ name: "value", text: "Value to round upward." }] },
+        cos: { summary: "Returns cosine.", example: "cos(45 deg)", args: [{ name: "angle", text: "Angle value." }] },
+        cosh: { summary: "Returns hyperbolic cosine.", example: "cosh(1)", args: [{ name: "value", text: "Any numeric value." }] },
+        exp: { summary: "Returns e raised to a power.", example: "exp(2)", args: [{ name: "power", text: "Exponent value." }] },
+        floor: { summary: "Rounds down to previous integer.", example: "floor(12.9 mm)", args: [{ name: "value", text: "Value to round downward." }] },
+        if: { summary: "Conditional expression.", example: "if(Width > 20 mm; 1; 0)", args: [{ name: "condition", text: "True/false test." }, { name: "whenTrue", text: "Returned when condition is true." }, { name: "whenFalse", text: "Returned when condition is false." }] },
+        ln: { summary: "Natural logarithm.", example: "ln(10)", args: [{ name: "value", text: "Input greater than 0." }] },
+        log: { summary: "Base-10 logarithm.", example: "log(1000)", args: [{ name: "value", text: "Input greater than 0." }] },
+        max: { summary: "Returns larger value.", example: "max(Length; Width)", args: [{ name: "valueA", text: "First value." }, { name: "valueB", text: "Second value." }] },
+        min: { summary: "Returns smaller value.", example: "min(Length; Width)", args: [{ name: "valueA", text: "First value." }, { name: "valueB", text: "Second value." }] },
+        pow: { summary: "Raises value to exponent.", example: "pow(2; 3)", args: [{ name: "value", text: "Base value." }, { name: "exponent", text: "Exponent value." }] },
+        random: { summary: "Returns random value between 0 and 1.", example: "random()", args: [] },
+        round: { summary: "Rounds to nearest integer.", example: "round(12.49 mm)", args: [{ name: "value", text: "Value to round." }] },
+        sign: { summary: "Returns sign of a value.", example: "sign(-5)", args: [{ name: "value", text: "Any numeric value." }] },
+        sin: { summary: "Returns sine.", example: "sin(30 deg)", args: [{ name: "angle", text: "Angle value." }] },
+        sinh: { summary: "Returns hyperbolic sine.", example: "sinh(1)", args: [{ name: "value", text: "Any numeric value." }] },
+        sqrt: { summary: "Returns square root.", example: "sqrt(Area)", args: [{ name: "value", text: "Input greater than or equal to 0." }] },
+        tan: { summary: "Returns tangent.", example: "tan(45 deg)", args: [{ name: "angle", text: "Angle value." }] },
+        tanh: { summary: "Returns hyperbolic tangent.", example: "tanh(1)", args: [{ name: "value", text: "Any numeric value." }] }
+      };
+
 
       const state = {
         parameters: [],
@@ -1262,7 +1395,9 @@
           rememberUnit: false,
           lastUnit: "",
           parameterTableColumns: { ...DEFAULT_TABLE_COLUMNS },
-          unitCategoryState: { ...DEFAULT_UNIT_CATEGORY_STATE }
+          unitCategoryState: { ...DEFAULT_UNIT_CATEGORY_STATE },
+          customUnits: [...DEFAULT_CUSTOM_UNITS],
+          showRevertButtons: DEFAULT_SHOW_REVERT_BUTTONS
         },
         documentDefaults: {
           unit: "mm"
@@ -1284,6 +1419,11 @@
           insertionPrefix: "",
           activeInputId: "",
           activeParameterName: ""
+        },
+        functionHelper: {
+          activeInputId: "",
+          functionName: "",
+          argumentIndex: 0
         },
         paletteSize: {
           width: 520,
@@ -1331,8 +1471,9 @@
 
       function getColumnMinimumPercents(tableWidth) {
         const safeTableWidth = Math.max(tableWidth || 1, 1);
-        const saveButton = document.querySelector(".save-button");
-        const actionsPx = Math.max(saveButton ? Math.ceil(saveButton.getBoundingClientRect().width) + 2 : 70, 70);
+        const actionButtons = Array.from(document.querySelectorAll("#parameterRows .row-actions button"));
+        const widestActionButton = actionButtons.reduce((maxWidth, button) => Math.max(maxWidth, Math.ceil(button.getBoundingClientRect().width || 0)), 0);
+        const actionsPx = Math.max(widestActionButton + 2, 70);
         return {
           name: 10,
           expression: 16,
@@ -1370,7 +1511,9 @@
           return Math.max(maxWidth, Math.ceil(measureTextWidth(current, monoFont) + 26));
         }, 120);
 
-        const actionsPx = Math.max(document.querySelector(".save-button") ? Math.ceil(document.querySelector(".save-button").getBoundingClientRect().width) + 2 : 70, 70);
+        const actionButtons = Array.from(document.querySelectorAll("#parameterRows .row-actions button"));
+        const widestActionButton = actionButtons.reduce((maxWidth, button) => Math.max(maxWidth, Math.ceil(button.getBoundingClientRect().width || 0)), 0);
+        const actionsPx = Math.max(widestActionButton + 2, 70);
 
         const fixedPx = namePx + previewPx + actionsPx;
         const remainingPx = Math.max(tableWidth - fixedPx, 180);
@@ -1404,6 +1547,12 @@
             headers[i].style.width = `${cols[key]}%`;
           }
         });
+      }
+
+      function renderRevertToggle() {
+        const button = document.getElementById("toggleRevertButtonsButton");
+        const isOn = state.settings.showRevertButtons !== false;
+        button.textContent = `Show Revert: ${isOn ? "On" : "Off"}`;
       }
 
       function setGlobalStatus(message, kind = "") {
@@ -1546,6 +1695,28 @@
         const preserveScroll = state.isUnitMenuOpen ? state.unitMenuScrollTop : 0;
         const pieces = [];
 
+        pieces.push(`
+          <div class="unit-custom-row">
+            <input id="customUnitInput" type="text" placeholder="Custom unit (e.g. mph, oz, ft*lb)" />
+            <button class="primary" type="button" data-custom-unit-apply="true">Use</button>
+          </div>
+        `);
+
+        const customUnits = state.settings.customUnits || [];
+        if (customUnits.length) {
+          pieces.push(`
+            <section class="unit-category" data-category-key="Custom">
+              <button class="unit-category-header" type="button" disabled>Custom Units</button>
+              <div class="unit-category-options">
+                ${customUnits.map((unitValue) => {
+                  const selectedClass = unitValue === state.createUnit ? " is-selected" : "";
+                  return `<button class="unit-option${selectedClass}" type="button" data-unit-value="${escapeHtml(unitValue)}">${escapeHtml(unitValue)}</button>`;
+                }).join("")}
+              </div>
+            </section>
+          `);
+        }
+
         for (const unit of TOP_LEVEL_UNITS) {
           const selectedClass = unit.value === state.createUnit ? " is-selected" : "";
           pieces.push(`<button class="unit-option${selectedClass}" type="button" data-unit-value="${escapeHtml(unit.value)}">${escapeHtml(unit.label)}</button>`);
@@ -1630,10 +1801,17 @@
           const safeExpression = escapeHtml(param.expression);
           const safeComment = escapeHtml(param.comment);
           const safePreview = escapeHtml(param.valuePreview);
+          const previousExpression = String(param.previousExpression || "");
+          const safePreviousExpression = escapeHtml(previousExpression);
           const unitBadge = `<span class="pill">${escapeHtml(param.unit || "No Units")}</span>`;
           const favoriteTitle = param.isFavorite ? "Remove from favorites" : "Add to favorites";
           const favoriteIcon = param.isFavorite ? "★" : "☆";
           const favoriteClass = param.isFavorite ? "favorite-button is-on" : "favorite-button";
+          const revertLabelValue = previousExpression ? (previousExpression.length > 18 ? `${previousExpression.slice(0, 15)}...` : previousExpression) : "";
+          const showRevert = state.settings.showRevertButtons !== false;
+          const revertButton = showRevert
+            ? `<button class="revert-button" type="button" data-previous-expression="${safePreviousExpression}" title="${previousExpression ? `Revert: ${escapeHtml(previousExpression)}` : "No previous value"}"${previousExpression ? "" : " disabled"}>${previousExpression ? `Revert: ${escapeHtml(revertLabelValue)}` : "Revert"}</button>`
+            : "";
 
           return `
             <tr data-index="${index}" data-parameter-key="${safeKey}" data-parameter-name="${safeName}">
@@ -1662,7 +1840,10 @@
                 <textarea class="comment-input" data-saved-comment="${safeComment}">${safeComment}</textarea>
               </td>
               <td>
-                <button class="save-button" type="button" disabled>Save</button>
+                <div class="row-actions">
+                  ${revertButton}
+                  <button class="save-button" type="button" disabled>Save</button>
+                </div>
               </td>
             </tr>
           `;
@@ -1930,12 +2111,17 @@
             ...DEFAULT_UNIT_CATEGORY_STATE,
             ...state.settings.unitCategoryState,
             ...(settings.unitCategoryState || {})
-          }
+          },
+          customUnits: Array.isArray(settings.customUnits) ? settings.customUnits.slice() : (state.settings.customUnits || []).slice(),
+          showRevertButtons: typeof settings.showRevertButtons === "boolean"
+            ? settings.showRevertButtons
+            : (state.settings.showRevertButtons !== false)
         };
 
         applyTheme(state.settings.theme);
         renderToggle("rememberUnitToggle", !!state.settings.rememberUnit);
         renderToggle("autoUpdateToggle", state.settings.autoCheckUpdates !== false);
+        renderRevertToggle();
         renderUnitPicker();
         applyColumnWidths();
       }
@@ -2117,6 +2303,223 @@
         document.getElementById("expressionSuggestions").innerHTML = "";
       }
 
+      function closeFunctionHelper() {
+        const helper = document.getElementById("functionHelper");
+        helper.hidden = true;
+        helper.innerHTML = "";
+        state.functionHelper = {
+          activeInputId: "",
+          functionName: "",
+          argumentIndex: 0
+        };
+      }
+
+      function parseActiveFunctionAtCursor(input) {
+        if (!input) {
+          return null;
+        }
+
+        const value = input.value || "";
+        const cursor = Math.max(0, Math.min(input.selectionStart ?? value.length, value.length));
+        const stack = [];
+        const isIdentifierChar = (ch) => /[A-Za-z0-9_"$]/.test(ch || "");
+
+        for (let i = 0; i < cursor; i += 1) {
+          const char = value[i];
+
+          if ((/[A-Za-z_"$]/.test(char || "")) && !isIdentifierChar(value[i - 1])) {
+            let end = i + 1;
+            while (end < value.length && isIdentifierChar(value[end])) {
+              end += 1;
+            }
+            const token = value.slice(i, end);
+            let look = end;
+            while (look < value.length && /\s/.test(value[look])) {
+              look += 1;
+            }
+            if (look < cursor && value[look] === "(" && EXPRESSION_CALLABLE.has(token)) {
+              stack.push({
+                name: token.toLowerCase(),
+                argIndex: 0
+              });
+            }
+            i = end - 1;
+            continue;
+          }
+
+          if (char === "," || char === ";") {
+            if (stack.length) {
+              stack[stack.length - 1].argIndex += 1;
+            }
+            continue;
+          }
+
+          if (char === ")") {
+            if (stack.length) {
+              stack.pop();
+            }
+          }
+        }
+
+        if (!stack.length) {
+          return null;
+        }
+
+        return stack[stack.length - 1];
+      }
+
+      function findInnermostEmptyFunctionSpanAtCursor(value, cursor) {
+        const text = String(value || "");
+        const safeCursor = Math.max(0, Math.min(cursor ?? text.length, text.length));
+        const spans = [];
+        const stack = [];
+        const isIdentifierChar = (ch) => /[A-Za-z0-9_"$]/.test(ch || "");
+
+        const findFunctionNameStart = (openIndex) => {
+          let i = openIndex - 1;
+          while (i >= 0 && /\s/.test(text[i])) {
+            i -= 1;
+          }
+          if (i < 0) {
+            return -1;
+          }
+
+          let start = i;
+          while (start >= 0 && isIdentifierChar(text[start])) {
+            start -= 1;
+          }
+          start += 1;
+
+          if (start > i) {
+            return -1;
+          }
+
+          const token = text.slice(start, i + 1);
+          if (!token || !EXPRESSION_CALLABLE.has(token.toLowerCase())) {
+            return -1;
+          }
+
+          return start;
+        };
+
+        for (let i = 0; i < text.length; i += 1) {
+          const char = text[i];
+          if (char === "(") {
+            const nameStart = findFunctionNameStart(i);
+            if (nameStart >= 0) {
+              stack.push({
+                nameStart,
+                openIndex: i
+              });
+            } else {
+              stack.push(null);
+            }
+            continue;
+          }
+
+          if (char === ")") {
+            if (!stack.length) {
+              continue;
+            }
+            const span = stack.pop();
+            if (!span) {
+              continue;
+            }
+            spans.push({
+              nameStart: span.nameStart,
+              openIndex: span.openIndex,
+              closeIndex: i
+            });
+          }
+        }
+
+        const insideSpans = spans
+          .filter((span) => safeCursor > span.openIndex && safeCursor <= span.closeIndex)
+          .sort((a, b) => b.openIndex - a.openIndex);
+
+        for (const span of insideSpans) {
+          const inner = text.slice(span.openIndex + 1, span.closeIndex);
+          if (!inner.trim()) {
+            return span;
+          }
+        }
+
+        return null;
+      }
+
+      function renderFunctionHelper(meta, functionName, argumentIndex) {
+        const helper = document.getElementById("functionHelper");
+        const args = Array.isArray(meta.args) ? meta.args : [];
+        const safeArgIndex = Math.max(0, Math.min(argumentIndex || 0, Math.max(args.length - 1, 0)));
+        const signatureArgs = args.length
+          ? args.map((arg, idx) => (
+              `<span class="${idx === safeArgIndex ? "active-arg" : ""}">${escapeHtml(arg.name)}</span>`
+            )).join("; ")
+          : "";
+
+        helper.innerHTML = `
+          <p class="function-helper-title">${escapeHtml(functionName.toUpperCase())}</p>
+          <p class="function-signature">${escapeHtml(functionName)}(${signatureArgs})</p>
+          <p class="function-helper-text">${escapeHtml(meta.summary || "")}</p>
+          <p class="function-signature">Example: ${escapeHtml(meta.example || "")}</p>
+          <div class="function-helper-args">
+            ${args.map((arg, idx) => `<div class="function-helper-arg ${idx === safeArgIndex ? "active" : ""}"><strong>${escapeHtml(arg.name)}</strong>: ${escapeHtml(arg.text || "")}</div>`).join("")}
+          </div>
+        `;
+      }
+
+      function positionFunctionHelper(input) {
+        const helper = document.getElementById("functionHelper");
+        const page = document.querySelector(".page");
+        if (!input || helper.hidden || !page) {
+          return;
+        }
+
+        const inputRect = input.getBoundingClientRect();
+        const pageRect = page.getBoundingClientRect();
+        const suggestion = document.getElementById("expressionSuggestions");
+        const gutter = 8;
+        const helperWidth = Math.max(300, Math.min(420, inputRect.width));
+        let top = inputRect.bottom - pageRect.top + 6;
+        if (suggestion && !suggestion.hidden) {
+          const suggestionRect = suggestion.getBoundingClientRect();
+          if (Math.abs(suggestionRect.left - inputRect.left) < 2) {
+            top = suggestionRect.bottom - pageRect.top + 6;
+          }
+        }
+        const rawLeft = inputRect.left - pageRect.left;
+        const maxLeft = Math.max(gutter, page.clientWidth - helperWidth - gutter);
+        const left = Math.max(gutter, Math.min(rawLeft, maxLeft));
+
+        document.getElementById("overlayRoot").appendChild(helper);
+        helper.style.width = `${helperWidth}px`;
+        helper.style.left = `${left}px`;
+        helper.style.top = `${Math.max(gutter, top)}px`;
+      }
+
+      function updateFunctionHelper(input) {
+        if (!input) {
+          closeFunctionHelper();
+          return;
+        }
+
+        const context = parseActiveFunctionAtCursor(input);
+        if (!context || !FUNCTION_HELP[context.name]) {
+          closeFunctionHelper();
+          return;
+        }
+
+        const helper = document.getElementById("functionHelper");
+        renderFunctionHelper(FUNCTION_HELP[context.name], context.name, context.argIndex);
+        helper.hidden = false;
+        state.functionHelper = {
+          activeInputId: input.id || "",
+          functionName: context.name,
+          argumentIndex: context.argIndex
+        };
+        positionFunctionHelper(input);
+      }
+
       function renderExpressionSuggestions() {
         const box = document.getElementById("expressionSuggestions");
         const { sections, flatItems, highlightedIndex } = state.expressionAutocomplete;
@@ -2193,10 +2596,12 @@
           const paramItems = buildItems(state.parameterNames, parameterName);
           const funcItems = buildItems(EXPRESSION_FUNCTIONS, null);
           const unitSections = buildUnitSections(folded, tokenText);
+          const customItems = (state.settings.customUnits || []).filter((v) => v.toLowerCase().startsWith(folded)).slice(0, 12);
 
           const sections = [];
           if (paramItems.length) sections.push({ label: "Parameters", items: paramItems });
           if (funcItems.length) sections.push({ label: "Functions", items: funcItems });
+          if (customItems.length) sections.push({ label: "Custom Units", items: customItems });
           sections.push(...unitSections);
 
           const flatItems = sections.flatMap((s) => s.items);
@@ -2281,6 +2686,7 @@
         } else {
           validateExpressionAgainstFusion(input);
         }
+        updateFunctionHelper(input);
       }
 
       function setExpressionValidationState(input, message, kind = "error") {
@@ -2329,6 +2735,7 @@
         const expressionInput = row.querySelector(".expression-input");
         const commentInput = row.querySelector(".comment-input");
         const saveButton = row.querySelector(".save-button");
+        const revertButton = row.querySelector(".revert-button");
         if (!expressionInput || !commentInput || !saveButton) {
           return;
         }
@@ -2338,6 +2745,12 @@
         const isDirty = expressionDirty || commentDirty;
         saveButton.disabled = !isDirty;
         saveButton.classList.toggle("is-dirty", isDirty);
+        if (revertButton) {
+          const previousExpression = revertButton.getAttribute("data-previous-expression") || "";
+          const canRevert = !!previousExpression && !isDirty;
+          revertButton.disabled = !canRevert;
+          revertButton.classList.toggle("is-ready", canRevert);
+        }
         renderRowPreview(row);
       }
 
@@ -2578,6 +2991,7 @@
       let expressionValidationTimer = null;
       document.getElementById("newExpression").addEventListener("input", (event) => {
         updateExpressionSuggestions(event.currentTarget, document.getElementById("newName").value.trim());
+        updateFunctionHelper(event.currentTarget);
 
         if (expressionValidationTimer) {
           window.clearTimeout(expressionValidationTimer);
@@ -2597,9 +3011,28 @@
 
       document.getElementById("newExpression").addEventListener("click", (event) => {
         updateExpressionSuggestions(event.currentTarget, document.getElementById("newName").value.trim());
+        updateFunctionHelper(event.currentTarget);
       });
 
       document.getElementById("newExpression").addEventListener("keydown", (event) => {
+        if (
+          event.key === "Backspace" &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.altKey &&
+          event.currentTarget.selectionStart === event.currentTarget.selectionEnd
+        ) {
+          const input = event.currentTarget;
+          const span = findInnermostEmptyFunctionSpanAtCursor(input.value, input.selectionStart);
+          if (span) {
+            event.preventDefault();
+            input.value = `${input.value.slice(0, span.nameStart)}${input.value.slice(span.closeIndex + 1)}`;
+            input.setSelectionRange(span.nameStart, span.nameStart);
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            return;
+          }
+        }
+
         const { flatItems, highlightedIndex } = state.expressionAutocomplete;
         if (!flatItems.length) {
           return;
@@ -2628,10 +3061,12 @@
         if (event.key === "Escape") {
           closeExpressionSuggestions();
         }
+        window.requestAnimationFrame(() => updateFunctionHelper(event.currentTarget));
       });
 
       document.getElementById("newExpression").addEventListener("blur", async (event) => {
         window.setTimeout(() => closeExpressionSuggestions(), 120);
+        window.setTimeout(() => closeFunctionHelper(), 120);
         if (expressionValidationTimer) {
           window.clearTimeout(expressionValidationTimer);
         }
@@ -2667,6 +3102,7 @@
         }
 
         updateExpressionSuggestions(input, input.getAttribute("data-parameter-name") || "");
+        updateFunctionHelper(input);
 
         if (rowExpressionValidationTimer) {
           window.clearTimeout(rowExpressionValidationTimer);
@@ -2707,12 +3143,30 @@
         }
 
         updateExpressionSuggestions(input, input.getAttribute("data-parameter-name") || "");
+        updateFunctionHelper(input);
       });
 
       parameterRows.addEventListener("keydown", (event) => {
         const input = event.target.closest(".expression-input");
         if (!input) {
           return;
+        }
+
+        if (
+          event.key === "Backspace" &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.altKey &&
+          input.selectionStart === input.selectionEnd
+        ) {
+          const span = findInnermostEmptyFunctionSpanAtCursor(input.value, input.selectionStart);
+          if (span) {
+            event.preventDefault();
+            input.value = `${input.value.slice(0, span.nameStart)}${input.value.slice(span.closeIndex + 1)}`;
+            input.setSelectionRange(span.nameStart, span.nameStart);
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            return;
+          }
         }
 
         const { flatItems, highlightedIndex, activeInputId } = state.expressionAutocomplete;
@@ -2743,6 +3197,7 @@
         if (event.key === "Escape") {
           closeExpressionSuggestions();
         }
+        window.requestAnimationFrame(() => updateFunctionHelper(input));
       });
 
       parameterRows.addEventListener("focusout", async (event) => {
@@ -2752,6 +3207,7 @@
         }
 
         window.setTimeout(() => closeExpressionSuggestions(), 120);
+        window.setTimeout(() => closeFunctionHelper(), 120);
         if (rowExpressionValidationTimer) {
           window.clearTimeout(rowExpressionValidationTimer);
         }
@@ -2934,6 +3390,42 @@
         event.stopPropagation();
         state.unitMenuScrollTop = document.getElementById("unitPickerMenu").scrollTop || 0;
 
+        const customApplyButton = event.target.closest("[data-custom-unit-apply]");
+        if (customApplyButton) {
+          const customInput = document.getElementById("customUnitInput");
+          const enteredUnit = (customInput?.value || "").trim();
+          if (!enteredUnit) {
+            setGlobalStatus("Type a custom unit first.", "error");
+            return;
+          }
+
+          try {
+            const validation = await sendToFusion("validateUnit", { unit: enteredUnit });
+            if (!validation.ok) {
+              throw new Error(validation.message || "Invalid unit.");
+            }
+
+            const normalizedUnit = validation.unit || enteredUnit;
+            applySelectedUnit(normalizedUnit, { persistLastUnit: true });
+
+            const nextCustomUnits = [normalizedUnit, ...(state.settings.customUnits || [])]
+              .filter((value, index, array) => array.findIndex((v) => v.toLowerCase() === value.toLowerCase()) === index)
+              .slice(0, 40);
+            state.settings.customUnits = nextCustomUnits;
+            renderUnitPicker();
+            setUnitMenuOpen(false);
+
+            const settingsPayload = { customUnits: nextCustomUnits };
+            if (state.settings.rememberUnit) {
+              settingsPayload.lastUnit = normalizedUnit;
+            }
+            await saveSettingsPartial(settingsPayload);
+          } catch (error) {
+            setGlobalStatus(error.message, "error");
+          }
+          return;
+        }
+
         const unitButton = event.target.closest("[data-unit-value]");
         if (unitButton) {
           const unitValue = unitButton.getAttribute("data-unit-value");
@@ -2995,6 +3487,7 @@
         const expressionMenu = event.target.closest("#expressionSuggestions");
         if (!expressionField && !expressionMenu) {
           closeExpressionSuggestions();
+          closeFunctionHelper();
         }
       });
 
@@ -3024,6 +3517,12 @@
             positionExpressionSuggestions(activeInput);
           }
         }
+        if (state.functionHelper.activeInputId) {
+          const activeInput = document.getElementById(state.functionHelper.activeInputId);
+          if (activeInput) {
+            positionFunctionHelper(activeInput);
+          }
+        }
       });
 
       let paletteResizeTimer = null;
@@ -3044,6 +3543,12 @@
           const activeInput = document.getElementById(state.expressionAutocomplete.activeInputId);
           if (activeInput) {
             positionExpressionSuggestions(activeInput);
+          }
+        }
+        if (state.functionHelper.activeInputId) {
+          const activeInput = document.getElementById(state.functionHelper.activeInputId);
+          if (activeInput) {
+            positionFunctionHelper(activeInput);
           }
         }
       });
@@ -3150,6 +3655,25 @@
         }
       });
 
+      document.getElementById("toggleRevertButtonsButton").addEventListener("click", async () => {
+        const previousValue = state.settings.showRevertButtons !== false;
+        const nextValue = !previousValue;
+        state.settings.showRevertButtons = nextValue;
+        renderRevertToggle();
+        renderParameters(state.parameters);
+        applyColumnWidths();
+
+        try {
+          await saveSettingsPartial({ showRevertButtons: nextValue });
+        } catch (error) {
+          state.settings.showRevertButtons = previousValue;
+          renderRevertToggle();
+          renderParameters(state.parameters);
+          applyColumnWidths();
+          setGlobalStatus(error.message, "error");
+        }
+      });
+
       document.getElementById("createForm").addEventListener("submit", async (event) => {
         event.preventDefault();
         const form = event.currentTarget;
@@ -3191,6 +3715,37 @@
       document.getElementById("parameterRows").addEventListener("click", async (event) => {
         const reorderHandle = event.target.closest("[data-reorder-handle]");
         if (reorderHandle) {
+          return;
+        }
+
+        const revertButton = event.target.closest(".revert-button");
+        if (revertButton) {
+          if (revertButton.disabled) {
+            return;
+          }
+          const row = revertButton.closest("tr");
+          const parameter = getParameterForRow(row);
+          const previousExpression = revertButton.getAttribute("data-previous-expression") || "";
+          if (!parameter || !previousExpression) {
+            return;
+          }
+
+          const comment = row.querySelector(".comment-input")?.value ?? parameter.comment ?? "";
+          setGlobalStatus(`Reverting ${parameter.name}...`);
+          try {
+            const response = await sendToFusion("updateParameter", {
+              name: parameter.name,
+              expression: previousExpression,
+              comment
+            });
+            if (!response.ok) {
+              throw new Error(response.message || "Revert failed.");
+            }
+            applyStateFromFusion(response);
+            setGlobalStatus(`Reverted ${parameter.name}.`, "success");
+          } catch (error) {
+            setGlobalStatus(error.message, "error");
+          }
           return;
         }
 

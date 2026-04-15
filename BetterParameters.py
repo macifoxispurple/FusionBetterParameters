@@ -93,6 +93,8 @@ DEFAULT_SETTINGS = {
         "Power": False,
         "Velocity": False,
     },
+    "customUnits": [],
+    "showRevertButtons": True,
     "autoCheckUpdates": True,
     "updateCheck": {},
 }
@@ -387,6 +389,9 @@ def _handle_palette_action(action, data):
             data.get("fallbackPreview", "")
         )
 
+    if action == "validateUnit":
+        return _validate_unit_response(data.get("unit", ""))
+
     if action == "getActiveDocumentInfo":
         return {"ok": True, "document": _active_document_info()}
 
@@ -487,6 +492,8 @@ def _collect_user_parameters():
                 "comment": param.comment or "",
                 "isFavorite": param.isFavorite,
                 "valuePreview": _format_parameter_value(param, units_manager),
+                "previousExpression": str(saved_record.get("previous_expression") or ""),
+                "previousValue": str(saved_record.get("previous_value") or ""),
                 "_sortOrder": sort_order,
                 "_sourceIndex": index,
             }
@@ -609,6 +616,10 @@ def _read_document_order_state():
             records[token] = {
                 "order": order_value,
                 "name": str(record.get("name") or ""),
+                "current_expression": str(record.get("current_expression") or ""),
+                "previous_expression": str(record.get("previous_expression") or ""),
+                "current_value": str(record.get("current_value") or ""),
+                "previous_value": str(record.get("previous_value") or ""),
             }
 
     state["documentId"] = str(loaded.get("documentId") or state["documentId"])
@@ -680,6 +691,10 @@ def _resolve_document_order_records(design, records):
         resolved[current_token] = {
             "order": order_value,
             "name": parameter.name if parameter and getattr(parameter, "name", "") else str(record.get("name") or ""),
+            "current_expression": str(record.get("current_expression") or ""),
+            "previous_expression": str(record.get("previous_expression") or ""),
+            "current_value": str(record.get("current_value") or ""),
+            "previous_value": str(record.get("previous_value") or ""),
         }
     return resolved
 
@@ -687,13 +702,40 @@ def _resolve_document_order_records(design, records):
 def _persist_document_order_snapshot(parameters, previous_state=None):
     info = _active_document_info()
     records = {}
+    previous_records = {}
+    if isinstance(previous_state, dict) and isinstance(previous_state.get("parameters"), dict):
+        previous_records = previous_state.get("parameters") or {}
+
     for index, parameter in enumerate(parameters or []):
         key = str(parameter.get("key") or "")
         if not key:
             continue
+        previous_record = previous_records.get(key) if isinstance(previous_records.get(key), dict) else {}
+
+        incoming_expression = parameter.get("expression")
+        if not isinstance(incoming_expression, str):
+            incoming_expression = str(previous_record.get("current_expression") or "")
+        incoming_value = parameter.get("valuePreview")
+        if not isinstance(incoming_value, str):
+            incoming_value = str(previous_record.get("current_value") or "")
+
+        previous_expression = str(previous_record.get("previous_expression") or "")
+        previous_value = str(previous_record.get("previous_value") or "")
+        old_current_expression = str(previous_record.get("current_expression") or "")
+        old_current_value = str(previous_record.get("current_value") or "")
+
+        if old_current_expression and old_current_expression != incoming_expression:
+            previous_expression = old_current_expression
+        if old_current_value and old_current_value != incoming_value:
+            previous_value = old_current_value
+
         records[key] = {
             "order": index,
             "name": str(parameter.get("name") or ""),
+            "current_expression": incoming_expression,
+            "previous_expression": previous_expression,
+            "current_value": incoming_value,
+            "previous_value": previous_value,
         }
 
     next_state = {
@@ -711,6 +753,8 @@ def _load_settings():
     settings["paletteSize"] = dict(DEFAULT_SETTINGS["paletteSize"])
     settings["parameterTableColumns"] = dict(DEFAULT_SETTINGS["parameterTableColumns"])
     settings["unitCategoryState"] = dict(DEFAULT_SETTINGS["unitCategoryState"])
+    settings["customUnits"] = []
+    settings["showRevertButtons"] = bool(DEFAULT_SETTINGS["showRevertButtons"])
     settings["updateCheck"] = {}
     settings_path = _settings_path()
     if not settings_path.exists():
@@ -746,6 +790,27 @@ def _load_settings():
                 incoming_value = loaded["unitCategoryState"].get(key)
                 if isinstance(incoming_value, bool):
                     settings["unitCategoryState"][key] = incoming_value
+
+        if isinstance(loaded.get("customUnits"), list):
+            deduped_units = []
+            seen_units = set()
+            for candidate in loaded["customUnits"]:
+                if not isinstance(candidate, str):
+                    continue
+                token = candidate.strip()
+                if not token:
+                    continue
+                folded = token.casefold()
+                if folded in seen_units:
+                    continue
+                deduped_units.append(token)
+                seen_units.add(folded)
+                if len(deduped_units) >= 40:
+                    break
+            settings["customUnits"] = deduped_units
+
+        if isinstance(loaded.get("showRevertButtons"), bool):
+            settings["showRevertButtons"] = loaded["showRevertButtons"]
 
         if isinstance(loaded.get("autoCheckUpdates"), bool):
             settings["autoCheckUpdates"] = loaded["autoCheckUpdates"]
@@ -826,6 +891,33 @@ def _save_settings(data):
             incoming_value = category_state.get(key)
             if isinstance(incoming_value, bool):
                 settings["unitCategoryState"][key] = incoming_value
+
+    custom_units = data.get("customUnits")
+    if custom_units is not None:
+        if not isinstance(custom_units, list):
+            raise ValueError('"customUnits" must be an array.')
+        deduped_units = []
+        seen_units = set()
+        for candidate in custom_units:
+            if not isinstance(candidate, str):
+                continue
+            token = candidate.strip()
+            if not token:
+                continue
+            folded = token.casefold()
+            if folded in seen_units:
+                continue
+            deduped_units.append(token)
+            seen_units.add(folded)
+            if len(deduped_units) >= 40:
+                break
+        settings["customUnits"] = deduped_units
+
+    if "showRevertButtons" in data:
+        show_revert_buttons = data.get("showRevertButtons")
+        if not isinstance(show_revert_buttons, bool):
+            raise ValueError('"showRevertButtons" must be a boolean.')
+        settings["showRevertButtons"] = show_revert_buttons
 
     if "autoCheckUpdates" in data:
         auto_check = data.get("autoCheckUpdates")
@@ -1044,6 +1136,39 @@ def _validate_expression_response(expression, current_parameter_name="", units="
             continue
         unknown_tokens.append(token)
 
+    design = _design()
+    if design:
+        try:
+            validate_units = units or design.unitsManager.defaultLengthUnits or "mm"
+            if design.unitsManager.isValidExpression(text, validate_units):
+                return {"ok": True, "message": ""}
+            if unknown_tokens:
+                token = unknown_tokens[0]
+                case_hint = _case_sensitive_parameter_hint(token, parameter_names)
+                if case_hint:
+                    return {
+                        "ok": False,
+                        "message": f'Unknown parameter name "{token}". Parameter names are case sensitive. Did you mean "{case_hint}"?'
+                    }
+                return {
+                    "ok": False,
+                    "message": f'Unknown parameter name "{token}". Parameter names are case sensitive and must match an existing parameter exactly.'
+                }
+            if not design.unitsManager.isValidExpression(text, validate_units):
+                incomplete_hint = _incomplete_expression_hint(text)
+                if incomplete_hint:
+                    return {
+                        "ok": False,
+                        "message": incomplete_hint,
+                        "isIncomplete": True,
+                    }
+                return {
+                    "ok": False,
+                    "message": "Expression syntax is invalid. Use explicit operators between terms; parentheses do not imply multiplication."
+                }
+        except Exception:
+            pass
+
     if unknown_tokens:
         token = unknown_tokens[0]
         case_hint = _case_sensitive_parameter_hint(token, parameter_names)
@@ -1057,19 +1182,34 @@ def _validate_expression_response(expression, current_parameter_name="", units="
             "message": f'Unknown parameter name "{token}". Parameter names are case sensitive and must match an existing parameter exactly.'
         }
 
-    design = _design()
-    if design:
-        try:
-            validate_units = units or design.unitsManager.defaultLengthUnits or "mm"
-            if not design.unitsManager.isValidExpression(text, validate_units):
-                return {
-                    "ok": False,
-                    "message": "Expression syntax is invalid. Use explicit operators between terms; parentheses do not imply multiplication."
-                }
-        except Exception:
-            pass
-
     return {"ok": True, "message": ""}
+
+
+def _incomplete_expression_hint(text):
+    raw = str(text or "")
+    stripped = raw.strip()
+    if not stripped:
+        return "Expression is required."
+
+    if stripped.endswith(("(", ",", ";")):
+        return "Expression looks incomplete. Keep typing inside the current parentheses."
+
+    if stripped.endswith(("+", "-", "*", "/", "^")):
+        return f'Expression looks incomplete after "{stripped[-1]}". Add the next value or parameter.'
+
+    if stripped.endswith((">", "<", "=", "!", "&", "|")):
+        return "Expression looks incomplete after a comparison/logical operator. Continue the right-hand side."
+
+    open_count = 0
+    for char in stripped:
+        if char == "(":
+            open_count += 1
+        elif char == ")" and open_count > 0:
+            open_count -= 1
+    if open_count > 0:
+        return "Expression has an open parenthesis. Finish the expression and close it."
+
+    return ""
 
 
 def _preview_expression_response(expression, current_parameter_name="", units="", fallback_preview=""):
@@ -1133,6 +1273,32 @@ def _known_unit_identifiers():
         "J", "kJ", "W", "kW", "hp", "mm/s", "cm/s", "m/s", "in/s", "ft/s",
         "Text",
     }
+
+
+def _validate_unit_response(unit_text):
+    unit = str(unit_text or "").strip()
+    if not unit:
+        return {"ok": False, "message": "Unit is required."}
+
+    if unit.casefold() == "text":
+        return {"ok": True, "message": "", "unit": "Text"}
+
+    design = _design()
+    if not design:
+        return {"ok": True, "message": "", "unit": unit}
+
+    units_manager = design.unitsManager
+    try:
+        if units_manager.isValidExpression("1", unit) or units_manager.isValidExpression(f"1 {unit}", unit):
+            try:
+                formatted = units_manager.formatUnits(unit) or unit
+                return {"ok": True, "message": "", "unit": formatted.strip() or unit}
+            except Exception:
+                return {"ok": True, "message": "", "unit": unit}
+    except Exception:
+        pass
+
+    return {"ok": False, "message": f'"{unit}" is not a valid Fusion unit.', "unit": ""}
 
 
 def _require_design():
