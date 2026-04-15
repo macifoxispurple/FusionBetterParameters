@@ -42,7 +42,7 @@ COMMAND_RESOURCES = "./Resources/BetterParameters"
 SETTINGS_FILE = "settings.json"
 DEFAULT_PALETTE_WIDTH = 520
 DEFAULT_PALETTE_HEIGHT = 640
-EXPRESSION_TOKEN_PATTERN = re.compile(r'[A-Za-z_"\$Â°Âµ][A-Za-z0-9_"\$Â°Âµ]*')
+EXPRESSION_TOKEN_PATTERN = re.compile('[A-Za-z_"\\$\\u00B0\\u00B5][A-Za-z0-9_"\\$\\u00B0\\u00B5]*')
 ALLOWED_EXPRESSION_IDENTIFIERS = {
     "PI", "E", "Gravity", "SpeedOfLight",
     "if", "and", "or", "not",
@@ -50,7 +50,7 @@ ALLOWED_EXPRESSION_IDENTIFIERS = {
     "cosh", "sinh", "tanh", "sqrt", "sign", "exp", "floor", "ceil", "round",
     "abs", "max", "min", "ln", "log", "pow", "random",
 }
-PARAMETER_NAME_PATTERN = re.compile(r'^[A-Za-z_"\$°µ][A-Za-z0-9_"\$°µ]*$')
+PARAMETER_NAME_PATTERN = re.compile('^[A-Za-z_"\\$\\u00B0\\u00B5][A-Za-z0-9_"\\$\\u00B0\\u00B5]*$')
 
 MANIFEST_PATH = os.path.join(ADDIN_DIR, "BetterParameters.manifest")
 LATEST_RELEASE_API_URL = "https://api.github.com/repos/macifoxispurple/FusionBetterParameters/releases/latest"
