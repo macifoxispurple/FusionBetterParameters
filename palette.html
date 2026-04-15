@@ -1491,6 +1491,7 @@
               <button id="debugRefreshButton" class="ghost" type="button">Refresh Debug</button>
               <button id="debugJsonToFusionButton" class="ghost" type="button">JSON -> Fusion</button>
               <button id="debugFusionToJsonButton" class="ghost" type="button">Fusion -> JSON</button>
+              <button id="debugRepairButton" class="ghost" type="button">Repair Metadata</button>
             </div>
           </div>
           <div id="debugSummary" class="section-meta"></div>
@@ -1963,6 +1964,8 @@
         const refreshedAt = new Date().toISOString();
         const documentName = (data.document && data.document.name) ? data.document.name : "(untitled)";
         const recordCount = Number(data.recordCount || 0);
+        const docMeta = (data.docMeta && typeof data.docMeta === "object") ? data.docMeta : {};
+        const docMetaVersion = Number(docMeta.docMetaVersion || 0);
         const fusionNewer = rows.filter((row) => row.latestSource === "fusion").length;
         const jsonNewer = rows.filter((row) => row.latestSource === "json").length;
         const equal = rows.filter((row) => row.latestSource === "equal").length;
@@ -1974,6 +1977,12 @@
           const skippedCount = Number(syncResult.skippedCount || 0);
           const failedCount = Number(syncResult.failedCount || 0);
           syncText = ` Last sync: ${direction} (updated ${updatedCount}, skipped ${skippedCount}, failed ${failedCount}).`;
+          const updatedFusionCount = Number(syncResult.updatedFusionCount || 0);
+          const updatedJsonCount = Number(syncResult.updatedJsonCount || 0);
+          const healedCount = Number(syncResult.healedCount || 0);
+          if (updatedFusionCount || updatedJsonCount || healedCount) {
+            syncText += ` Repair detail: fusion ${updatedFusionCount}, json ${updatedJsonCount}, healed ${healedCount}.`;
+          }
           const failedDetails = Array.isArray(syncResult.failedDetails) ? syncResult.failedDetails : [];
           if (failedDetails.length > 0) {
             const firstFailure = failedDetails[0] || {};
@@ -1986,7 +1995,7 @@
             }
           }
         }
-        summary.textContent = `Doc: ${documentName}. JSON records: ${recordCount}. Fusion newer: ${fusionNewer}. JSON newer: ${jsonNewer}. Equal: ${equal}.${syncText} Refreshed: ${refreshedAt}.`;
+        summary.textContent = `Doc: ${documentName}. JSON records: ${recordCount}. Doc meta version: ${docMetaVersion}. Fusion newer: ${fusionNewer}. JSON newer: ${jsonNewer}. Equal: ${equal}.${syncText} Refreshed: ${refreshedAt}.`;
 
         if (!rows.length) {
           output.textContent = "No user parameters found.";
@@ -1994,15 +2003,22 @@
         }
 
         const lines = [];
+        const maxRows = 40;
+        const shownRows = rows.slice(0, maxRows);
         lines.push(`refreshedAt | ${refreshedAt}`);
         lines.push("--- | ---");
-        lines.push("name | latest | fusionGroup | fusionChangedAt | fusionParamGroup | fusionParamChangedAt | fusionDocGroup | fusionDocChangedAt | jsonGroup | jsonChangedAt");
-        lines.push("--- | --- | --- | --- | --- | --- | --- | --- | --- | ---");
-        rows.forEach((row) => {
+        lines.push(`docMetaVersion | ${docMetaVersion}`);
+        lines.push("--- | ---");
+        lines.push("name | latest | fusionGroup | fusionRev | fusionChangedAt | jsonGroup | jsonRev | jsonChangedAt");
+        lines.push("--- | --- | --- | --- | --- | --- | --- | ---");
+        shownRows.forEach((row) => {
           lines.push(
-            `${row.name || "-"} | ${row.latestSource || "-"} | ${row.fusionGroup || "-"} | ${formatMetadataTimestamp(row.fusionMetadataChangedAt)} | ${row.fusionParameterGroup || "-"} | ${formatMetadataTimestamp(row.fusionParameterMetadataChangedAt)} | ${row.fusionDocumentGroup || "-"} | ${formatMetadataTimestamp(row.fusionDocumentMetadataChangedAt)} | ${row.jsonGroup || "-"} | ${formatMetadataTimestamp(row.jsonMetadataChangedAt)}`
+            `${row.name || "-"} | ${row.latestSource || "-"} | ${row.fusionGroup || "-"} | ${Number(row.fusionMetadataRevision || 0)} | ${formatMetadataTimestamp(row.fusionMetadataChangedAt)} | ${row.jsonGroup || "-"} | ${Number(row.jsonMetadataRevision || 0)} | ${formatMetadataTimestamp(row.jsonMetadataChangedAt)}`
           );
         });
+        if (rows.length > maxRows) {
+          lines.push(`... showing ${maxRows} of ${rows.length} rows`);
+        }
         output.textContent = lines.join("\n");
       }
 
@@ -2076,6 +2092,36 @@
         }
       }
 
+      function normalizeGroupUiState(value) {
+        const normalized = {
+          order: [],
+          collapsed: {}
+        };
+        if (!value || typeof value !== "object") {
+          return normalized;
+        }
+        const order = Array.isArray(value.order) ? value.order : [];
+        const seen = new Set();
+        order.forEach((candidate) => {
+          const canonical = canonicalGroupName(candidate);
+          const key = (canonical || "").toLowerCase();
+          if (seen.has(key)) {
+            return;
+          }
+          seen.add(key);
+          normalized.order.push(canonical);
+        });
+        const collapsed = value.collapsed && typeof value.collapsed === "object" ? value.collapsed : {};
+        Object.entries(collapsed).forEach(([key, raw]) => {
+          const folded = String(key || "").trim().toLowerCase();
+          if (!folded && String(key || "").trim() !== "") {
+            return;
+          }
+          normalized.collapsed[folded] = !!raw;
+        });
+        return normalized;
+      }
+
       function isGroupCollapsed(groupLabel) {
         ensureGroupUiState(groupLabel);
         return !!state.groupUi.collapsed[groupSortKey(groupLabel)];
@@ -2138,6 +2184,9 @@
           orderedLabels.push(label);
         };
 
+        for (const storedGroup of (state.groupUi.order || [])) {
+          pushLabel(storedGroup);
+        }
         for (const parameter of (state.parameters || [])) {
           pushLabel(parameter.group);
         }
@@ -3040,6 +3089,7 @@
         state.activeGroupDrag = null;
 
         const orderChanged = startOrder.join("|") !== nextOrder.join("|");
+        state.groupUi.order = nextOrder.map((label) => canonicalGroupName(label));
         if (!orderChanged) {
           state.groupUi.collapsed = previousCollapsed;
           renderParameters(state.parameters);
@@ -3050,6 +3100,7 @@
         setGlobalStatus("Saving group order...");
         try {
           await persistParameterRowOrder("Group order updated.");
+          await saveGroupUiState();
           state.groupUi.collapsed = previousCollapsed;
           renderParameters(state.parameters);
           setParameterSummary(state.parameters);
@@ -3190,6 +3241,10 @@
           state.groups = payload.groups.slice();
         }
 
+        if (payload.groupUi && typeof payload.groupUi === "object") {
+          state.groupUi = normalizeGroupUiState(payload.groupUi);
+        }
+
         if (payload.documentDefaults) {
           state.documentDefaults = { ...state.documentDefaults, ...payload.documentDefaults };
         }
@@ -3290,6 +3345,20 @@
           setGlobalStatus(statusMessage, "success");
         }
 
+        return response;
+      }
+
+      async function saveGroupUiState(statusMessage = "") {
+        const response = await sendToFusion("saveGroupUiState", {
+          groupUi: normalizeGroupUiState(state.groupUi)
+        });
+        if (!response.ok) {
+          throw new Error(response.message || "Group UI state save failed.");
+        }
+        applyStateFromFusion(response);
+        if (statusMessage) {
+          setGlobalStatus(statusMessage, "success");
+        }
         return response;
       }
 
@@ -4059,6 +4128,11 @@
         await runMetadataSync("syncMetadataFusionToJson", "Metadata synced: Fusion -> JSON.");
       });
 
+      document.getElementById("debugRepairButton").addEventListener("click", async () => {
+        setGlobalStatus("Repairing metadata drift/corruption...");
+        await runMetadataSync("repairMetadata", "Metadata repair completed.");
+      });
+
       document.getElementById("themeToggle").addEventListener("click", async () => {
         const nextTheme = state.settings.theme === "dark" ? "light" : "dark";
         const previousTheme = state.settings.theme;
@@ -4295,6 +4369,7 @@
           const groupLabel = groupToggle.getAttribute("data-group-toggle") || "";
           const key = groupSortKey(groupLabel);
           state.groupUi.collapsed[key] = !isGroupCollapsed(groupLabel);
+          saveGroupUiState().catch(() => {});
           renderParameters(state.parameters);
           return;
         }
