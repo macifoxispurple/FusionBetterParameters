@@ -507,27 +507,28 @@ def _send_to_palette(action, payload):
 def _current_state_payload(settings=None):
     active_settings = settings if settings is not None else _load_settings()
     design = _design()
-    merged_order_state = _sync_ui_state_between_local_and_fusion(design, _read_document_order_state()) if design else _read_document_order_state()
-    parameters = _collect_user_parameters()
+    order_state = _sync_ui_state_between_local_and_fusion(design, _read_document_order_state()) if design else _read_document_order_state()
+    parameters = _collect_user_parameters(order_state)
     return {
         "ok": True,
         "parameters": parameters,
         "groups": _collect_parameter_groups(parameters),
-        "groupUi": merged_order_state.get("groupUi", {"order": [], "collapsed": {}}),
+        "groupUi": order_state.get("groupUi", {"order": [], "collapsed": {}}),
         "parameterNames": _collect_all_parameter_names(),
         "settings": active_settings,
         "document": _active_document_info(),
         "documentDefaults": {
             "unit": _default_document_unit(),
         },
-        "updateInfo": _build_update_info_payload(),
+        "updateInfo": _build_update_info_payload(active_settings),
     }
 
 
-def _build_update_info_payload():
+def _build_update_info_payload(settings=None):
     current_version = _current_addin_version()
     update_state = _current_update_state()
-    settings = _load_settings()
+    if settings is None:
+        settings = _load_settings()
     auto_check = bool(settings.get("autoCheckUpdates", True))
 
     cached = _normalized_update_check(settings.get("updateCheck") or {})
@@ -553,14 +554,14 @@ def _design():
     return adsk.fusion.Design.cast(product)
 
 
-def _collect_user_parameters():
+def _collect_user_parameters(order_state=None):
     design = _design()
     if not design:
         return []
 
     units_manager = design.unitsManager
-    order_state = _read_document_order_state()
-    order_state = _sync_ui_state_between_local_and_fusion(design, order_state)
+    if order_state is None:
+        order_state = _sync_ui_state_between_local_and_fusion(design, _read_document_order_state())
     saved_records = _resolve_document_order_records(design, order_state.get("parameters") or {})
     results = []
     params = design.userParameters
