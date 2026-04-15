@@ -7,6 +7,7 @@ import platform
 import re
 import shutil
 import sys
+import threading
 import time
 import traceback
 import urllib.error
@@ -159,6 +160,7 @@ def run(context):
 
         _register_command()
         _register_application_events()
+        threading.Thread(target=_background_update_check, daemon=True).start()
     except Exception:
         _message_box(f"Add-in start failed:\n{traceback.format_exc()}")
 
@@ -3374,6 +3376,27 @@ def _release_notes_html(notes_text):
     if not text:
         return ''
     return '<br/>'.join(_html.escape(line) if line.strip() else '' for line in text.split('\n'))
+
+
+def _background_update_check():
+    """Fetch latest release info at startup in a background thread.
+
+    No Fusion API calls here — only file I/O and network. All exceptions
+    are swallowed so a network failure never blocks or breaks add-in loading.
+    """
+    try:
+        settings = _load_settings()
+        if not bool(settings.get("autoCheckUpdates", True)):
+            return
+        cached = _normalized_update_check(settings.get("updateCheck") or {})
+        checked_at = cached.get("checked_at", 0)
+        is_fresh = bool(checked_at and (time.time() - checked_at) < UPDATE_CACHE_MAX_AGE_SECONDS)
+        if is_fresh:
+            return
+        latest = _fetch_latest_release_info()
+        _save_update_check(latest)
+    except Exception:
+        pass
 
 
 def _fetch_latest_release_info():
