@@ -1977,7 +1977,33 @@ def _find_extracted_addin_dir(extract_root):
         if os.path.isdir(candidate):
             return candidate
 
+    for root, _dirs, files in os.walk(extract_root):
+        required = {'BetterParameters.py', 'palette.html', 'BetterParameters.manifest'}
+        if required.issubset(set(files)):
+            return root
+
     return ''
+
+
+def _extract_release_archive(zip_path, extract_root):
+    with zipfile.ZipFile(zip_path, 'r') as archive:
+        for member in archive.infolist():
+            normalized_name = str(member.filename or '').replace('\\', '/').strip('/')
+            if not normalized_name:
+                continue
+
+            parts = [part for part in normalized_name.split('/') if part not in {'', '.', '..'}]
+            if not parts:
+                continue
+
+            destination = os.path.join(extract_root, *parts)
+            if member.is_dir():
+                os.makedirs(destination, exist_ok=True)
+                continue
+
+            os.makedirs(os.path.dirname(destination), exist_ok=True)
+            with archive.open(member, 'r') as source_handle, open(destination, 'wb') as target_handle:
+                shutil.copyfileobj(source_handle, target_handle)
 
 
 def _updater_script_contents():
@@ -2090,8 +2116,7 @@ def _stage_update_payload(release_info):
     extract_root = os.path.join(PENDING_UPDATE_DIR, 'extracted')
     os.makedirs(extract_root, exist_ok=True)
     _download_release_asset(asset_url, zip_path)
-    with zipfile.ZipFile(zip_path, 'r') as archive:
-        archive.extractall(extract_root)
+    _extract_release_archive(zip_path, extract_root)
 
     extracted_addin_dir = _find_extracted_addin_dir(extract_root)
     if not extracted_addin_dir:
