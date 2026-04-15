@@ -347,6 +347,12 @@ def _handle_palette_action(action, data):
         _send_to_palette("renderState", payload)
         return payload
 
+    if action == "revertParameter":
+        _revert_parameter(data)
+        payload = _current_state_payload()
+        _send_to_palette("renderState", payload)
+        return payload
+
     if action == "setParameterFavorite":
         _set_parameter_favorite(data)
         payload = _current_state_payload()
@@ -1016,6 +1022,57 @@ def _update_parameter(data):
 
     param.expression = expression
     param.comment = comment
+
+
+def _revert_parameter(data):
+    design = _require_design()
+    key = str(data.get("key") or "").strip()
+    name = str(data.get("name") or "").strip()
+    if not key and not name:
+        raise ValueError('Either "key" or "name" is required.')
+
+    parameter = _find_user_parameter_by_token(design, key) if key else None
+    if not parameter and name:
+        parameter = design.userParameters.itemByName(name)
+    if not parameter:
+        raise ValueError("User parameter was not found.")
+
+    order_state = _read_document_order_state()
+    stored_records = _resolve_document_order_records(design, order_state.get("parameters") or {})
+    parameter_key = _parameter_entity_token(parameter)
+    record = stored_records.get(parameter_key) or {}
+    previous_expression = str(record.get("previous_expression") or "").strip()
+    if not previous_expression:
+        raise ValueError("No previous expression is available to revert.")
+
+    units_manager = design.unitsManager
+    current_expression = str(parameter.expression or "")
+    current_value = _format_parameter_value(parameter, units_manager)
+
+    parameter.expression = previous_expression
+    if "comment" in data:
+        parameter.comment = str(data.get("comment") or "")
+
+    reverted_value = _format_parameter_value(parameter, units_manager)
+    order_value = record.get("order")
+    if not isinstance(order_value, int):
+        order_value = len(stored_records)
+
+    stored_records[parameter_key] = {
+        "order": order_value,
+        "name": str(parameter.name or ""),
+        "current_expression": str(parameter.expression or ""),
+        "previous_expression": current_expression,
+        "current_value": reverted_value,
+        "previous_value": current_value,
+    }
+    _write_document_order_state(
+        {
+            "documentId": order_state.get("documentId", ""),
+            "documentName": order_state.get("documentName", ""),
+            "parameters": stored_records,
+        }
+    )
 
 
 def _set_parameter_favorite(data):
