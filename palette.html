@@ -244,6 +244,11 @@
       .table-wrap table thead th:last-child,
       .table-wrap table tbody td:last-child {
         min-width: 64px;
+        width: 1%;
+        white-space: nowrap;
+        padding-left: 4px;
+        padding-right: 0;
+        text-align: right;
       }
 
       table {
@@ -318,6 +323,119 @@
         color: var(--pill-ink);
         font-size: 0.8rem;
         white-space: nowrap;
+      }
+
+      .favorite-button {
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--ghost);
+        color: var(--muted);
+        font-size: 0.92rem;
+        line-height: 1;
+        flex: 0 0 auto;
+      }
+
+      .favorite-button:hover {
+        background: var(--pill-bg);
+        color: var(--pill-ink);
+      }
+
+      .favorite-button.is-on {
+        background: var(--pill-bg);
+        color: var(--pill-ink);
+      }
+
+      .favorite-button:disabled {
+        opacity: 0.7;
+        cursor: wait;
+      }
+
+      .preview-cell {
+        min-width: 0;
+      }
+
+      .preview-value {
+        display: grid;
+        gap: 2px;
+        min-width: 0;
+        align-items: start;
+      }
+
+      .preview-current,
+      .preview-new {
+        display: block;
+        min-width: 0;
+        white-space: normal;
+        word-break: break-word;
+      }
+
+      .preview-new {
+        color: var(--accent-strong);
+        font-size: 0.84rem;
+      }
+
+      .save-button {
+        background: var(--ghost);
+        color: var(--muted);
+        cursor: not-allowed;
+        display: inline-block;
+        margin-left: auto;
+      }
+
+      .save-button:hover {
+        transform: none;
+      }
+
+      .save-button.is-dirty {
+        background: var(--accent);
+        color: white;
+        cursor: pointer;
+      }
+
+      .save-button.is-dirty:hover {
+        background: var(--accent-strong);
+        transform: translateY(-1px);
+      }
+
+      .favorites-shell {
+        display: grid;
+        gap: 10px;
+        padding: 12px 14px;
+        border: 1px solid rgba(216, 207, 194, 0.22);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .favorites-title {
+        margin: 0;
+        font-size: 0.82rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .favorites-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .favorite-chip {
+        border: 1px solid var(--line);
+        background: var(--ghost);
+        color: var(--ink);
+        padding: 7px 12px;
+      }
+
+      .row-meta {
+        margin-top: 6px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
       }
 
       .empty {
@@ -420,6 +538,10 @@
         align-items: flex-start;
         justify-content: space-between;
         gap: 12px;
+      }
+
+      .section-header .actions {
+        flex-shrink: 0;
       }
 
       .section-header .ghost {
@@ -777,7 +899,14 @@
               <h2>User Parameters</h2>
               <p>Update the expression or comment for any existing user parameter and click Save.</p>
             </div>
-            <button id="refreshButton" class="ghost" type="button">Refresh</button>
+            <div class="actions">
+              <button id="autoFitColumnsButton" class="ghost" type="button">Auto Fit</button>
+              <button id="refreshButton" class="ghost" type="button">Refresh</button>
+            </div>
+          </div>
+          <div id="favoritesSection" class="favorites-shell" style="display:none">
+            <p class="favorites-title">Favorites</p>
+            <div id="favoritesList" class="favorites-list"></div>
           </div>
           <div id="parameterSummary" class="section-meta" aria-live="polite"></div>
           <div class="table-wrap">
@@ -787,7 +916,7 @@
                   <th><span class="header-label">Name</span><div class="column-resizer" data-col="name"></div></th>
                   <th><span class="header-label">Expression</span><div class="column-resizer" data-col="expression"></div></th>
                   <th><span class="header-label">Preview</span><div class="column-resizer" data-col="preview"></div></th>
-                  <th><span class="header-label">Comment</span></th>
+                  <th><span class="header-label">Comment</span><div class="column-resizer" data-col="comment"></div></th>
                   <th></th>
                 </tr>
               </thead>
@@ -967,7 +1096,7 @@
         expression: 27,
         preview: 16,
         comment: 24,
-        actions: 12
+        actions: 8
       };
 
       const COLUMN_KEYS = ["name", "expression", "preview", "comment", "actions"];
@@ -1022,6 +1151,7 @@
           height: 640
         },
         activeColumnResize: null,
+        rowPreviewRequestNonce: 0,
         updateInfo: {
           currentVersion: "",
           latestVersion: "",
@@ -1044,6 +1174,80 @@
           normalized[key] = Number(((Number(value || 0) / total) * 100).toFixed(2));
         }
         return normalized;
+      }
+
+      function measureTextWidth(text, font) {
+        const canvas = measureTextWidth.canvas || (measureTextWidth.canvas = document.createElement("canvas"));
+        const context = canvas.getContext("2d");
+        context.font = font;
+        return context.measureText(text || "").width;
+      }
+
+      function getColumnMinimumPercents(tableWidth) {
+        const safeTableWidth = Math.max(tableWidth || 1, 1);
+        const saveButton = document.querySelector(".save-button");
+        const actionsPx = Math.max(saveButton ? Math.ceil(saveButton.getBoundingClientRect().width) + 2 : 70, 70);
+        return {
+          name: 10,
+          expression: 16,
+          preview: 12,
+          comment: 10,
+          actions: Number(((actionsPx / safeTableWidth) * 100).toFixed(2))
+        };
+      }
+
+      function buildAutoFitColumnWidths() {
+        const table = document.querySelector(".table-wrap table");
+        if (!table) {
+          return normalizeColumnWidths(DEFAULT_TABLE_COLUMNS);
+        }
+
+        const tableWidth = Math.max(table.getBoundingClientRect().width, 1);
+        const mins = getColumnMinimumPercents(tableWidth);
+        const bodyRows = Array.from(document.querySelectorAll("#parameterRows tr[data-index]"));
+
+        const strongFont = '600 0.92rem "Segoe UI", "Helvetica Neue", sans-serif';
+        const monoFont = '0.92rem "Consolas", "SFMono-Regular", monospace';
+        const pillFont = '0.8rem "Segoe UI", "Helvetica Neue", sans-serif';
+
+        const namePx = bodyRows.reduce((maxWidth, row) => {
+          const name = row.querySelector("strong")?.textContent || "";
+          const badgeTexts = Array.from(row.querySelectorAll(".row-meta .pill")).map((node) => node.textContent || "");
+          const nameWidth = measureTextWidth(name, strongFont);
+          const badgesWidth = badgeTexts.reduce((sum, text) => sum + measureTextWidth(text, pillFont) + 30, 0);
+          const starWidth = 34;
+          return Math.max(maxWidth, Math.ceil(Math.max(nameWidth, badgesWidth + starWidth) + 28));
+        }, 140);
+
+        const previewPx = bodyRows.reduce((maxWidth, row) => {
+          const current = row.querySelector(".preview-current")?.textContent || row.querySelector(".preview-cell")?.getAttribute("data-saved-preview") || "";
+          return Math.max(maxWidth, Math.ceil(measureTextWidth(current, monoFont) + 26));
+        }, 120);
+
+        const actionsPx = Math.max(document.querySelector(".save-button") ? Math.ceil(document.querySelector(".save-button").getBoundingClientRect().width) + 2 : 70, 70);
+
+        const fixedPx = namePx + previewPx + actionsPx;
+        const remainingPx = Math.max(tableWidth - fixedPx, 180);
+        const expressionPx = remainingPx * (2 / 3);
+        const commentPx = remainingPx * (1 / 3);
+
+        const raw = {
+          name: (namePx / tableWidth) * 100,
+          preview: (previewPx / tableWidth) * 100,
+          actions: (actionsPx / tableWidth) * 100,
+          expression: (expressionPx / tableWidth) * 100,
+          comment: (commentPx / tableWidth) * 100
+        };
+
+        const clamped = {
+          name: Math.max(raw.name, mins.name),
+          expression: Math.max(raw.expression, mins.expression),
+          preview: Math.max(raw.preview, mins.preview),
+          comment: Math.max(raw.comment, mins.comment),
+          actions: Math.max(raw.actions, mins.actions)
+        };
+
+        return normalizeColumnWidths(clamped);
       }
 
       function applyColumnWidths() {
@@ -1081,6 +1285,46 @@
 
       function autoSizeCommentInputs(root = document) {
         root.querySelectorAll(".comment-input").forEach((textarea) => autoSizeTextarea(textarea));
+      }
+
+      function setPreviewCellContent(previewCell, savedPreview, draftPreview = "") {
+        const content = previewCell.querySelector(".preview-value");
+        if (!content) {
+          return;
+        }
+
+        content.textContent = "";
+
+        const currentLine = document.createElement("div");
+        currentLine.className = "preview-current";
+        currentLine.textContent = savedPreview || "";
+        currentLine.title = savedPreview || "";
+        content.appendChild(currentLine);
+
+        if (draftPreview) {
+          const nextLine = document.createElement("div");
+          nextLine.className = "preview-new";
+          nextLine.textContent = `New: ${draftPreview}`;
+          nextLine.title = `New: ${draftPreview}`;
+          content.appendChild(nextLine);
+        }
+      }
+
+      function renderFavoritesSection(parameters) {
+        const section = document.getElementById("favoritesSection");
+        const list = document.getElementById("favoritesList");
+        const favorites = (parameters || []).filter((param) => !!param.isFavorite);
+
+        if (!favorites.length) {
+          section.style.display = "none";
+          list.innerHTML = "";
+          return;
+        }
+
+        section.style.display = "";
+        list.innerHTML = favorites.map((param) => (
+          `<button class="favorite-chip" type="button" data-favorite-name="${escapeHtml(param.name)}">${escapeHtml(param.name)}</button>`
+        )).join("");
       }
 
       function setNameError(message) {
@@ -1217,6 +1461,7 @@
       function renderParameters(parameters) {
         state.parameters = parameters || [];
         const tbody = document.getElementById("parameterRows");
+        renderFavoritesSection(state.parameters);
 
         if (!state.parameters.length) {
           tbody.innerHTML = `<tr><td colspan="5" class="empty">No user parameters were found in the active design.</td></tr>`;
@@ -1229,35 +1474,43 @@
           const safeComment = escapeHtml(param.comment);
           const safePreview = escapeHtml(param.valuePreview);
           const unitBadge = `<span class="pill">${escapeHtml(param.unit || "No Units")}</span>`;
-          const favoriteBadge = param.isFavorite ? `<span class="pill">favorite</span>` : "";
+          const favoriteTitle = param.isFavorite ? "Remove from favorites" : "Add to favorites";
+          const favoriteIcon = param.isFavorite ? "★" : "☆";
+          const favoriteClass = param.isFavorite ? "favorite-button is-on" : "favorite-button";
 
           return `
-            <tr data-index="${index}">
+            <tr data-index="${index}" data-parameter-name="${safeName}">
               <td>
                 <strong>${safeName}</strong>
-                <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
+                <div class="row-meta">
+                  <button class="${favoriteClass}" type="button" data-favorite-toggle="true" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}">${favoriteIcon}</button>
                   ${unitBadge}
-                  ${favoriteBadge}
                 </div>
               </td>
               <td>
                 <div class="field-shell">
-                  <input id="expressionRow${index}" class="mono expression-input" data-parameter-name="${safeName}" data-parameter-unit="${escapeHtml(param.unit || "")}" value="${safeExpression}" autocomplete="off" />
+                  <input id="expressionRow${index}" class="mono expression-input" data-parameter-name="${safeName}" data-parameter-unit="${escapeHtml(param.unit || "")}" data-saved-expression="${safeExpression}" value="${safeExpression}" autocomplete="off" />
                   <div class="field-error expression-field-error" aria-live="polite"></div>
                 </div>
               </td>
-              <td class="mono">${safePreview}</td>
-              <td>
-                <textarea class="comment-input">${safeComment}</textarea>
+              <td class="mono preview-cell" data-saved-preview="${safePreview}">
+                <div class="preview-value"></div>
               </td>
               <td>
-                <button class="primary save-button" type="button">Save</button>
+                <textarea class="comment-input" data-saved-comment="${safeComment}">${safeComment}</textarea>
+              </td>
+              <td>
+                <button class="save-button" type="button" disabled>Save</button>
               </td>
             </tr>
           `;
         }).join("");
 
         autoSizeCommentInputs(tbody);
+        tbody.querySelectorAll(".preview-cell").forEach((previewCell) => {
+          setPreviewCellContent(previewCell, previewCell.getAttribute("data-saved-preview") || "");
+        });
+        tbody.querySelectorAll("tr").forEach((row) => updateRowSaveState(row));
       }
 
       function applyTheme(theme) {
@@ -1624,7 +1877,11 @@
         input.focus();
         input.setSelectionRange(caret, caret);
         closeExpressionSuggestions();
-        validateExpressionAgainstFusion(input);
+        if (input.classList.contains("expression-input")) {
+          previewRowExpression(input);
+        } else {
+          validateExpressionAgainstFusion(input);
+        }
       }
 
       function setExpressionValidationState(input, message, kind = "error") {
@@ -1639,6 +1896,109 @@
           errorNode.classList.toggle("is-valid", kind === "success");
         }
         input.setAttribute("aria-invalid", (message && kind === "error") ? "true" : "false");
+      }
+
+      function getRowPreviewCell(input) {
+        const row = input && input.closest ? input.closest("tr") : null;
+        return row ? row.querySelector(".preview-cell") : null;
+      }
+
+      function renderRowPreview(row) {
+        if (!row) {
+          return;
+        }
+
+        const previewCell = row.querySelector(".preview-cell");
+        const expressionInput = row.querySelector(".expression-input");
+        if (!previewCell || !expressionInput) {
+          return;
+        }
+
+        const savedPreview = previewCell.getAttribute("data-saved-preview") || "";
+        const savedExpression = expressionInput.getAttribute("data-saved-expression") || "";
+        const currentExpression = expressionInput.value || "";
+        const draftPreview = previewCell.getAttribute("data-draft-preview") || "";
+        const showDraft = currentExpression !== savedExpression && !!draftPreview;
+        setPreviewCellContent(previewCell, savedPreview, showDraft ? draftPreview : "");
+      }
+
+      function updateRowSaveState(row) {
+        if (!row) {
+          return;
+        }
+
+        const expressionInput = row.querySelector(".expression-input");
+        const commentInput = row.querySelector(".comment-input");
+        const saveButton = row.querySelector(".save-button");
+        if (!expressionInput || !commentInput || !saveButton) {
+          return;
+        }
+
+        const expressionDirty = expressionInput.value !== (expressionInput.getAttribute("data-saved-expression") || "");
+        const commentDirty = commentInput.value !== (commentInput.getAttribute("data-saved-comment") || "");
+        const isDirty = expressionDirty || commentDirty;
+        saveButton.disabled = !isDirty;
+        saveButton.classList.toggle("is-dirty", isDirty);
+        renderRowPreview(row);
+      }
+
+      function restoreRowPreview(input) {
+        const previewCell = getRowPreviewCell(input);
+        if (!previewCell) {
+          return;
+        }
+
+        previewCell.setAttribute("data-draft-preview", "");
+        renderRowPreview(input.closest("tr"));
+      }
+
+      async function previewRowExpression(input) {
+        const expression = input.value;
+        if (!expression || !expression.trim()) {
+          setExpressionValidationState(input, "Expression is required.");
+          restoreRowPreview(input);
+          return false;
+        }
+
+        const previewCell = getRowPreviewCell(input);
+        const fallbackPreview = previewCell ? (previewCell.getAttribute("data-saved-preview") || "") : "";
+        state.rowPreviewRequestNonce += 1;
+        const requestNonce = String(state.rowPreviewRequestNonce);
+        input.setAttribute("data-preview-request-nonce", requestNonce);
+
+        try {
+          const response = await sendToFusion("previewExpression", {
+            expression,
+            currentParameterName: input.getAttribute("data-parameter-name") || "",
+            units: input.getAttribute("data-parameter-unit") || "",
+            fallbackPreview
+          });
+
+          if (input.getAttribute("data-preview-request-nonce") !== requestNonce) {
+            return false;
+          }
+
+          if (!response.ok) {
+            setExpressionValidationState(input, response.message || "Invalid expression.");
+            restoreRowPreview(input);
+            return false;
+          }
+
+          setExpressionValidationState(input, "Expression valid.", "success");
+          if (previewCell) {
+            previewCell.setAttribute("data-draft-preview", response.preview || "");
+          }
+          renderRowPreview(input.closest("tr"));
+          return true;
+        } catch (error) {
+          if (input.getAttribute("data-preview-request-nonce") !== requestNonce) {
+            return false;
+          }
+
+          setExpressionValidationState(input, error.message, "error");
+          restoreRowPreview(input);
+          return false;
+        }
       }
 
       async function validateExpressionAgainstFusion(input) {
@@ -1898,6 +2258,7 @@
         const commentInput = event.target.closest(".comment-input");
         if (commentInput) {
           autoSizeTextarea(commentInput);
+          updateRowSaveState(commentInput.closest("tr"));
           return;
         }
 
@@ -1915,11 +2276,14 @@
         const value = input.value;
         if (!value.trim()) {
           setExpressionValidationState(input, "Expression is required.");
+          restoreRowPreview(input);
+          updateRowSaveState(input.closest("tr"));
           return;
         }
 
+        updateRowSaveState(input.closest("tr"));
         rowExpressionValidationTimer = window.setTimeout(() => {
-          validateExpressionAgainstFusion(input);
+          previewRowExpression(input);
         }, 200);
       });
 
@@ -1928,6 +2292,11 @@
       });
 
       parameterRows.addEventListener("click", (event) => {
+        const favoriteButton = event.target.closest("[data-favorite-toggle]");
+        if (favoriteButton) {
+          return;
+        }
+
         const input = event.target.closest(".expression-input");
         if (!input) {
           return;
@@ -1983,6 +2352,28 @@
           window.clearTimeout(rowExpressionValidationTimer);
         }
         await validateExpressionAgainstFusion(input);
+      });
+
+      document.getElementById("favoritesList").addEventListener("click", (event) => {
+        const button = event.target.closest("[data-favorite-name]");
+        if (!button) {
+          return;
+        }
+
+        const targetName = button.getAttribute("data-favorite-name") || "";
+        const row = Array.from(document.querySelectorAll("#parameterRows tr")).find((candidate) => (
+          candidate.getAttribute("data-parameter-name") === targetName
+        ));
+        if (!row) {
+          return;
+        }
+
+        row.scrollIntoView({ block: "center", behavior: "smooth" });
+        const expressionInput = row.querySelector(".expression-input");
+        if (expressionInput) {
+          expressionInput.focus();
+          expressionInput.select();
+        }
       });
 
       document.getElementById("rememberUnitToggle").addEventListener("click", async () => {
@@ -2145,9 +2536,11 @@
         const { colKey, nextColKey, startX, startWidthA, startWidthB, tableWidth } = state.activeColumnResize;
         const deltaX = event.clientX - startX;
         const deltaPct = (deltaX / tableWidth) * 100;
-        const minWidth = 5;
+        const mins = getColumnMinimumPercents(tableWidth);
+        const minWidthA = mins[colKey] || 5;
+        const minWidthB = mins[nextColKey] || 5;
         const combined = startWidthA + startWidthB;
-        const newA = Math.max(minWidth, Math.min(startWidthA + deltaPct, combined - minWidth));
+        const newA = Math.max(minWidthA, Math.min(startWidthA + deltaPct, combined - minWidthB));
         const newB = combined - newA;
 
         state.settings.parameterTableColumns[colKey] = Number(newA.toFixed(2));
@@ -2165,6 +2558,18 @@
 
         try {
           await saveSettingsPartial({ parameterTableColumns: state.settings.parameterTableColumns });
+        } catch (error) {
+          setGlobalStatus(error.message, "error");
+        }
+      });
+
+      document.getElementById("autoFitColumnsButton").addEventListener("click", async () => {
+        const nextColumns = buildAutoFitColumnWidths();
+        state.settings.parameterTableColumns = nextColumns;
+        applyColumnWidths();
+
+        try {
+          await saveSettingsPartial({ parameterTableColumns: nextColumns }, "Column widths auto-fit to content.");
         } catch (error) {
           setGlobalStatus(error.message, "error");
         }
@@ -2209,6 +2614,34 @@
       });
 
       document.getElementById("parameterRows").addEventListener("click", async (event) => {
+        const favoriteButton = event.target.closest("[data-favorite-toggle]");
+        if (favoriteButton) {
+          const row = favoriteButton.closest("tr");
+          const index = row ? Number(row.dataset.index) : -1;
+          const parameter = index >= 0 ? state.parameters[index] : null;
+          if (!parameter) {
+            return;
+          }
+
+          favoriteButton.disabled = true;
+          try {
+            const response = await sendToFusion("setParameterFavorite", {
+              name: parameter.name,
+              isFavorite: !parameter.isFavorite
+            });
+            if (!response.ok) {
+              throw new Error(response.message || "Favorite update failed.");
+            }
+
+            applyStateFromFusion(response);
+            setGlobalStatus(`${parameter.name} ${parameter.isFavorite ? "removed from" : "added to"} favorites.`, "success");
+          } catch (error) {
+            favoriteButton.disabled = false;
+            setGlobalStatus(error.message, "error");
+          }
+          return;
+        }
+
         const button = event.target.closest(".save-button");
         if (!button) {
           return;

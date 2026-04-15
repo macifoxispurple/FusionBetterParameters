@@ -74,7 +74,7 @@ DEFAULT_SETTINGS = {
         "expression": 27,
         "preview": 16,
         "comment": 24,
-        "actions": 12,
+        "actions": 8,
     },
     "unitCategoryState": {
         "Length": True,
@@ -342,6 +342,12 @@ def _handle_palette_action(action, data):
         _send_to_palette("renderState", payload)
         return payload
 
+    if action == "setParameterFavorite":
+        _set_parameter_favorite(data)
+        payload = _current_state_payload()
+        _send_to_palette("renderState", payload)
+        return payload
+
     if action == "createParameter":
         _create_parameter(data)
         payload = _current_state_payload()
@@ -362,6 +368,14 @@ def _handle_palette_action(action, data):
             data.get("expression", ""),
             data.get("currentParameterName", ""),
             data.get("units", "")
+        )
+
+    if action == "previewExpression":
+        return _preview_expression_response(
+            data.get("expression", ""),
+            data.get("currentParameterName", ""),
+            data.get("units", ""),
+            data.get("fallbackPreview", "")
         )
 
     if action == "getActiveDocumentInfo":
@@ -627,6 +641,22 @@ def _format_parameter_value(param, units_manager):
         return ""
 
 
+def _format_preview_value(value, unit, units_manager):
+    try:
+        if unit:
+            return units_manager.formatValue(value, unit, -1, adsk.core.BooleanOptions.DefaultBooleanOption, -1, True)
+    except Exception:
+        pass
+
+    try:
+        rounded = round(float(value), 9)
+        if rounded == int(rounded):
+            return str(int(rounded))
+        return "{:g}".format(rounded)
+    except Exception:
+        return str(value or "")
+
+
 def _default_document_unit():
     design = _design()
     if not design:
@@ -683,6 +713,18 @@ def _update_parameter(data):
 
     param.expression = expression
     param.comment = comment
+
+
+def _set_parameter_favorite(data):
+    design = _require_design()
+    name = _required_text(data, "name")
+    is_favorite = bool(data.get("isFavorite"))
+
+    param = design.userParameters.itemByName(name)
+    if not param:
+        raise ValueError(f'User parameter "{name}" was not found.')
+
+    param.isFavorite = is_favorite
 
 
 def _create_parameter(data):
@@ -778,6 +820,49 @@ def _validate_expression_response(expression, current_parameter_name="", units="
             pass
 
     return {"ok": True, "message": ""}
+
+
+def _preview_expression_response(expression, current_parameter_name="", units="", fallback_preview=""):
+    validation = _validate_expression_response(expression, current_parameter_name, units)
+    if not validation["ok"]:
+        return {
+            "ok": False,
+            "message": validation["message"],
+            "preview": str(fallback_preview or "")
+        }
+
+    design = _design()
+    if not design:
+        return {
+            "ok": False,
+            "message": "No active Fusion design is available.",
+            "preview": str(fallback_preview or "")
+        }
+
+    units_manager = design.unitsManager
+    preview_unit = str(units or "").strip()
+    if not preview_unit and current_parameter_name:
+        try:
+            current_param = design.userParameters.itemByName(current_parameter_name)
+            if current_param:
+                preview_unit = current_param.unit or ""
+        except Exception:
+            preview_unit = ""
+
+    evaluate_units = preview_unit or units_manager.defaultLengthUnits or "mm"
+    try:
+        value = units_manager.evaluateExpression(str(expression or "").strip(), evaluate_units)
+        return {
+            "ok": True,
+            "message": "",
+            "preview": _format_preview_value(value, preview_unit, units_manager)
+        }
+    except Exception:
+        return {
+            "ok": False,
+            "message": "Fusion could not evaluate that expression yet.",
+            "preview": str(fallback_preview or "")
+        }
 
 
 def _case_sensitive_parameter_hint(token, parameter_names):
