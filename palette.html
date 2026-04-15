@@ -2318,15 +2318,19 @@
 
         renderToggle("autoUpdateToggle", info.autoCheckUpdates !== false);
 
+        const installBtn = document.getElementById("updateCardInstallButton");
+
         if (info.updateState === "staged") {
-          desc.innerHTML = `Running <strong>v${escapeHtml(info.currentVersion)}</strong>.`;
-          if (releaseNotes) releaseNotes.style.display = "none";
-          const statusEl = document.getElementById("updateCardStatus");
-          if (statusEl) {
-            statusEl.textContent = `v${info.targetVersion} is staged \u2014 restart Fusion to apply it.`;
-            statusEl.className = "update-card-status is-good";
-            statusEl.style.display = "";
+          desc.innerHTML = `Restart to update from <strong>v${escapeHtml(info.currentVersion)}</strong> to <strong>v${escapeHtml(info.targetVersion)}</strong>.`;
+          const notes = (info.latestNotes || "").trim();
+          if (notes && releaseNotes) {
+            releaseNotes.style.display = "";
+            if (notesHeading) notesHeading.textContent = `What\u2019s new in v${info.targetVersion}`;
+            if (notesBody) notesBody.textContent = notes;
+          } else if (releaseNotes) {
+            releaseNotes.style.display = "none";
           }
+          if (installBtn) installBtn.style.display = "none";
           return;
         }
 
@@ -2340,6 +2344,7 @@
           } else if (releaseNotes) {
             releaseNotes.style.display = "none";
           }
+          if (installBtn) installBtn.style.display = "";
           return;
         }
 
