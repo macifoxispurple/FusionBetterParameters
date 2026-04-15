@@ -239,6 +239,7 @@
 
       .table-wrap {
         overflow: auto;
+        padding-left: 22px;
       }
 
       .table-wrap table thead th:last-child,
@@ -252,7 +253,7 @@
       }
 
       table {
-        width: 100%;
+        width: calc(100% - 22px);
         border-collapse: collapse;
         table-layout: fixed;
       }
@@ -430,12 +431,123 @@
         padding: 7px 12px;
       }
 
+      .name-cell {
+        min-width: 0;
+        position: relative;
+        overflow: visible;
+      }
+
+      .name-cell-main {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+      }
+
+      .name-stack {
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+
+      .reorder-handle {
+        width: 22px;
+        min-width: 22px;
+        height: 34px;
+        padding: 0;
+        border-radius: 10px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--muted);
+        cursor: grab;
+        position: absolute;
+        left: -18px;
+        top: 50%;
+        transform: translateY(-50%);
+        flex: 0 0 auto;
+        z-index: 1;
+      }
+
+      .reorder-handle::before {
+        content: "";
+        position: absolute;
+        inset: 7px 8px;
+        background:
+          radial-gradient(circle, currentColor 1.2px, transparent 1.3px) left top / 6px 6px repeat-y,
+          radial-gradient(circle, currentColor 1.2px, transparent 1.3px) right top / 6px 6px repeat-y;
+        opacity: 0.78;
+      }
+
+      .reorder-handle:hover {
+        background: var(--ghost);
+        border-color: var(--line);
+        transform: translateY(-50%);
+      }
+
+      .reorder-handle:active {
+        cursor: grabbing;
+        transform: translateY(-50%);
+      }
+
       .row-meta {
         margin-top: 6px;
         display: flex;
         align-items: center;
         gap: 6px;
         flex-wrap: wrap;
+      }
+
+      #parameterRows tr {
+        transition: background 120ms ease;
+      }
+
+      #parameterRows tr.is-row-dragging {
+        opacity: 0.72;
+        background: rgba(57, 185, 173, 0.08);
+      }
+
+      body.is-row-dragging,
+      body.is-row-dragging * {
+        cursor: grabbing !important;
+        user-select: none;
+      }
+
+      .reorder-menu {
+        position: absolute;
+        min-width: 200px;
+        padding: 10px;
+        border-radius: 14px;
+        border: 1px solid rgba(216, 207, 194, 0.22);
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        display: grid;
+        gap: 8px;
+        z-index: 20;
+      }
+
+      .reorder-menu[hidden] {
+        display: none !important;
+      }
+
+      .reorder-menu-actions {
+        display: grid;
+        gap: 6px;
+      }
+
+      .reorder-menu button {
+        width: 100%;
+        justify-content: flex-start;
+        text-align: left;
+      }
+
+      .reorder-menu-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .reorder-menu-row input {
+        min-width: 0;
+        padding: 8px 10px;
       }
 
       .empty {
@@ -605,6 +717,10 @@
       }
 
       .overlay-root .expression-suggestions {
+        pointer-events: auto;
+      }
+
+      .overlay-root .reorder-menu {
         pointer-events: auto;
       }
 
@@ -951,6 +1067,16 @@
         </section>
       </div>
       <div id="overlayRoot" class="overlay-root"></div>
+      <div id="reorderMenu" class="reorder-menu" hidden>
+        <div class="reorder-menu-actions">
+          <button id="moveRowTopButton" class="ghost" type="button">Move to Top</button>
+          <button id="moveRowBottomButton" class="ghost" type="button">Move to Bottom</button>
+        </div>
+        <div class="reorder-menu-row">
+          <input id="moveRowNumberInput" type="number" min="1" step="1" placeholder="Row #" />
+          <button id="moveRowNumberButton" class="primary" type="button">Move</button>
+        </div>
+      </div>
     </div>
 
     <script>
@@ -1151,6 +1277,13 @@
           height: 640
         },
         activeColumnResize: null,
+        activeRowDrag: null,
+        reorderMenu: {
+          key: "",
+          left: 0,
+          top: 0,
+          hideTimer: null
+        },
         rowPreviewRequestNonce: 0,
         updateInfo: {
           currentVersion: "",
@@ -1215,8 +1348,8 @@
           const badgeTexts = Array.from(row.querySelectorAll(".row-meta .pill")).map((node) => node.textContent || "");
           const nameWidth = measureTextWidth(name, strongFont);
           const badgesWidth = badgeTexts.reduce((sum, text) => sum + measureTextWidth(text, pillFont) + 30, 0);
-          const starWidth = 34;
-          return Math.max(maxWidth, Math.ceil(Math.max(nameWidth, badgesWidth + starWidth) + 28));
+          const controlWidth = 34;
+          return Math.max(maxWidth, Math.ceil(Math.max(nameWidth, badgesWidth + controlWidth) + 28));
         }, 140);
 
         const previewPx = bodyRows.reduce((maxWidth, row) => {
@@ -1469,6 +1602,7 @@
         }
 
         tbody.innerHTML = state.parameters.map((param, index) => {
+          const safeKey = escapeHtml(param.key || param.name || "");
           const safeName = escapeHtml(param.name);
           const safeExpression = escapeHtml(param.expression);
           const safeComment = escapeHtml(param.comment);
@@ -1479,12 +1613,17 @@
           const favoriteClass = param.isFavorite ? "favorite-button is-on" : "favorite-button";
 
           return `
-            <tr data-index="${index}" data-parameter-name="${safeName}">
-              <td>
-                <strong>${safeName}</strong>
-                <div class="row-meta">
-                  <button class="${favoriteClass}" type="button" data-favorite-toggle="true" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}">${favoriteIcon}</button>
-                  ${unitBadge}
+            <tr data-index="${index}" data-parameter-key="${safeKey}" data-parameter-name="${safeName}">
+              <td class="name-cell">
+                <div class="name-cell-main">
+                  <button class="reorder-handle" type="button" data-reorder-handle="true" tabindex="-1" aria-label="Drag to reorder ${safeName}. Right-click for more options." title="Drag to reorder. Right-click for more options."></button>
+                  <div class="name-stack">
+                    <strong>${safeName}</strong>
+                    <div class="row-meta">
+                      <button class="${favoriteClass}" type="button" data-favorite-toggle="true" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}">${favoriteIcon}</button>
+                      ${unitBadge}
+                    </div>
+                  </div>
                 </div>
               </td>
               <td>
@@ -1510,7 +1649,244 @@
         tbody.querySelectorAll(".preview-cell").forEach((previewCell) => {
           setPreviewCellContent(previewCell, previewCell.getAttribute("data-saved-preview") || "");
         });
+        syncParameterRowIndices();
         tbody.querySelectorAll("tr").forEach((row) => updateRowSaveState(row));
+      }
+
+      function syncParameterRowIndices() {
+        Array.from(document.querySelectorAll("#parameterRows tr[data-parameter-key]")).forEach((row, index) => {
+          row.dataset.index = String(index);
+        });
+      }
+
+      function getParameterForRow(row) {
+        if (!row) {
+          return null;
+        }
+
+        const key = row.getAttribute("data-parameter-key") || "";
+        const name = row.getAttribute("data-parameter-name") || "";
+        return state.parameters.find((parameter) => (
+          (key && parameter.key === key) || parameter.name === name
+        )) || null;
+      }
+
+      function getCurrentParameterRowOrder() {
+        return Array.from(document.querySelectorAll("#parameterRows tr[data-parameter-key]"))
+          .map((row) => row.getAttribute("data-parameter-key") || "")
+          .filter(Boolean);
+      }
+
+      function getParameterRowByKey(key) {
+        return Array.from(document.querySelectorAll("#parameterRows tr[data-parameter-key]"))
+          .find((row) => (row.getAttribute("data-parameter-key") || "") === key) || null;
+      }
+
+      function reorderDraggedRow(clientY) {
+        const dragState = state.activeRowDrag;
+        const tbody = document.getElementById("parameterRows");
+        const draggingRow = dragState?.row;
+        if (!tbody || !draggingRow) {
+          return;
+        }
+
+        const candidateRows = Array.from(tbody.querySelectorAll("tr[data-parameter-key]")).filter((row) => row !== draggingRow);
+        const nextRow = candidateRows.find((row) => {
+          const rect = row.getBoundingClientRect();
+          return clientY < rect.top + (rect.height / 2);
+        });
+
+        if (nextRow) {
+          tbody.insertBefore(draggingRow, nextRow);
+        } else {
+          tbody.appendChild(draggingRow);
+        }
+        syncParameterRowIndices();
+      }
+
+      function closeReorderMenu() {
+        const menu = document.getElementById("reorderMenu");
+        if (state.reorderMenu.hideTimer) {
+          window.clearTimeout(state.reorderMenu.hideTimer);
+        }
+        menu.hidden = true;
+        state.reorderMenu = {
+          key: "",
+          left: 0,
+          top: 0,
+          hideTimer: null
+        };
+      }
+
+      function openReorderMenu(row, clientX, clientY) {
+        if (!row) {
+          return;
+        }
+
+        const menu = document.getElementById("reorderMenu");
+        const page = document.querySelector(".page");
+        const input = document.getElementById("moveRowNumberInput");
+        const rowCount = document.querySelectorAll("#parameterRows tr[data-parameter-key]").length;
+        state.reorderMenu = {
+          key: row.getAttribute("data-parameter-key") || "",
+          left: clientX,
+          top: clientY,
+          hideTimer: null
+        };
+        menu.hidden = false;
+        document.getElementById("overlayRoot").appendChild(menu);
+        input.value = row.dataset.index ? String(Number(row.dataset.index) + 1) : "";
+        input.max = String(Math.max(rowCount, 1));
+
+        const pageRect = page.getBoundingClientRect();
+        const gutter = 8;
+        const menuRect = menu.getBoundingClientRect();
+        const rawLeft = clientX - pageRect.left;
+        const rawTop = clientY - pageRect.top;
+        const left = Math.max(gutter, Math.min(rawLeft, page.clientWidth - menuRect.width - gutter));
+        const top = Math.max(gutter, Math.min(rawTop, page.clientHeight - menuRect.height - gutter));
+        menu.style.left = `${left}px`;
+        menu.style.top = `${top}px`;
+        window.setTimeout(() => input.focus(), 0);
+      }
+
+      function scheduleReorderMenuClose(delayMs = 500) {
+        if (!state.reorderMenu.key) {
+          return;
+        }
+
+        if (state.reorderMenu.hideTimer) {
+          window.clearTimeout(state.reorderMenu.hideTimer);
+        }
+
+        state.reorderMenu.hideTimer = window.setTimeout(() => {
+          closeReorderMenu();
+        }, delayMs);
+      }
+
+      function cancelReorderMenuClose() {
+        if (!state.reorderMenu.hideTimer) {
+          return;
+        }
+
+        window.clearTimeout(state.reorderMenu.hideTimer);
+        state.reorderMenu.hideTimer = null;
+      }
+
+      async function moveRowToIndex(row, targetIndex) {
+        const tbody = document.getElementById("parameterRows");
+        const rows = Array.from(tbody.querySelectorAll("tr[data-parameter-key]"));
+        if (!row || !rows.length) {
+          return;
+        }
+
+        const clampedIndex = Math.max(0, Math.min(targetIndex, rows.length - 1));
+        const currentIndex = rows.indexOf(row);
+        if (currentIndex < 0 || currentIndex === clampedIndex) {
+          return;
+        }
+
+        if (clampedIndex === 0) {
+          tbody.insertBefore(row, rows[0]);
+        } else if (clampedIndex === rows.length - 1) {
+          tbody.appendChild(row);
+        } else {
+          const referenceRow = rows[clampedIndex];
+          if (!referenceRow) {
+            tbody.appendChild(row);
+          } else if (currentIndex < clampedIndex) {
+            tbody.insertBefore(row, referenceRow.nextElementSibling);
+          } else {
+            tbody.insertBefore(row, referenceRow);
+          }
+        }
+        syncParameterRowIndices();
+        setGlobalStatus("Saving parameter order...");
+        await persistParameterRowOrder();
+      }
+
+      async function moveRowToTop(row) {
+        const tbody = document.getElementById("parameterRows");
+        if (!row || !tbody) {
+          return;
+        }
+
+        tbody.insertBefore(row, tbody.querySelector("tr[data-parameter-key]"));
+        syncParameterRowIndices();
+        setGlobalStatus("Saving parameter order...");
+        await persistParameterRowOrder();
+      }
+
+      async function moveRowToBottom(row) {
+        const tbody = document.getElementById("parameterRows");
+        if (!row || !tbody) {
+          return;
+        }
+
+        tbody.appendChild(row);
+        syncParameterRowIndices();
+        setGlobalStatus("Saving parameter order...");
+        await persistParameterRowOrder();
+      }
+
+      async function persistParameterRowOrder(statusMessage = "Parameter order updated.") {
+        const keys = getCurrentParameterRowOrder();
+        if (!keys.length) {
+          return;
+        }
+
+        const response = await sendToFusion("saveParameterOrder", { keys });
+        if (!response.ok) {
+          throw new Error(response.message || "Parameter order save failed.");
+        }
+
+        applyStateFromFusion(response);
+        if (statusMessage) {
+          setGlobalStatus(statusMessage, "success");
+        }
+      }
+
+      async function finishRowDrag() {
+        const dragState = state.activeRowDrag;
+        if (!dragState) {
+          return;
+        }
+
+        const { row, startOrder } = dragState;
+        state.activeRowDrag = null;
+
+        if (row) {
+          row.classList.remove("is-row-dragging");
+          row.removeAttribute("data-drag-armed");
+        }
+        document.body.classList.remove("is-row-dragging");
+
+        const nextOrder = getCurrentParameterRowOrder();
+        if (!startOrder || startOrder.join("|") === nextOrder.join("|")) {
+          return;
+        }
+
+        setGlobalStatus("Saving parameter order...");
+        try {
+          await persistParameterRowOrder();
+        } catch (error) {
+          setGlobalStatus(error.message, "error");
+          await refreshParameters();
+        }
+      }
+
+      function startRowDrag(row, event) {
+        if (!row) {
+          return;
+        }
+
+        state.activeRowDrag = {
+          row,
+          startOrder: getCurrentParameterRowOrder()
+        };
+        row.classList.add("is-row-dragging");
+        document.body.classList.add("is-row-dragging");
+        event.preventDefault();
       }
 
       function applyTheme(theme) {
@@ -2292,6 +2668,11 @@
       });
 
       parameterRows.addEventListener("click", (event) => {
+        const reorderHandle = event.target.closest("[data-reorder-handle]");
+        if (reorderHandle) {
+          return;
+        }
+
         const favoriteButton = event.target.closest("[data-favorite-toggle]");
         if (favoriteButton) {
           return;
@@ -2374,6 +2755,130 @@
           expressionInput.focus();
           expressionInput.select();
         }
+      });
+
+      document.getElementById("moveRowTopButton").addEventListener("click", async () => {
+        cancelReorderMenuClose();
+        const row = getParameterRowByKey(state.reorderMenu.key);
+        if (!row) {
+          closeReorderMenu();
+          return;
+        }
+
+        try {
+          await moveRowToTop(row);
+          closeReorderMenu();
+        } catch (error) {
+          closeReorderMenu();
+          setGlobalStatus(error.message, "error");
+          await refreshParameters();
+        }
+      });
+
+      document.getElementById("moveRowBottomButton").addEventListener("click", async () => {
+        cancelReorderMenuClose();
+        const row = getParameterRowByKey(state.reorderMenu.key);
+        if (!row) {
+          closeReorderMenu();
+          return;
+        }
+
+        try {
+          await moveRowToBottom(row);
+          closeReorderMenu();
+        } catch (error) {
+          closeReorderMenu();
+          setGlobalStatus(error.message, "error");
+          await refreshParameters();
+        }
+      });
+
+      document.getElementById("moveRowNumberButton").addEventListener("click", async () => {
+        const row = getParameterRowByKey(state.reorderMenu.key);
+        const input = document.getElementById("moveRowNumberInput");
+        const rowCount = document.querySelectorAll("#parameterRows tr[data-parameter-key]").length;
+        const parsed = Number.parseInt(String(input.value || "").replace(/[^0-9-]/g, ""), 10);
+        const normalizedIndex = Number.isFinite(parsed) ? Math.max(0, Math.min(parsed - 1, Math.max(rowCount - 1, 0))) : 0;
+        closeReorderMenu();
+        if (!row || !rowCount) {
+          return;
+        }
+
+        try {
+          await moveRowToIndex(row, normalizedIndex);
+        } catch (error) {
+          setGlobalStatus(error.message, "error");
+          await refreshParameters();
+        }
+      });
+
+      document.getElementById("moveRowNumberInput").addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          document.getElementById("moveRowNumberButton").click();
+          return;
+        }
+
+        if (event.key === "Escape") {
+          closeReorderMenu();
+        }
+      });
+
+      document.getElementById("reorderMenu").addEventListener("mousedown", (event) => {
+        cancelReorderMenuClose();
+        event.stopPropagation();
+      });
+
+      document.getElementById("reorderMenu").addEventListener("click", (event) => {
+        cancelReorderMenuClose();
+        event.stopPropagation();
+      });
+
+      document.getElementById("reorderMenu").addEventListener("mouseenter", () => {
+        cancelReorderMenuClose();
+      });
+
+      document.getElementById("reorderMenu").addEventListener("mouseleave", () => {
+        scheduleReorderMenuClose();
+      });
+
+      document.getElementById("reorderMenu").addEventListener("contextmenu", (event) => {
+        cancelReorderMenuClose();
+        event.stopPropagation();
+      });
+
+      parameterRows.addEventListener("mousedown", (event) => {
+        const handle = event.target.closest("[data-reorder-handle]");
+        if (!handle) {
+          return;
+        }
+
+        if (event.button !== 0) {
+          return;
+        }
+
+        const row = handle.closest("tr[data-parameter-key]");
+        if (!row) {
+          return;
+        }
+
+        startRowDrag(row, event);
+      });
+
+      parameterRows.addEventListener("contextmenu", (event) => {
+        const handle = event.target.closest("[data-reorder-handle]");
+        if (!handle) {
+          return;
+        }
+
+        const row = handle.closest("tr[data-parameter-key]");
+        if (!row) {
+          return;
+        }
+
+        event.preventDefault();
+        cancelReorderMenuClose();
+        openReorderMenu(row, event.clientX, event.clientY);
       });
 
       document.getElementById("rememberUnitToggle").addEventListener("click", async () => {
@@ -2464,6 +2969,22 @@
         }
       });
 
+      document.addEventListener("mousedown", (event) => {
+        const reorderMenu = event.target.closest("#reorderMenu");
+        const reorderHandle = event.target.closest("[data-reorder-handle]");
+        if (!reorderMenu && !reorderHandle) {
+          closeReorderMenu();
+        }
+      });
+
+      document.addEventListener("contextmenu", (event) => {
+        const reorderMenu = event.target.closest("#reorderMenu");
+        const reorderHandle = event.target.closest("[data-reorder-handle]");
+        if (!reorderMenu && !reorderHandle) {
+          closeReorderMenu();
+        }
+      });
+
       window.addEventListener("resize", () => {
         if (state.isUnitMenuOpen) {
           positionUnitMenu();
@@ -2496,6 +3017,31 @@
             positionExpressionSuggestions(activeInput);
           }
         }
+      });
+
+      document.addEventListener("mousemove", (event) => {
+        if (!state.activeRowDrag) {
+          return;
+        }
+
+        reorderDraggedRow(event.clientY);
+        event.preventDefault();
+      });
+
+      document.addEventListener("mouseup", () => {
+        if (!state.activeRowDrag) {
+          return;
+        }
+
+        finishRowDrag();
+      });
+
+      window.addEventListener("blur", () => {
+        if (!state.activeRowDrag) {
+          return;
+        }
+
+        finishRowDrag();
       });
 
       document.addEventListener("mousedown", (event) => {
@@ -2614,11 +3160,15 @@
       });
 
       document.getElementById("parameterRows").addEventListener("click", async (event) => {
+        const reorderHandle = event.target.closest("[data-reorder-handle]");
+        if (reorderHandle) {
+          return;
+        }
+
         const favoriteButton = event.target.closest("[data-favorite-toggle]");
         if (favoriteButton) {
           const row = favoriteButton.closest("tr");
-          const index = row ? Number(row.dataset.index) : -1;
-          const parameter = index >= 0 ? state.parameters[index] : null;
+          const parameter = getParameterForRow(row);
           if (!parameter) {
             return;
           }
@@ -2648,8 +3198,7 @@
         }
 
         const row = button.closest("tr");
-        const index = Number(row.dataset.index);
-        const parameter = state.parameters[index];
+        const parameter = getParameterForRow(row);
         if (!parameter) {
           return;
         }
