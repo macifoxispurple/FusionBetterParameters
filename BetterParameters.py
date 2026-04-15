@@ -11,6 +11,7 @@ import time
 import traceback
 import urllib.error
 import urllib.request
+import uuid
 import zipfile
 from pathlib import Path
 
@@ -48,11 +49,24 @@ DEFAULT_PALETTE_HEIGHT = 640
 ATTRIBUTE_NAMESPACE = "BetterParameters"
 ATTRIBUTE_PARAMETER_GROUP_NAME = "group"
 ATTRIBUTE_METADATA_CHANGED_AT_NAME = "metadataChangedAt"
+ATTRIBUTE_METADATA_REVISION_NAME = "metadataRevision"
+ATTRIBUTE_METADATA_WRITER_ID_NAME = "metadataWriterId"
+ATTRIBUTE_METADATA_WRITER_VERSION_NAME = "metadataWriterVersion"
 ATTRIBUTE_DOCUMENT_METADATA_MAP_NAME = "parameterMetadataMap"
+ATTRIBUTE_DOCUMENT_METADATA_STATE_NAME = "metadataState"
 ATTRIBUTE_DOCUMENT_METADATA_ITEM_NAMESPACE = "BetterParametersMeta"
 GROUP_UNGROUPED_LABEL = "Ungrouped"
 MAX_GROUP_NAME_LENGTH = 80
 METADATA_CHANGED_AT_RECORD_KEY = "metadata_changed_at"
+METADATA_REVISION_RECORD_KEY = "metadata_revision"
+METADATA_WRITER_ID_RECORD_KEY = "metadata_writer_id"
+METADATA_WRITER_VERSION_RECORD_KEY = "metadata_writer_version"
+METADATA_SCHEMA_VERSION = 2
+UI_STATE_RECORD_KEY = "uiState"
+UI_STATE_REVISION_KEY = "revision"
+UI_STATE_CHANGED_AT_KEY = "changedAt"
+UI_STATE_WRITER_ID_KEY = "writerId"
+UI_STATE_WRITER_VERSION_KEY = "writerVersion"
 EXPRESSION_TOKEN_PATTERN = re.compile('[A-Za-z_"\\$\\u00B0\\u00B5][A-Za-z0-9_"\\$\\u00B0\\u00B5]*')
 ALLOWED_EXPRESSION_IDENTIFIERS = {
     "PI", "E", "Gravity", "SpeedOfLight",
@@ -393,6 +407,12 @@ def _handle_palette_action(action, data):
         _send_to_palette("renderState", payload)
         return payload
 
+    if action == "saveGroupUiState":
+        _save_group_ui_state(data)
+        payload = _current_state_payload()
+        _send_to_palette("renderState", payload)
+        return payload
+
     if action == "createParameter":
         _create_parameter(data)
         payload = _current_state_payload()
@@ -461,6 +481,14 @@ def _handle_palette_action(action, data):
         _send_to_palette("renderState", payload)
         return payload
 
+    if action == "repairMetadata":
+        sync_result = _repair_metadata()
+        payload = _current_state_payload()
+        payload["syncResult"] = sync_result
+        payload["debugMetadata"] = _collect_metadata_debug_snapshot()
+        _send_to_palette("renderState", payload)
+        return payload
+
     return {"ok": False, "message": f"Unknown action: {action}"}
 
 
@@ -476,11 +504,14 @@ def _send_to_palette(action, payload):
 
 def _current_state_payload(settings=None):
     active_settings = settings if settings is not None else _load_settings()
+    design = _design()
+    merged_order_state = _sync_ui_state_between_local_and_fusion(design, _read_document_order_state()) if design else _read_document_order_state()
     parameters = _collect_user_parameters()
     return {
         "ok": True,
         "parameters": parameters,
         "groups": _collect_parameter_groups(parameters),
+        "groupUi": merged_order_state.get("groupUi", {"order": [], "collapsed": {}}),
         "parameterNames": _collect_all_parameter_names(),
         "settings": active_settings,
         "document": _active_document_info(),
@@ -527,6 +558,7 @@ def _collect_user_parameters():
 
     units_manager = design.unitsManager
     order_state = _read_document_order_state()
+    order_state = _sync_ui_state_between_local_and_fusion(design, order_state)
     saved_records = _resolve_document_order_records(design, order_state.get("parameters") or {})
     results = []
     params = design.userParameters
@@ -540,26 +572,18 @@ def _collect_user_parameters():
         sort_order = saved_record.get("order")
         if not isinstance(sort_order, int):
             sort_order = params.count + index
-        attr_group_name = _parameter_group_name(param)
-        attr_metadata_changed_at = _parameter_metadata_changed_at(param)
-        saved_group_name = _normalize_group_name(saved_record.get("group") or "")
-        saved_metadata_changed_at = _metadata_changed_at_value(saved_record.get(METADATA_CHANGED_AT_RECORD_KEY))
-        backfill_attributes_from_saved = False
-        if attr_metadata_changed_at > saved_metadata_changed_at:
-            group_name = attr_group_name
-            metadata_changed_at = attr_metadata_changed_at
-        elif saved_metadata_changed_at > attr_metadata_changed_at:
-            group_name = saved_group_name
-            metadata_changed_at = saved_metadata_changed_at
-            backfill_attributes_from_saved = True
-        else:
-            group_name = attr_group_name or saved_group_name
-            metadata_changed_at = max(attr_metadata_changed_at, saved_metadata_changed_at)
-            if saved_group_name and not attr_group_name:
-                backfill_attributes_from_saved = True
-
+        fusion_payload = _parameter_metadata_payload(param)
+        json_payload = _normalized_metadata_payload(
+            group_name=saved_record.get("group") or "",
+            metadata_changed_at=saved_record.get(METADATA_CHANGED_AT_RECORD_KEY),
+            revision=saved_record.get(METADATA_REVISION_RECORD_KEY),
+            writer_id=saved_record.get(METADATA_WRITER_ID_RECORD_KEY),
+            writer_version=saved_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
+        )
+        latest_payload = _choose_latest_metadata(fusion_payload, json_payload)
+        backfill_attributes_from_saved = _is_metadata_newer(json_payload, fusion_payload)
         if backfill_attributes_from_saved:
-            _write_parameter_group_name(param, group_name, metadata_changed_at if metadata_changed_at > 0 else _now_metadata_timestamp_ms())
+            _write_parameter_group_name(param, latest_payload.get("group") or "", latest_payload.get(METADATA_CHANGED_AT_RECORD_KEY), latest_payload)
 
         results.append(
             {
@@ -569,11 +593,14 @@ def _collect_user_parameters():
                 "unit": param.unit,
                 "comment": param.comment or "",
                 "isFavorite": param.isFavorite,
-                "group": group_name,
+                "group": latest_payload.get("group") or "",
                 "valuePreview": _format_parameter_value(param, units_manager),
                 "previousExpression": str(saved_record.get("previous_expression") or ""),
                 "previousValue": str(saved_record.get("previous_value") or ""),
-                "metadataChangedAt": metadata_changed_at,
+                "metadataChangedAt": _metadata_changed_at_value(latest_payload.get(METADATA_CHANGED_AT_RECORD_KEY)),
+                "metadataRevision": _metadata_revision_value(latest_payload.get(METADATA_REVISION_RECORD_KEY)),
+                "metadataWriterId": _metadata_writer_id_value(latest_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
+                "metadataWriterVersion": _metadata_writer_version_value(latest_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
                 "_sortOrder": sort_order,
                 "_sourceIndex": index,
             }
@@ -687,6 +714,16 @@ def _read_document_order_state():
         "documentId": info.get("id", ""),
         "documentName": info.get("name", ""),
         "parameters": {},
+        "groupUi": {
+            "order": [],
+            "collapsed": {},
+        },
+        UI_STATE_RECORD_KEY: {
+            UI_STATE_REVISION_KEY: 0,
+            UI_STATE_CHANGED_AT_KEY: 0,
+            UI_STATE_WRITER_ID_KEY: "",
+            UI_STATE_WRITER_VERSION_KEY: "",
+        },
     }
     if not path.exists():
         return state
@@ -719,11 +756,16 @@ def _read_document_order_state():
                 "previous_value": str(record.get("previous_value") or ""),
                 "group": _normalize_group_name(record.get("group") or ""),
                 METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(record.get(METADATA_CHANGED_AT_RECORD_KEY)),
+                METADATA_REVISION_RECORD_KEY: _metadata_revision_value(record.get(METADATA_REVISION_RECORD_KEY)),
+                METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(record.get(METADATA_WRITER_ID_RECORD_KEY)),
+                METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(record.get(METADATA_WRITER_VERSION_RECORD_KEY)),
             }
 
     state["documentId"] = str(loaded.get("documentId") or state["documentId"])
     state["documentName"] = str(loaded.get("documentName") or state["documentName"])
     state["parameters"] = records
+    state["groupUi"] = _normalized_group_ui_state(loaded.get("groupUi"))
+    state[UI_STATE_RECORD_KEY] = _normalized_ui_state_record(loaded.get(UI_STATE_RECORD_KEY))
     return state
 
 
@@ -734,10 +776,37 @@ def _write_document_order_state(state):
     document_id = str(document_id or info.get("id", ""))
     document_name = str(document_name or info.get("name", ""))
     path = _document_order_path(document_id, document_name)
+    normalized_parameters = {}
+    source_parameters = state.get("parameters", {}) if isinstance(state, dict) else {}
+    if isinstance(source_parameters, dict):
+        for token, record in source_parameters.items():
+            if not isinstance(token, str) or not token:
+                continue
+            if not isinstance(record, dict):
+                continue
+            order_value = record.get("order")
+            if not isinstance(order_value, int):
+                continue
+            normalized_parameters[token] = {
+                "order": order_value,
+                "name": str(record.get("name") or ""),
+                "current_expression": str(record.get("current_expression") or ""),
+                "previous_expression": str(record.get("previous_expression") or ""),
+                "current_value": str(record.get("current_value") or ""),
+                "previous_value": str(record.get("previous_value") or ""),
+                "group": _normalize_group_name(record.get("group") or ""),
+                METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(record.get(METADATA_CHANGED_AT_RECORD_KEY)),
+                METADATA_REVISION_RECORD_KEY: _metadata_revision_value(record.get(METADATA_REVISION_RECORD_KEY)),
+                METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(record.get(METADATA_WRITER_ID_RECORD_KEY)),
+                METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(record.get(METADATA_WRITER_VERSION_RECORD_KEY)),
+            }
+
     payload = {
         "documentId": document_id,
         "documentName": document_name,
-        "parameters": state.get("parameters", {}) if isinstance(state, dict) else {},
+        "parameters": normalized_parameters,
+        "groupUi": _normalized_group_ui_state(state.get("groupUi") if isinstance(state, dict) else {}),
+        UI_STATE_RECORD_KEY: _normalized_ui_state_record(state.get(UI_STATE_RECORD_KEY) if isinstance(state, dict) else {}),
     }
     temp_path = path.with_suffix(".tmp")
     temp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -796,6 +865,9 @@ def _resolve_document_order_records(design, records):
             "previous_value": str(record.get("previous_value") or ""),
             "group": _normalize_group_name(record.get("group") or ""),
             METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(record.get(METADATA_CHANGED_AT_RECORD_KEY)),
+            METADATA_REVISION_RECORD_KEY: _metadata_revision_value(record.get(METADATA_REVISION_RECORD_KEY)),
+            METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(record.get(METADATA_WRITER_ID_RECORD_KEY)),
+            METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(record.get(METADATA_WRITER_VERSION_RECORD_KEY)),
         }
     return resolved
 
@@ -825,10 +897,16 @@ def _persist_document_order_snapshot(parameters, previous_state=None):
         previous_value = str(previous_record.get("previous_value") or "")
         previous_group = _normalize_group_name(previous_record.get("group") or "")
         previous_metadata_changed_at = _metadata_changed_at_value(previous_record.get(METADATA_CHANGED_AT_RECORD_KEY))
+        previous_metadata_revision = _metadata_revision_value(previous_record.get(METADATA_REVISION_RECORD_KEY))
+        previous_metadata_writer_id = _metadata_writer_id_value(previous_record.get(METADATA_WRITER_ID_RECORD_KEY))
+        previous_metadata_writer_version = _metadata_writer_version_value(previous_record.get(METADATA_WRITER_VERSION_RECORD_KEY))
         old_current_expression = str(previous_record.get("current_expression") or "")
         old_current_value = str(previous_record.get("current_value") or "")
         incoming_group = _normalize_group_name(parameter.get("group") or previous_group)
         incoming_metadata_changed_at = _metadata_changed_at_value(parameter.get("metadataChangedAt"))
+        incoming_metadata_revision = _metadata_revision_value(parameter.get("metadataRevision"))
+        incoming_metadata_writer_id = _metadata_writer_id_value(parameter.get("metadataWriterId"))
+        incoming_metadata_writer_version = _metadata_writer_version_value(parameter.get("metadataWriterVersion"))
 
         if old_current_expression and old_current_expression != incoming_expression:
             previous_expression = old_current_expression
@@ -851,10 +929,16 @@ def _persist_document_order_snapshot(parameters, previous_state=None):
             else:
                 metadata_changed_at = _now_metadata_timestamp_ms()
                 touch_attribute_timestamp = True
+            metadata_revision = max(previous_metadata_revision + 1, incoming_metadata_revision, 1)
+            metadata_writer_id = _current_writer_id()
+            metadata_writer_version = _current_writer_version()
         else:
             metadata_changed_at = max(previous_metadata_changed_at, incoming_metadata_changed_at)
             if metadata_changed_at <= 0:
                 metadata_changed_at = _now_metadata_timestamp_ms()
+            metadata_revision = max(previous_metadata_revision, incoming_metadata_revision, 1)
+            metadata_writer_id = incoming_metadata_writer_id or previous_metadata_writer_id or _current_writer_id()
+            metadata_writer_version = incoming_metadata_writer_version or previous_metadata_writer_version or _current_writer_version()
 
         records[key] = {
             "order": index,
@@ -865,6 +949,9 @@ def _persist_document_order_snapshot(parameters, previous_state=None):
             "previous_value": previous_value,
             "group": incoming_group,
             METADATA_CHANGED_AT_RECORD_KEY: metadata_changed_at,
+            METADATA_REVISION_RECORD_KEY: metadata_revision,
+            METADATA_WRITER_ID_RECORD_KEY: metadata_writer_id,
+            METADATA_WRITER_VERSION_RECORD_KEY: metadata_writer_version,
         }
         if touch_attribute_timestamp and design:
             parameter_entity = _find_user_parameter_by_token(design, key)
@@ -875,6 +962,8 @@ def _persist_document_order_snapshot(parameters, previous_state=None):
         "documentId": info.get("id", ""),
         "documentName": info.get("name", ""),
         "parameters": records,
+        "groupUi": _normalized_group_ui_state((previous_state or {}).get("groupUi") if isinstance(previous_state, dict) else {}),
+        UI_STATE_RECORD_KEY: _normalized_ui_state_record((previous_state or {}).get(UI_STATE_RECORD_KEY) if isinstance(previous_state, dict) else {}),
     }
     if previous_state == next_state:
         return
@@ -1231,7 +1320,15 @@ def _revert_parameter(data):
     order_value = record.get("order")
     if not isinstance(order_value, int):
         order_value = len(stored_records)
-    metadata_changed_at = _now_metadata_timestamp_ms()
+    previous_payload = _normalized_metadata_payload(
+        group_name=record.get("group") or _parameter_group_name(parameter) or "",
+        metadata_changed_at=record.get(METADATA_CHANGED_AT_RECORD_KEY),
+        revision=record.get(METADATA_REVISION_RECORD_KEY),
+        writer_id=record.get(METADATA_WRITER_ID_RECORD_KEY),
+        writer_version=record.get(METADATA_WRITER_VERSION_RECORD_KEY),
+    )
+    next_payload = _next_metadata_payload(previous_payload, previous_payload.get("group") or "", _now_metadata_timestamp_ms())
+    metadata_changed_at = _metadata_changed_at_value(next_payload.get(METADATA_CHANGED_AT_RECORD_KEY))
 
     stored_records[parameter_key] = {
         "order": order_value,
@@ -1240,15 +1337,20 @@ def _revert_parameter(data):
         "previous_expression": current_expression,
         "current_value": reverted_value,
         "previous_value": current_value,
-        "group": _normalize_group_name(record.get("group") or _parameter_group_name(parameter) or ""),
+        "group": _normalize_group_name(next_payload.get("group") or ""),
         METADATA_CHANGED_AT_RECORD_KEY: metadata_changed_at,
+        METADATA_REVISION_RECORD_KEY: _metadata_revision_value(next_payload.get(METADATA_REVISION_RECORD_KEY)),
+        METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(next_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
+        METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(next_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
     }
-    _set_parameter_metadata_changed_at(parameter, metadata_changed_at)
+    _write_parameter_group_name(parameter, next_payload.get("group") or "", metadata_changed_at, next_payload)
     _write_document_order_state(
         {
             "documentId": order_state.get("documentId", ""),
             "documentName": order_state.get("documentName", ""),
             "parameters": stored_records,
+            "groupUi": order_state.get("groupUi", {"order": [], "collapsed": {}}),
+            UI_STATE_RECORD_KEY: _normalized_ui_state_record(order_state.get(UI_STATE_RECORD_KEY)),
         }
     )
 
@@ -1278,9 +1380,31 @@ def _set_parameter_group(data):
         parameter = design.userParameters.itemByName(name)
     if not parameter:
         raise ValueError("User parameter was not found.")
-    metadata_changed_at = _now_metadata_timestamp_ms()
-    _write_parameter_group_name(parameter, group_name, metadata_changed_at)
-    _set_parameter_group_record(design, parameter, group_name, metadata_changed_at)
+    order_state = _read_document_order_state()
+    records = _resolve_document_order_records(design, order_state.get("parameters") or {})
+    parameter_key = _parameter_entity_token(parameter)
+    existing_record = records.get(parameter_key) if isinstance(records.get(parameter_key), dict) else {}
+    previous_payload = _choose_latest_metadata(
+        _parameter_metadata_payload(parameter),
+        _normalized_metadata_payload(
+            group_name=existing_record.get("group") or "",
+            metadata_changed_at=existing_record.get(METADATA_CHANGED_AT_RECORD_KEY),
+            revision=existing_record.get(METADATA_REVISION_RECORD_KEY),
+            writer_id=existing_record.get(METADATA_WRITER_ID_RECORD_KEY),
+            writer_version=existing_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
+        ),
+    )
+    next_payload = _next_metadata_payload(previous_payload, group_name, _now_metadata_timestamp_ms())
+    _write_parameter_group_name(parameter, group_name, next_payload.get(METADATA_CHANGED_AT_RECORD_KEY), next_payload)
+    _set_parameter_group_record(
+        design,
+        parameter,
+        group_name,
+        next_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
+        next_payload.get(METADATA_REVISION_RECORD_KEY),
+        next_payload.get(METADATA_WRITER_ID_RECORD_KEY),
+        next_payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
+    )
 
 
 def _rename_group(data):
@@ -1297,6 +1421,8 @@ def _rename_group(data):
 
     params = design.userParameters
     metadata_changed_at = _now_metadata_timestamp_ms()
+    order_state = _read_document_order_state()
+    records = _resolve_document_order_records(design, order_state.get("parameters") or {})
     for index in range(params.count):
         parameter = params.item(index)
         if not parameter:
@@ -1306,8 +1432,29 @@ def _rename_group(data):
             existing_group = _parameter_group_from_record(design, parameter)
         if existing_group.casefold() != old_group.casefold():
             continue
-        _write_parameter_group_name(parameter, new_group, metadata_changed_at)
-        _set_parameter_group_record(design, parameter, new_group, metadata_changed_at)
+        parameter_key = _parameter_entity_token(parameter)
+        existing_record = records.get(parameter_key) if isinstance(records.get(parameter_key), dict) else {}
+        previous_payload = _choose_latest_metadata(
+            _parameter_metadata_payload(parameter),
+            _normalized_metadata_payload(
+                group_name=existing_record.get("group") or "",
+                metadata_changed_at=existing_record.get(METADATA_CHANGED_AT_RECORD_KEY),
+                revision=existing_record.get(METADATA_REVISION_RECORD_KEY),
+                writer_id=existing_record.get(METADATA_WRITER_ID_RECORD_KEY),
+                writer_version=existing_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
+            ),
+        )
+        next_payload = _next_metadata_payload(previous_payload, new_group, metadata_changed_at)
+        _write_parameter_group_name(parameter, new_group, next_payload.get(METADATA_CHANGED_AT_RECORD_KEY), next_payload)
+        _set_parameter_group_record(
+            design,
+            parameter,
+            new_group,
+            next_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
+            next_payload.get(METADATA_REVISION_RECORD_KEY),
+            next_payload.get(METADATA_WRITER_ID_RECORD_KEY),
+            next_payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
+        )
 
 
 def _delete_group(data):
@@ -1318,6 +1465,8 @@ def _delete_group(data):
 
     params = design.userParameters
     metadata_changed_at = _now_metadata_timestamp_ms()
+    order_state = _read_document_order_state()
+    records = _resolve_document_order_records(design, order_state.get("parameters") or {})
     for index in range(params.count):
         parameter = params.item(index)
         if not parameter:
@@ -1327,8 +1476,29 @@ def _delete_group(data):
             existing_group = _parameter_group_from_record(design, parameter)
         if existing_group.casefold() != group_name.casefold():
             continue
-        _write_parameter_group_name(parameter, "", metadata_changed_at)
-        _set_parameter_group_record(design, parameter, "", metadata_changed_at)
+        parameter_key = _parameter_entity_token(parameter)
+        existing_record = records.get(parameter_key) if isinstance(records.get(parameter_key), dict) else {}
+        previous_payload = _choose_latest_metadata(
+            _parameter_metadata_payload(parameter),
+            _normalized_metadata_payload(
+                group_name=existing_record.get("group") or "",
+                metadata_changed_at=existing_record.get(METADATA_CHANGED_AT_RECORD_KEY),
+                revision=existing_record.get(METADATA_REVISION_RECORD_KEY),
+                writer_id=existing_record.get(METADATA_WRITER_ID_RECORD_KEY),
+                writer_version=existing_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
+            ),
+        )
+        next_payload = _next_metadata_payload(previous_payload, "", metadata_changed_at)
+        _write_parameter_group_name(parameter, "", next_payload.get(METADATA_CHANGED_AT_RECORD_KEY), next_payload)
+        _set_parameter_group_record(
+            design,
+            parameter,
+            "",
+            next_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
+            next_payload.get(METADATA_REVISION_RECORD_KEY),
+            next_payload.get(METADATA_WRITER_ID_RECORD_KEY),
+            next_payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
+        )
 
 
 def _save_parameter_order(data):
@@ -1367,7 +1537,31 @@ def _save_parameter_order(data):
             merged.append(item)
 
     merged.extend(current_parameters_item for current_parameters_item in current_parameters if current_parameters_item.get("key") in current_by_key)
-    _persist_document_order_snapshot(merged, _read_document_order_state())
+    previous_state = _read_document_order_state()
+    _persist_document_order_snapshot(merged, previous_state)
+    next_state = _read_document_order_state()
+    next_state[UI_STATE_RECORD_KEY] = _bump_ui_state_record(next_state.get(UI_STATE_RECORD_KEY))
+    _write_document_order_state(next_state)
+    _write_fusion_ui_snapshot(design, _local_ui_snapshot(next_state))
+
+
+def _save_group_ui_state(data):
+    design = _require_design()
+    order_state = _read_document_order_state()
+    next_group_ui = _normalized_group_ui_state(data.get("groupUi") if isinstance(data, dict) else {})
+    if order_state.get("groupUi") == next_group_ui:
+        return
+    ui_state = _bump_ui_state_record(order_state.get(UI_STATE_RECORD_KEY))
+    _write_document_order_state(
+        {
+            "documentId": order_state.get("documentId", ""),
+            "documentName": order_state.get("documentName", ""),
+            "parameters": order_state.get("parameters", {}),
+            "groupUi": next_group_ui,
+            UI_STATE_RECORD_KEY: ui_state,
+        }
+    )
+    _write_fusion_ui_snapshot(design, _local_ui_snapshot(_read_document_order_state()))
 
 
 def _create_parameter(data):
@@ -1635,6 +1829,165 @@ def _metadata_changed_at_value(value):
         return 0
 
 
+def _metadata_revision_value(value):
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return value if value > 0 else 0
+    if isinstance(value, float):
+        parsed = int(value)
+        return parsed if parsed > 0 else 0
+    try:
+        parsed = int(str(value or "").strip())
+        return parsed if parsed > 0 else 0
+    except Exception:
+        return 0
+
+
+def _metadata_writer_id_value(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if len(text) > 120:
+        text = text[:120]
+    return text
+
+
+def _metadata_writer_version_value(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if len(text) > 64:
+        text = text[:64]
+    return text
+
+
+def _writer_id_path():
+    return _app_support_root() / "writer_id.txt"
+
+
+def _current_writer_id():
+    path = _writer_id_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+
+    if path.exists():
+        try:
+            existing = _metadata_writer_id_value(path.read_text(encoding="utf-8"))
+            if existing:
+                return existing
+        except Exception:
+            pass
+
+    created = str(uuid.uuid4())
+    try:
+        path.write_text(created, encoding="utf-8")
+    except Exception:
+        pass
+    return created
+
+
+def _current_writer_version():
+    return _metadata_writer_version_value(_current_addin_version())
+
+
+def _normalized_metadata_payload(group_name="", metadata_changed_at=0, revision=0, writer_id="", writer_version=""):
+    changed_at = _metadata_changed_at_value(metadata_changed_at)
+    resolved_writer_id = _metadata_writer_id_value(writer_id) or _current_writer_id()
+    resolved_writer_version = _metadata_writer_version_value(writer_version) or _current_writer_version()
+    resolved_revision = _metadata_revision_value(revision)
+    if changed_at <= 0:
+        changed_at = _now_metadata_timestamp_ms()
+    if resolved_revision <= 0:
+        resolved_revision = 1
+    return {
+        "group": _normalize_group_name(group_name or ""),
+        METADATA_CHANGED_AT_RECORD_KEY: changed_at,
+        METADATA_REVISION_RECORD_KEY: resolved_revision,
+        METADATA_WRITER_ID_RECORD_KEY: resolved_writer_id,
+        METADATA_WRITER_VERSION_RECORD_KEY: resolved_writer_version,
+    }
+
+
+def _is_metadata_newer(left_payload, right_payload):
+    left = left_payload or {}
+    right = right_payload or {}
+    left_revision = _metadata_revision_value(left.get(METADATA_REVISION_RECORD_KEY))
+    right_revision = _metadata_revision_value(right.get(METADATA_REVISION_RECORD_KEY))
+    if left_revision != right_revision:
+        return left_revision > right_revision
+
+    left_changed_at = _metadata_changed_at_value(left.get(METADATA_CHANGED_AT_RECORD_KEY))
+    right_changed_at = _metadata_changed_at_value(right.get(METADATA_CHANGED_AT_RECORD_KEY))
+    if left_changed_at != right_changed_at:
+        return left_changed_at > right_changed_at
+
+    left_writer_id = _metadata_writer_id_value(left.get(METADATA_WRITER_ID_RECORD_KEY))
+    right_writer_id = _metadata_writer_id_value(right.get(METADATA_WRITER_ID_RECORD_KEY))
+    if left_writer_id != right_writer_id:
+        return left_writer_id > right_writer_id
+
+    left_group = _normalize_group_name(left.get("group") or "")
+    right_group = _normalize_group_name(right.get("group") or "")
+    if left_group != right_group:
+        return bool(left_group)
+    return False
+
+
+def _choose_latest_metadata(left_payload, right_payload):
+    left = _normalized_metadata_payload(
+        group_name=(left_payload or {}).get("group") or "",
+        metadata_changed_at=(left_payload or {}).get(METADATA_CHANGED_AT_RECORD_KEY),
+        revision=(left_payload or {}).get(METADATA_REVISION_RECORD_KEY),
+        writer_id=(left_payload or {}).get(METADATA_WRITER_ID_RECORD_KEY),
+        writer_version=(left_payload or {}).get(METADATA_WRITER_VERSION_RECORD_KEY),
+    )
+    right = _normalized_metadata_payload(
+        group_name=(right_payload or {}).get("group") or "",
+        metadata_changed_at=(right_payload or {}).get(METADATA_CHANGED_AT_RECORD_KEY),
+        revision=(right_payload or {}).get(METADATA_REVISION_RECORD_KEY),
+        writer_id=(right_payload or {}).get(METADATA_WRITER_ID_RECORD_KEY),
+        writer_version=(right_payload or {}).get(METADATA_WRITER_VERSION_RECORD_KEY),
+    )
+    if _is_metadata_newer(left, right):
+        return left
+    return right
+
+
+def _next_metadata_payload(previous_payload, group_name, metadata_changed_at=None):
+    previous = previous_payload or {}
+    previous_revision = _metadata_revision_value(previous.get(METADATA_REVISION_RECORD_KEY))
+    changed_at = _metadata_changed_at_value(metadata_changed_at)
+    if changed_at <= 0:
+        changed_at = _now_metadata_timestamp_ms()
+    return _normalized_metadata_payload(
+        group_name=group_name,
+        metadata_changed_at=changed_at,
+        revision=previous_revision + 1 if previous_revision > 0 else 1,
+        writer_id=_current_writer_id(),
+        writer_version=_current_writer_version(),
+    )
+
+
+def _metadata_payload_content_hash(payload_by_key):
+    normalized = {}
+    for key, value in (payload_by_key or {}).items():
+        if not isinstance(key, str) or not key:
+            continue
+        if not isinstance(value, dict):
+            continue
+        normalized[key] = {
+            "group": _normalize_group_name(value.get("group") or ""),
+            "changedAt": _metadata_changed_at_value(value.get(METADATA_CHANGED_AT_RECORD_KEY)),
+            "revision": _metadata_revision_value(value.get(METADATA_REVISION_RECORD_KEY)),
+            "writerId": _metadata_writer_id_value(value.get(METADATA_WRITER_ID_RECORD_KEY)),
+            "writerVersion": _metadata_writer_version_value(value.get(METADATA_WRITER_VERSION_RECORD_KEY)),
+        }
+    encoded = json.dumps(normalized, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
 def _read_document_metadata_map(design):
     for owner in _document_metadata_owner_candidates(design):
         attributes = getattr(owner, "attributes", None)
@@ -1663,6 +2016,9 @@ def _read_document_metadata_map(design):
             normalized[key] = {
                 "group": _normalize_group_name(value.get("group") or ""),
                 METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(value.get(METADATA_CHANGED_AT_RECORD_KEY)),
+                METADATA_REVISION_RECORD_KEY: _metadata_revision_value(value.get(METADATA_REVISION_RECORD_KEY)),
+                METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(value.get(METADATA_WRITER_ID_RECORD_KEY)),
+                METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(value.get(METADATA_WRITER_VERSION_RECORD_KEY)),
             }
         return normalized
     return {}
@@ -1678,6 +2034,9 @@ def _write_document_metadata_map(design, metadata_map):
         payload[key] = {
             "group": _normalize_group_name(value.get("group") or ""),
             METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(value.get(METADATA_CHANGED_AT_RECORD_KEY)),
+            METADATA_REVISION_RECORD_KEY: _metadata_revision_value(value.get(METADATA_REVISION_RECORD_KEY)),
+            METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(value.get(METADATA_WRITER_ID_RECORD_KEY)),
+            METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(value.get(METADATA_WRITER_VERSION_RECORD_KEY)),
         }
 
     serialized = json.dumps(payload, separators=(",", ":"), sort_keys=True)
@@ -1703,6 +2062,204 @@ def _write_document_metadata_map(design, metadata_map):
         except Exception:
             pass
     return False
+
+
+def _read_document_metadata_state(design):
+    defaults = {
+        "schemaVersion": METADATA_SCHEMA_VERSION,
+        "docMetaVersion": 0,
+        "lastChangedAt": 0,
+        "lastWriterId": "",
+        "paramCountHint": 0,
+        "contentHash": "",
+        "parameterOrder": [],
+        "groupUi": {"order": [], "collapsed": {}},
+        UI_STATE_RECORD_KEY: {
+            UI_STATE_REVISION_KEY: 0,
+            UI_STATE_CHANGED_AT_KEY: 0,
+            UI_STATE_WRITER_ID_KEY: "",
+            UI_STATE_WRITER_VERSION_KEY: "",
+        },
+    }
+    for owner in _document_metadata_owner_candidates(design):
+        attributes = getattr(owner, "attributes", None)
+        if attributes is None:
+            continue
+        try:
+            attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_DOCUMENT_METADATA_STATE_NAME)
+        except Exception:
+            attribute = None
+        if attribute is None:
+            continue
+        try:
+            payload = json.loads(str(attribute.value or ""))
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        return {
+            "schemaVersion": int(payload.get("schemaVersion") or METADATA_SCHEMA_VERSION),
+            "docMetaVersion": max(0, int(payload.get("docMetaVersion") or 0)),
+            "lastChangedAt": _metadata_changed_at_value(payload.get("lastChangedAt")),
+            "lastWriterId": _metadata_writer_id_value(payload.get("lastWriterId")),
+            "paramCountHint": max(0, int(payload.get("paramCountHint") or 0)),
+            "contentHash": str(payload.get("contentHash") or ""),
+            "parameterOrder": _normalized_parameter_order(payload.get("parameterOrder")),
+            "groupUi": _normalized_group_ui_state(payload.get("groupUi")),
+            UI_STATE_RECORD_KEY: _normalized_ui_state_record(payload.get(UI_STATE_RECORD_KEY)),
+        }
+    return defaults
+
+
+def _write_document_metadata_state(design, state):
+    if not design:
+        return False
+    payload = {
+        "schemaVersion": int((state or {}).get("schemaVersion") or METADATA_SCHEMA_VERSION),
+        "docMetaVersion": max(0, int((state or {}).get("docMetaVersion") or 0)),
+        "lastChangedAt": _metadata_changed_at_value((state or {}).get("lastChangedAt")),
+        "lastWriterId": _metadata_writer_id_value((state or {}).get("lastWriterId")),
+        "paramCountHint": max(0, int((state or {}).get("paramCountHint") or 0)),
+        "contentHash": str((state or {}).get("contentHash") or ""),
+        "parameterOrder": _normalized_parameter_order((state or {}).get("parameterOrder")),
+        "groupUi": _normalized_group_ui_state((state or {}).get("groupUi")),
+        UI_STATE_RECORD_KEY: _normalized_ui_state_record((state or {}).get(UI_STATE_RECORD_KEY)),
+    }
+    serialized = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+    for owner in _document_metadata_owner_candidates(design):
+        attributes = getattr(owner, "attributes", None)
+        if attributes is None:
+            continue
+        try:
+            attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_DOCUMENT_METADATA_STATE_NAME)
+        except Exception:
+            attribute = None
+        if attribute is not None:
+            try:
+                attribute.value = serialized
+                return True
+            except Exception:
+                pass
+        try:
+            attributes.add(ATTRIBUTE_NAMESPACE, ATTRIBUTE_DOCUMENT_METADATA_STATE_NAME, serialized)
+            return True
+        except Exception:
+            pass
+    return False
+
+
+def _bump_document_metadata_state(design, metadata_payload_by_key):
+    if not design:
+        return False
+    current = _read_document_metadata_state(design)
+    content_hash = _metadata_payload_content_hash(metadata_payload_by_key)
+    changed = content_hash != str(current.get("contentHash") or "")
+    next_state = {
+        "schemaVersion": METADATA_SCHEMA_VERSION,
+        "docMetaVersion": (int(current.get("docMetaVersion") or 0) + 1) if changed else int(current.get("docMetaVersion") or 0),
+        "lastChangedAt": _now_metadata_timestamp_ms() if changed else _metadata_changed_at_value(current.get("lastChangedAt")),
+        "lastWriterId": _current_writer_id() if changed else _metadata_writer_id_value(current.get("lastWriterId")),
+        "paramCountHint": len(metadata_payload_by_key or {}),
+        "contentHash": content_hash,
+    }
+    return _write_document_metadata_state(design, next_state)
+
+
+def _ui_state_is_newer(left_state, right_state):
+    left = _normalized_ui_state_record(left_state)
+    right = _normalized_ui_state_record(right_state)
+    left_revision = _metadata_revision_value(left.get(UI_STATE_REVISION_KEY))
+    right_revision = _metadata_revision_value(right.get(UI_STATE_REVISION_KEY))
+    if left_revision != right_revision:
+        return left_revision > right_revision
+    left_changed_at = _metadata_changed_at_value(left.get(UI_STATE_CHANGED_AT_KEY))
+    right_changed_at = _metadata_changed_at_value(right.get(UI_STATE_CHANGED_AT_KEY))
+    if left_changed_at != right_changed_at:
+        return left_changed_at > right_changed_at
+    left_writer = _metadata_writer_id_value(left.get(UI_STATE_WRITER_ID_KEY))
+    right_writer = _metadata_writer_id_value(right.get(UI_STATE_WRITER_ID_KEY))
+    return left_writer > right_writer
+
+
+def _local_ui_snapshot(order_state):
+    normalized = order_state if isinstance(order_state, dict) else {}
+    records = normalized.get("parameters") if isinstance(normalized.get("parameters"), dict) else {}
+    return {
+        UI_STATE_RECORD_KEY: _normalized_ui_state_record(normalized.get(UI_STATE_RECORD_KEY)),
+        "groupUi": _normalized_group_ui_state(normalized.get("groupUi")),
+        "parameterOrder": _collect_parameter_order_from_records(records),
+    }
+
+
+def _fusion_ui_snapshot(design):
+    state = _read_document_metadata_state(design)
+    return {
+        UI_STATE_RECORD_KEY: _normalized_ui_state_record(state.get(UI_STATE_RECORD_KEY)),
+        "groupUi": _normalized_group_ui_state(state.get("groupUi")),
+        "parameterOrder": _normalized_parameter_order(state.get("parameterOrder")),
+    }
+
+
+def _write_fusion_ui_snapshot(design, ui_snapshot):
+    if not design:
+        return False
+    current = _read_document_metadata_state(design)
+    next_state = dict(current)
+    next_state["groupUi"] = _normalized_group_ui_state((ui_snapshot or {}).get("groupUi"))
+    next_state["parameterOrder"] = _normalized_parameter_order((ui_snapshot or {}).get("parameterOrder"))
+    next_state[UI_STATE_RECORD_KEY] = _normalized_ui_state_record((ui_snapshot or {}).get(UI_STATE_RECORD_KEY))
+    return _write_document_metadata_state(design, next_state)
+
+
+def _sync_ui_state_between_local_and_fusion(design, order_state):
+    if not design:
+        return order_state if isinstance(order_state, dict) else _read_document_order_state()
+
+    local_state = order_state if isinstance(order_state, dict) else _read_document_order_state()
+    local_snapshot = _local_ui_snapshot(local_state)
+    fusion_snapshot = _fusion_ui_snapshot(design)
+    local_ui_state = local_snapshot.get(UI_STATE_RECORD_KEY)
+    fusion_ui_state = fusion_snapshot.get(UI_STATE_RECORD_KEY)
+
+    if _ui_state_is_newer(fusion_ui_state, local_ui_state):
+        records = local_state.get("parameters") if isinstance(local_state.get("parameters"), dict) else {}
+        if not records:
+            params = design.userParameters
+            for index in range(params.count):
+                parameter = params.item(index)
+                if not parameter:
+                    continue
+                key = _parameter_entity_token(parameter)
+                if not key:
+                    continue
+                records[key] = {
+                    "order": index,
+                    "name": str(parameter.name or ""),
+                    "current_expression": str(parameter.expression or ""),
+                    "previous_expression": "",
+                    "current_value": "",
+                    "previous_value": "",
+                    "group": _normalize_group_name(_parameter_group_name(parameter) or ""),
+                    METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(_parameter_metadata_changed_at(parameter)),
+                    METADATA_REVISION_RECORD_KEY: _metadata_revision_value(_parameter_metadata_payload(parameter).get(METADATA_REVISION_RECORD_KEY)),
+                    METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(_parameter_metadata_payload(parameter).get(METADATA_WRITER_ID_RECORD_KEY)),
+                    METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(_parameter_metadata_payload(parameter).get(METADATA_WRITER_VERSION_RECORD_KEY)),
+                }
+        applied_order = _normalized_parameter_order(fusion_snapshot.get("parameterOrder"), records.keys())
+        _apply_parameter_order_to_records(records, applied_order)
+        local_state = {
+            "documentId": local_state.get("documentId", ""),
+            "documentName": local_state.get("documentName", ""),
+            "parameters": records,
+            "groupUi": _normalized_group_ui_state(fusion_snapshot.get("groupUi")),
+            UI_STATE_RECORD_KEY: _normalized_ui_state_record(fusion_ui_state),
+        }
+        _write_document_order_state(local_state)
+        return local_state
+
+    if _ui_state_is_newer(local_ui_state, fusion_ui_state):
+        _write_fusion_ui_snapshot(design, local_snapshot)
+    return local_state
 
 
 def _document_metadata_owner_candidates(design):
@@ -1788,20 +2345,18 @@ def _document_metadata_entry(design, parameter):
     metadata_map = _read_document_metadata_map(design)
     map_entry = metadata_map.get(parameter_key) if isinstance(metadata_map.get(parameter_key), dict) else {}
     item_entry = _read_document_metadata_item_entry(design, parameter_key)
-    map_changed_at = _metadata_changed_at_value(map_entry.get(METADATA_CHANGED_AT_RECORD_KEY))
-    item_changed_at = _metadata_changed_at_value(item_entry.get(METADATA_CHANGED_AT_RECORD_KEY))
-    entry = map_entry
-    if item_changed_at > map_changed_at:
-        entry = item_entry
-    elif item_changed_at == map_changed_at and _normalize_group_name(item_entry.get("group") or "") and not _normalize_group_name(map_entry.get("group") or ""):
-        entry = item_entry
-    return {
-        "group": _normalize_group_name(entry.get("group") or ""),
-        METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(entry.get(METADATA_CHANGED_AT_RECORD_KEY)),
-    }
+    return _choose_latest_metadata(map_entry, item_entry)
 
 
-def _set_document_metadata_entry(design, parameter, group_name=None, metadata_changed_at=None):
+def _set_document_metadata_entry(
+    design,
+    parameter,
+    group_name=None,
+    metadata_changed_at=None,
+    metadata_revision=None,
+    metadata_writer_id=None,
+    metadata_writer_version=None,
+):
     if not design or not parameter:
         return False
 
@@ -1811,20 +2366,42 @@ def _set_document_metadata_entry(design, parameter, group_name=None, metadata_ch
 
     metadata_map = _read_document_metadata_map(design)
     current_entry = metadata_map.get(parameter_key) if isinstance(metadata_map.get(parameter_key), dict) else {}
-    next_group = _normalize_group_name(group_name if group_name is not None else current_entry.get("group") or "")
-    next_changed_at = _metadata_changed_at_value(
-        metadata_changed_at if metadata_changed_at is not None else current_entry.get(METADATA_CHANGED_AT_RECORD_KEY)
+    next_payload = _normalized_metadata_payload(
+        group_name=group_name if group_name is not None else current_entry.get("group") or "",
+        metadata_changed_at=metadata_changed_at if metadata_changed_at is not None else current_entry.get(METADATA_CHANGED_AT_RECORD_KEY),
+        revision=metadata_revision if metadata_revision is not None else current_entry.get(METADATA_REVISION_RECORD_KEY),
+        writer_id=metadata_writer_id if metadata_writer_id is not None else current_entry.get(METADATA_WRITER_ID_RECORD_KEY),
+        writer_version=metadata_writer_version if metadata_writer_version is not None else current_entry.get(METADATA_WRITER_VERSION_RECORD_KEY),
     )
     metadata_map[parameter_key] = {
-        "group": next_group,
-        METADATA_CHANGED_AT_RECORD_KEY: next_changed_at,
+        "group": _normalize_group_name(next_payload.get("group") or ""),
+        METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(next_payload.get(METADATA_CHANGED_AT_RECORD_KEY)),
+        METADATA_REVISION_RECORD_KEY: _metadata_revision_value(next_payload.get(METADATA_REVISION_RECORD_KEY)),
+        METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(next_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
+        METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(next_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
     }
     map_ok = _write_document_metadata_map(design, metadata_map)
-    item_ok = _write_document_metadata_item_entry(design, parameter_key, next_group, next_changed_at)
+    item_ok = _write_document_metadata_item_entry(
+        design,
+        parameter_key,
+        next_payload.get("group") or "",
+        next_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
+        next_payload.get(METADATA_REVISION_RECORD_KEY),
+        next_payload.get(METADATA_WRITER_ID_RECORD_KEY),
+        next_payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
+    )
     return bool(map_ok or item_ok)
 
 
-def _set_document_metadata_entry_with_diagnostics(design, parameter, group_name=None, metadata_changed_at=None):
+def _set_document_metadata_entry_with_diagnostics(
+    design,
+    parameter,
+    group_name=None,
+    metadata_changed_at=None,
+    metadata_revision=None,
+    metadata_writer_id=None,
+    metadata_writer_version=None,
+):
     details = {
         "ok": False,
         "mapOk": False,
@@ -1848,13 +2425,19 @@ def _set_document_metadata_entry_with_diagnostics(design, parameter, group_name=
 
     metadata_map = _read_document_metadata_map(design)
     current_entry = metadata_map.get(parameter_key) if isinstance(metadata_map.get(parameter_key), dict) else {}
-    next_group = _normalize_group_name(group_name if group_name is not None else current_entry.get("group") or "")
-    next_changed_at = _metadata_changed_at_value(
-        metadata_changed_at if metadata_changed_at is not None else current_entry.get(METADATA_CHANGED_AT_RECORD_KEY)
+    next_payload = _normalized_metadata_payload(
+        group_name=group_name if group_name is not None else current_entry.get("group") or "",
+        metadata_changed_at=metadata_changed_at if metadata_changed_at is not None else current_entry.get(METADATA_CHANGED_AT_RECORD_KEY),
+        revision=metadata_revision if metadata_revision is not None else current_entry.get(METADATA_REVISION_RECORD_KEY),
+        writer_id=metadata_writer_id if metadata_writer_id is not None else current_entry.get(METADATA_WRITER_ID_RECORD_KEY),
+        writer_version=metadata_writer_version if metadata_writer_version is not None else current_entry.get(METADATA_WRITER_VERSION_RECORD_KEY),
     )
     metadata_map[parameter_key] = {
-        "group": next_group,
-        METADATA_CHANGED_AT_RECORD_KEY: next_changed_at,
+        "group": _normalize_group_name(next_payload.get("group") or ""),
+        METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(next_payload.get(METADATA_CHANGED_AT_RECORD_KEY)),
+        METADATA_REVISION_RECORD_KEY: _metadata_revision_value(next_payload.get(METADATA_REVISION_RECORD_KEY)),
+        METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(next_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
+        METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(next_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
     }
 
     map_payload = {}
@@ -1880,8 +2463,11 @@ def _set_document_metadata_entry_with_diagnostics(design, parameter, group_name=
 
     item_payload = {
         "k": str(parameter_key),
-        "g": next_group,
-        "t": next_changed_at,
+        "g": _normalize_group_name(next_payload.get("group") or ""),
+        "t": _metadata_changed_at_value(next_payload.get(METADATA_CHANGED_AT_RECORD_KEY)),
+        "r": _metadata_revision_value(next_payload.get(METADATA_REVISION_RECORD_KEY)),
+        "w": _metadata_writer_id_value(next_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
+        "v": _metadata_writer_version_value(next_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
     }
     item_serialized = json.dumps(item_payload, separators=(",", ":"), sort_keys=True)
     item_write = _write_document_attribute_with_diagnostics(
@@ -1931,17 +2517,31 @@ def _read_document_metadata_item_entry(design, parameter_key):
             continue
         group_value = _normalize_group_name(payload.get("g") or "")
         changed_at_value = _metadata_changed_at_value(payload.get("t"))
+        revision_value = _metadata_revision_value(payload.get("r"))
+        writer_id_value = _metadata_writer_id_value(payload.get("w"))
+        writer_version_value = _metadata_writer_version_value(payload.get("v"))
         if changed_at_value < best_timestamp:
             continue
         best_entry = {
             "group": group_value,
             METADATA_CHANGED_AT_RECORD_KEY: changed_at_value,
+            METADATA_REVISION_RECORD_KEY: revision_value,
+            METADATA_WRITER_ID_RECORD_KEY: writer_id_value,
+            METADATA_WRITER_VERSION_RECORD_KEY: writer_version_value,
         }
         best_timestamp = changed_at_value
     return best_entry
 
 
-def _write_document_metadata_item_entry(design, parameter_key, group_name, metadata_changed_at):
+def _write_document_metadata_item_entry(
+    design,
+    parameter_key,
+    group_name,
+    metadata_changed_at,
+    metadata_revision=None,
+    metadata_writer_id=None,
+    metadata_writer_version=None,
+):
     if not design or not parameter_key:
         return False
 
@@ -1950,6 +2550,9 @@ def _write_document_metadata_item_entry(design, parameter_key, group_name, metad
         "k": str(parameter_key),
         "g": _normalize_group_name(group_name or ""),
         "t": _metadata_changed_at_value(metadata_changed_at),
+        "r": _metadata_revision_value(metadata_revision),
+        "w": _metadata_writer_id_value(metadata_writer_id),
+        "v": _metadata_writer_version_value(metadata_writer_version),
     }
     serialized = json.dumps(payload, separators=(",", ":"), sort_keys=True)
 
@@ -1989,94 +2592,176 @@ def _normalize_group_name(value):
     return text
 
 
-def _parameter_group_name(parameter):
-    if not parameter:
+def _group_sort_key_for_state(group_name):
+    normalized = _normalize_group_name(group_name or "")
+    if not normalized:
         return ""
+    return normalized.casefold()
 
-    attributes = getattr(parameter, "attributes", None)
 
-    try:
-        attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_PARAMETER_GROUP_NAME)
-    except Exception:
-        attribute = None
+def _normalized_group_ui_state(value):
+    order = []
+    collapsed = {}
+    if isinstance(value, dict):
+        incoming_order = value.get("order")
+        if isinstance(incoming_order, list):
+            seen = set()
+            for raw in incoming_order:
+                name = _normalize_group_name(raw or "")
+                key = _group_sort_key_for_state(name)
+                if key in seen:
+                    continue
+                seen.add(key)
+                order.append(name)
+        incoming_collapsed = value.get("collapsed")
+        if isinstance(incoming_collapsed, dict):
+            for key, raw_value in incoming_collapsed.items():
+                group_key = str(key or "").strip().casefold()
+                if not group_key and str(key or "").strip() != "":
+                    continue
+                collapsed[group_key] = bool(raw_value)
+    return {"order": order, "collapsed": collapsed}
 
-    if attribute is not None:
-        try:
-            value = _normalize_group_name(attribute.value)
-            if value:
-                return value
-        except Exception:
-            pass
 
-    design = _design()
-    entry = _document_metadata_entry(design, parameter)
-    return _normalize_group_name(entry.get("group") or "")
+def _normalized_ui_state_record(value):
+    record = value if isinstance(value, dict) else {}
+    return {
+        UI_STATE_REVISION_KEY: _metadata_revision_value(record.get(UI_STATE_REVISION_KEY)),
+        UI_STATE_CHANGED_AT_KEY: _metadata_changed_at_value(record.get(UI_STATE_CHANGED_AT_KEY)),
+        UI_STATE_WRITER_ID_KEY: _metadata_writer_id_value(record.get(UI_STATE_WRITER_ID_KEY)),
+        UI_STATE_WRITER_VERSION_KEY: _metadata_writer_version_value(record.get(UI_STATE_WRITER_VERSION_KEY)),
+    }
+
+
+def _bump_ui_state_record(previous_record=None):
+    previous = _normalized_ui_state_record(previous_record)
+    return {
+        UI_STATE_REVISION_KEY: _metadata_revision_value(previous.get(UI_STATE_REVISION_KEY)) + 1,
+        UI_STATE_CHANGED_AT_KEY: _now_metadata_timestamp_ms(),
+        UI_STATE_WRITER_ID_KEY: _current_writer_id(),
+        UI_STATE_WRITER_VERSION_KEY: _current_writer_version(),
+    }
+
+
+def _collect_parameter_order_from_records(records):
+    items = []
+    for key, record in (records or {}).items():
+        if not isinstance(key, str) or not key:
+            continue
+        if not isinstance(record, dict):
+            continue
+        order_value = record.get("order")
+        if not isinstance(order_value, int):
+            order_value = 10 ** 9
+        items.append((order_value, key.casefold(), key))
+    items.sort(key=lambda item: (item[0], item[1]))
+    return [item[2] for item in items]
+
+
+def _normalized_parameter_order(order_list, valid_keys=None):
+    keys = set(valid_keys or [])
+    seen = set()
+    normalized = []
+    if isinstance(order_list, list):
+        for raw in order_list:
+            key = str(raw or "").strip()
+            if not key:
+                continue
+            if key in seen:
+                continue
+            if keys and key not in keys:
+                continue
+            seen.add(key)
+            normalized.append(key)
+    return normalized
+
+
+def _apply_parameter_order_to_records(records, order_list):
+    if not isinstance(records, dict):
+        return records
+    valid_keys = list(records.keys())
+    preferred = _normalized_parameter_order(order_list, valid_keys)
+    preferred_set = set(preferred)
+    remaining = [key for key in _collect_parameter_order_from_records(records) if key not in preferred_set]
+    final_order = preferred + remaining
+    for index, key in enumerate(final_order):
+        record = records.get(key)
+        if not isinstance(record, dict):
+            continue
+        record["order"] = index
+    return records
+
+
+def _parameter_group_name(parameter):
+    payload = _parameter_metadata_payload(parameter)
+    return _normalize_group_name(payload.get("group") or "")
 
 
 def _parameter_metadata_changed_at(parameter):
+    payload = _parameter_metadata_payload(parameter)
+    return _metadata_changed_at_value(payload.get(METADATA_CHANGED_AT_RECORD_KEY))
+
+
+def _parameter_metadata_payload(parameter):
     if not parameter:
-        return 0
+        return _normalized_metadata_payload()
 
     attributes = getattr(parameter, "attributes", None)
-
-    try:
-        attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_METADATA_CHANGED_AT_NAME)
-    except Exception:
-        attribute = None
-
-    if attribute is not None:
+    attribute_payload = {}
+    if attributes is not None:
         try:
-            value = _metadata_changed_at_value(attribute.value)
-            if value > 0:
-                return value
+            group_attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_PARAMETER_GROUP_NAME)
         except Exception:
-            pass
+            group_attribute = None
+        try:
+            changed_at_attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_METADATA_CHANGED_AT_NAME)
+        except Exception:
+            changed_at_attribute = None
+        try:
+            revision_attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_METADATA_REVISION_NAME)
+        except Exception:
+            revision_attribute = None
+        try:
+            writer_id_attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_METADATA_WRITER_ID_NAME)
+        except Exception:
+            writer_id_attribute = None
+        try:
+            writer_version_attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_METADATA_WRITER_VERSION_NAME)
+        except Exception:
+            writer_version_attribute = None
+
+        attribute_payload = _normalized_metadata_payload(
+            group_name=group_attribute.value if group_attribute is not None else "",
+            metadata_changed_at=changed_at_attribute.value if changed_at_attribute is not None else 0,
+            revision=revision_attribute.value if revision_attribute is not None else 0,
+            writer_id=writer_id_attribute.value if writer_id_attribute is not None else "",
+            writer_version=writer_version_attribute.value if writer_version_attribute is not None else "",
+        )
 
     design = _design()
-    entry = _document_metadata_entry(design, parameter)
-    return _metadata_changed_at_value(entry.get(METADATA_CHANGED_AT_RECORD_KEY))
+    document_payload = _document_metadata_entry(design, parameter)
+    return _choose_latest_metadata(attribute_payload, document_payload)
 
 
 def _set_parameter_metadata_changed_at(parameter, metadata_changed_at):
     if not parameter:
         return False
 
-    metadata_changed_at_value = _metadata_changed_at_value(metadata_changed_at)
-    if metadata_changed_at_value <= 0:
-        return False
-
-    attributes = getattr(parameter, "attributes", None)
-    success = False
-
-    attribute = None
-    if attributes is not None:
-        try:
-            attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_METADATA_CHANGED_AT_NAME)
-        except Exception:
-            attribute = None
-
-    if attribute is not None:
-        try:
-            attribute.value = str(metadata_changed_at_value)
-            success = True
-        except Exception:
-            pass
-
-    if attributes is not None and not success:
-        try:
-            attributes.add(ATTRIBUTE_NAMESPACE, ATTRIBUTE_METADATA_CHANGED_AT_NAME, str(metadata_changed_at_value))
-            success = True
-        except Exception:
-            pass
-
-    design = _design()
-    existing_group = _parameter_group_name(parameter)
-    if _set_document_metadata_entry(design, parameter, existing_group, metadata_changed_at_value):
-        success = True
-    return success
+    current_payload = _parameter_metadata_payload(parameter)
+    next_payload = _next_metadata_payload(
+        current_payload,
+        current_payload.get("group") or "",
+        metadata_changed_at,
+    )
+    return _write_parameter_group_name(
+        parameter,
+        next_payload.get("group") or "",
+        next_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
+        next_payload,
+    )
 
 
-def _write_parameter_group_name_with_diagnostics(parameter, group_name, metadata_changed_at=None):
+def _write_parameter_group_name_with_diagnostics(parameter, group_name, metadata_changed_at=None, metadata_payload=None):
     details = {
         "ok": False,
         "parameterName": "",
@@ -2094,60 +2779,85 @@ def _write_parameter_group_name_with_diagnostics(parameter, group_name, metadata
         return details
 
     normalized_group = _normalize_group_name(group_name)
+    base_payload = _parameter_metadata_payload(parameter)
+    if metadata_payload and isinstance(metadata_payload, dict):
+        requested_payload = _normalized_metadata_payload(
+            group_name=normalized_group,
+            metadata_changed_at=metadata_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
+            revision=metadata_payload.get(METADATA_REVISION_RECORD_KEY),
+            writer_id=metadata_payload.get(METADATA_WRITER_ID_RECORD_KEY),
+            writer_version=metadata_payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
+        )
+    else:
+        requested_payload = _next_metadata_payload(base_payload, normalized_group, metadata_changed_at)
+    payload = _normalized_metadata_payload(
+        group_name=normalized_group,
+        metadata_changed_at=requested_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
+        revision=requested_payload.get(METADATA_REVISION_RECORD_KEY),
+        writer_id=requested_payload.get(METADATA_WRITER_ID_RECORD_KEY),
+        writer_version=requested_payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
+    )
+
     details["groupName"] = normalized_group
     details["parameterName"] = str(getattr(parameter, "name", "") or "")
-    metadata_changed_at_value = _metadata_changed_at_value(metadata_changed_at)
     attributes = getattr(parameter, "attributes", None)
     success = False
 
-    attribute = None
-    if attributes is not None:
+    def _write_attribute(name, value_text):
+        if attributes is None:
+            return False
         try:
-            attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_PARAMETER_GROUP_NAME)
+            attr = attributes.itemByName(ATTRIBUTE_NAMESPACE, name)
         except Exception:
-            attribute = None
+            attr = None
+        if attr is not None:
+            try:
+                attr.value = value_text
+                return True
+            except Exception:
+                return False
+        try:
+            attributes.add(ATTRIBUTE_NAMESPACE, name, value_text)
+            return True
+        except Exception:
+            return False
 
-    if attribute is not None:
-        try:
-            attribute.value = normalized_group
-            if metadata_changed_at_value > 0:
-                changed_ok = _set_parameter_metadata_changed_at(parameter, metadata_changed_at_value)
-                details["metadataChangedAtAttributeOk"] = bool(changed_ok)
-            success = True
-            details["parameterAttributeOk"] = True
-        except Exception:
-            details["errors"].append("parameter group attribute update failed")
-            if not normalized_group:
-                try:
-                    attribute.deleteMe()
-                    if metadata_changed_at_value > 0:
-                        changed_ok = _set_parameter_metadata_changed_at(parameter, metadata_changed_at_value)
-                        details["metadataChangedAtAttributeOk"] = bool(changed_ok)
-                    success = True
-                    details["parameterAttributeOk"] = True
-                except Exception:
-                    details["errors"].append("parameter group attribute delete failed")
-
-    if attributes is not None and not success and normalized_group:
-        try:
-            attributes.add(ATTRIBUTE_NAMESPACE, ATTRIBUTE_PARAMETER_GROUP_NAME, normalized_group)
-            if metadata_changed_at_value > 0:
-                changed_ok = _set_parameter_metadata_changed_at(parameter, metadata_changed_at_value)
-                details["metadataChangedAtAttributeOk"] = bool(changed_ok)
-            success = True
-            details["parameterAttributeOk"] = True
-        except Exception:
-            details["errors"].append("parameter group attribute add failed")
-    elif attributes is None:
+    if attributes is None:
         details["errors"].append("parameter has no attributes collection")
+    else:
+        group_ok = _write_attribute(ATTRIBUTE_PARAMETER_GROUP_NAME, _normalize_group_name(payload.get("group") or ""))
+        changed_ok = _write_attribute(ATTRIBUTE_METADATA_CHANGED_AT_NAME, str(_metadata_changed_at_value(payload.get(METADATA_CHANGED_AT_RECORD_KEY))))
+        revision_ok = _write_attribute(ATTRIBUTE_METADATA_REVISION_NAME, str(_metadata_revision_value(payload.get(METADATA_REVISION_RECORD_KEY))))
+        writer_id_ok = _write_attribute(ATTRIBUTE_METADATA_WRITER_ID_NAME, _metadata_writer_id_value(payload.get(METADATA_WRITER_ID_RECORD_KEY)))
+        writer_version_ok = _write_attribute(
+            ATTRIBUTE_METADATA_WRITER_VERSION_NAME,
+            _metadata_writer_version_value(payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
+        )
+        details["parameterAttributeOk"] = bool(group_ok)
+        details["metadataChangedAtAttributeOk"] = bool(changed_ok)
+        if not group_ok:
+            details["errors"].append("parameter group attribute write failed")
+        if not changed_ok:
+            details["errors"].append("parameter metadataChangedAt attribute write failed")
+        if not revision_ok:
+            details["errors"].append("parameter metadataRevision attribute write failed")
+        if not writer_id_ok:
+            details["errors"].append("parameter metadataWriterId attribute write failed")
+        if not writer_version_ok:
+            details["errors"].append("parameter metadataWriterVersion attribute write failed")
+        if group_ok and changed_ok and revision_ok and writer_id_ok and writer_version_ok:
+            success = True
 
     design = _design()
-    doc_timestamp = metadata_changed_at_value
-    if doc_timestamp <= 0:
-        doc_timestamp = _parameter_metadata_changed_at(parameter)
-    if doc_timestamp <= 0:
-        doc_timestamp = _now_metadata_timestamp_ms()
-    doc_write = _set_document_metadata_entry_with_diagnostics(design, parameter, normalized_group, doc_timestamp)
+    doc_write = _set_document_metadata_entry_with_diagnostics(
+        design,
+        parameter,
+        payload.get("group") or "",
+        payload.get(METADATA_CHANGED_AT_RECORD_KEY),
+        payload.get(METADATA_REVISION_RECORD_KEY),
+        payload.get(METADATA_WRITER_ID_RECORD_KEY),
+        payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
+    )
     details["documentMetadataOk"] = bool(doc_write.get("ok"))
     details["documentMapOk"] = bool(doc_write.get("mapOk"))
     details["documentItemOk"] = bool(doc_write.get("itemOk"))
@@ -2156,11 +2866,11 @@ def _write_parameter_group_name_with_diagnostics(parameter, group_name, metadata
         details["errors"].append(f"doc: {error}")
     if details["documentMetadataOk"]:
         success = True
-
-    if metadata_changed_at_value > 0:
-        changed_ok = _set_parameter_metadata_changed_at(parameter, metadata_changed_at_value)
-        if changed_ok:
-            details["metadataChangedAtAttributeOk"] = True
+        if design:
+            try:
+                _bump_document_metadata_state(design, _collect_document_metadata_payload_by_key(design))
+            except Exception:
+                pass
 
     if not normalized_group and not success:
         details["ok"] = False
@@ -2177,9 +2887,25 @@ def _write_parameter_group_name_with_diagnostics(parameter, group_name, metadata
     return details
 
 
-def _write_parameter_group_name(parameter, group_name, metadata_changed_at=None):
-    result = _write_parameter_group_name_with_diagnostics(parameter, group_name, metadata_changed_at)
+def _write_parameter_group_name(parameter, group_name, metadata_changed_at=None, metadata_payload=None):
+    result = _write_parameter_group_name_with_diagnostics(parameter, group_name, metadata_changed_at, metadata_payload)
     return bool(result.get("ok"))
+
+
+def _collect_document_metadata_payload_by_key(design):
+    payload_by_key = {}
+    if not design:
+        return payload_by_key
+    params = design.userParameters
+    for index in range(params.count):
+        parameter = params.item(index)
+        if not parameter:
+            continue
+        parameter_key = _parameter_entity_token(parameter)
+        if not parameter_key:
+            continue
+        payload_by_key[parameter_key] = _parameter_metadata_payload(parameter)
+    return payload_by_key
 
 
 def _parameter_group_from_record(design, parameter):
@@ -2196,7 +2922,15 @@ def _parameter_group_from_record(design, parameter):
     return _normalize_group_name(record.get("group") or "")
 
 
-def _set_parameter_group_record(design, parameter, group_name, metadata_changed_at=None):
+def _set_parameter_group_record(
+    design,
+    parameter,
+    group_name,
+    metadata_changed_at=None,
+    metadata_revision=None,
+    metadata_writer_id=None,
+    metadata_writer_version=None,
+):
     if not design or not parameter:
         return
 
@@ -2210,11 +2944,20 @@ def _set_parameter_group_record(design, parameter, group_name, metadata_changed_
     order_value = existing_record.get("order")
     if not isinstance(order_value, int):
         order_value = len(records)
-    resolved_metadata_changed_at = _metadata_changed_at_value(metadata_changed_at)
-    if resolved_metadata_changed_at <= 0:
-        resolved_metadata_changed_at = _metadata_changed_at_value(existing_record.get(METADATA_CHANGED_AT_RECORD_KEY))
-    if resolved_metadata_changed_at <= 0:
-        resolved_metadata_changed_at = _now_metadata_timestamp_ms()
+    existing_payload = _normalized_metadata_payload(
+        group_name=existing_record.get("group") or "",
+        metadata_changed_at=existing_record.get(METADATA_CHANGED_AT_RECORD_KEY),
+        revision=existing_record.get(METADATA_REVISION_RECORD_KEY),
+        writer_id=existing_record.get(METADATA_WRITER_ID_RECORD_KEY),
+        writer_version=existing_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
+    )
+    next_payload = _normalized_metadata_payload(
+        group_name=group_name,
+        metadata_changed_at=metadata_changed_at if metadata_changed_at is not None else existing_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
+        revision=metadata_revision if metadata_revision is not None else existing_payload.get(METADATA_REVISION_RECORD_KEY),
+        writer_id=metadata_writer_id if metadata_writer_id is not None else existing_payload.get(METADATA_WRITER_ID_RECORD_KEY),
+        writer_version=metadata_writer_version if metadata_writer_version is not None else existing_payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
+    )
 
     units_manager = design.unitsManager
     records[parameter_key] = {
@@ -2224,8 +2967,11 @@ def _set_parameter_group_record(design, parameter, group_name, metadata_changed_
         "previous_expression": str(existing_record.get("previous_expression") or ""),
         "current_value": str(existing_record.get("current_value") or _format_parameter_value(parameter, units_manager)),
         "previous_value": str(existing_record.get("previous_value") or ""),
-        "group": _normalize_group_name(group_name or ""),
-        METADATA_CHANGED_AT_RECORD_KEY: resolved_metadata_changed_at,
+        "group": _normalize_group_name(next_payload.get("group") or ""),
+        METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(next_payload.get(METADATA_CHANGED_AT_RECORD_KEY)),
+        METADATA_REVISION_RECORD_KEY: _metadata_revision_value(next_payload.get(METADATA_REVISION_RECORD_KEY)),
+        METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(next_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
+        METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(next_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
     }
 
     _write_document_order_state(
@@ -2233,6 +2979,8 @@ def _set_parameter_group_record(design, parameter, group_name, metadata_changed_
             "documentId": order_state.get("documentId", ""),
             "documentName": order_state.get("documentName", ""),
             "parameters": records,
+            "groupUi": order_state.get("groupUi", {"order": [], "collapsed": {}}),
+            UI_STATE_RECORD_KEY: _normalized_ui_state_record(order_state.get(UI_STATE_RECORD_KEY)),
         }
     )
 
@@ -2248,6 +2996,7 @@ def _collect_metadata_debug_snapshot():
 
     order_state = _read_document_order_state()
     records = _resolve_document_order_records(design, order_state.get("parameters") or {})
+    document_metadata_state = _read_document_metadata_state(design)
     rows = []
     params = design.userParameters
     for index in range(params.count):
@@ -2257,42 +3006,25 @@ def _collect_metadata_debug_snapshot():
 
         key = _parameter_entity_token(parameter)
         record = records.get(key) if isinstance(records.get(key), dict) else {}
-        attr_group = ""
-        attr_changed_at = 0
-        attributes = getattr(parameter, "attributes", None)
-        if attributes is not None:
-            try:
-                group_attr = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_PARAMETER_GROUP_NAME)
-            except Exception:
-                group_attr = None
-            if group_attr:
-                try:
-                    attr_group = _normalize_group_name(group_attr.value)
-                except Exception:
-                    attr_group = ""
-
-            try:
-                changed_attr = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_METADATA_CHANGED_AT_NAME)
-            except Exception:
-                changed_attr = None
-            if changed_attr:
-                try:
-                    attr_changed_at = _metadata_changed_at_value(changed_attr.value)
-                except Exception:
-                    attr_changed_at = 0
-
+        fusion_payload = _parameter_metadata_payload(parameter)
         doc_entry = _document_metadata_entry(design, parameter)
-        doc_group = _normalize_group_name(doc_entry.get("group") or "")
-        doc_changed_at = _metadata_changed_at_value(doc_entry.get(METADATA_CHANGED_AT_RECORD_KEY))
-        fusion_group = attr_group or doc_group
-        fusion_changed_at = max(attr_changed_at, doc_changed_at)
-        json_group = _normalize_group_name(record.get("group") or "")
-        json_changed_at = _metadata_changed_at_value(record.get(METADATA_CHANGED_AT_RECORD_KEY))
+        json_payload = _normalized_metadata_payload(
+            group_name=record.get("group") or "",
+            metadata_changed_at=record.get(METADATA_CHANGED_AT_RECORD_KEY),
+            revision=record.get(METADATA_REVISION_RECORD_KEY),
+            writer_id=record.get(METADATA_WRITER_ID_RECORD_KEY),
+            writer_version=record.get(METADATA_WRITER_VERSION_RECORD_KEY),
+        )
+
+        fusion_group = _normalize_group_name(fusion_payload.get("group") or "")
+        fusion_changed_at = _metadata_changed_at_value(fusion_payload.get(METADATA_CHANGED_AT_RECORD_KEY))
+        json_group = _normalize_group_name(json_payload.get("group") or "")
+        json_changed_at = _metadata_changed_at_value(json_payload.get(METADATA_CHANGED_AT_RECORD_KEY))
 
         latest_source = "equal"
-        if fusion_changed_at > json_changed_at:
+        if _is_metadata_newer(fusion_payload, json_payload):
             latest_source = "fusion"
-        elif json_changed_at > fusion_changed_at:
+        elif _is_metadata_newer(json_payload, fusion_payload):
             latest_source = "json"
 
         rows.append(
@@ -2301,12 +3033,18 @@ def _collect_metadata_debug_snapshot():
                 "key": key,
                 "fusionGroup": fusion_group,
                 "fusionMetadataChangedAt": fusion_changed_at,
-                "fusionParameterGroup": attr_group,
-                "fusionParameterMetadataChangedAt": attr_changed_at,
-                "fusionDocumentGroup": doc_group,
-                "fusionDocumentMetadataChangedAt": doc_changed_at,
+                "fusionMetadataRevision": _metadata_revision_value(fusion_payload.get(METADATA_REVISION_RECORD_KEY)),
+                "fusionMetadataWriterId": _metadata_writer_id_value(fusion_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
+                "fusionMetadataWriterVersion": _metadata_writer_version_value(fusion_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
+                "fusionParameterGroup": _normalize_group_name(fusion_payload.get("group") or ""),
+                "fusionParameterMetadataChangedAt": _metadata_changed_at_value(fusion_payload.get(METADATA_CHANGED_AT_RECORD_KEY)),
+                "fusionDocumentGroup": _normalize_group_name(doc_entry.get("group") or ""),
+                "fusionDocumentMetadataChangedAt": _metadata_changed_at_value(doc_entry.get(METADATA_CHANGED_AT_RECORD_KEY)),
                 "jsonGroup": json_group,
                 "jsonMetadataChangedAt": json_changed_at,
+                "jsonMetadataRevision": _metadata_revision_value(json_payload.get(METADATA_REVISION_RECORD_KEY)),
+                "jsonMetadataWriterId": _metadata_writer_id_value(json_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
+                "jsonMetadataWriterVersion": _metadata_writer_version_value(json_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
                 "latestSource": latest_source,
             }
         )
@@ -2315,6 +3053,7 @@ def _collect_metadata_debug_snapshot():
     return {
         "document": _active_document_info(),
         "recordCount": len(records),
+        "docMeta": document_metadata_state,
         "rows": rows,
     }
 
@@ -2341,13 +3080,24 @@ def _sync_metadata_json_to_fusion():
             skipped += 1
             continue
 
-        group_name = _normalize_group_name(record.get("group") or "")
-        metadata_changed_at = _metadata_changed_at_value(record.get(METADATA_CHANGED_AT_RECORD_KEY))
-        if metadata_changed_at <= 0:
-            metadata_changed_at = _now_metadata_timestamp_ms()
-            record[METADATA_CHANGED_AT_RECORD_KEY] = metadata_changed_at
+        json_payload = _normalized_metadata_payload(
+            group_name=record.get("group") or "",
+            metadata_changed_at=record.get(METADATA_CHANGED_AT_RECORD_KEY),
+            revision=record.get(METADATA_REVISION_RECORD_KEY),
+            writer_id=record.get(METADATA_WRITER_ID_RECORD_KEY),
+            writer_version=record.get(METADATA_WRITER_VERSION_RECORD_KEY),
+        )
+        fusion_payload = _parameter_metadata_payload(parameter)
+        if not _is_metadata_newer(json_payload, fusion_payload):
+            skipped += 1
+            continue
 
-        write_result = _write_parameter_group_name_with_diagnostics(parameter, group_name, metadata_changed_at)
+        write_result = _write_parameter_group_name_with_diagnostics(
+            parameter,
+            json_payload.get("group") or "",
+            json_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
+            json_payload,
+        )
         if write_result.get("ok"):
             updated += 1
         else:
@@ -2358,7 +3108,7 @@ def _sync_metadata_json_to_fusion():
                 failed_details.append(
                     {
                         "name": str(parameter.name or key or ""),
-                        "group": group_name,
+                        "group": json_payload.get("group") or "",
                         "errors": errors[:5],
                         "documentOwnerTypes": write_result.get("documentOwnerTypes") or [],
                         "parameterAttributeOk": bool(write_result.get("parameterAttributeOk")),
@@ -2374,8 +3124,11 @@ def _sync_metadata_json_to_fusion():
                 "documentId": order_state.get("documentId", ""),
                 "documentName": order_state.get("documentName", ""),
                 "parameters": records,
+                "groupUi": order_state.get("groupUi", {"order": [], "collapsed": {}}),
+                UI_STATE_RECORD_KEY: _normalized_ui_state_record(order_state.get(UI_STATE_RECORD_KEY)),
             }
         )
+    _bump_document_metadata_state(design, _collect_document_metadata_payload_by_key(design))
 
     return {
         "direction": "json_to_fusion",
@@ -2389,22 +3142,136 @@ def _sync_metadata_json_to_fusion():
 
 def _sync_metadata_fusion_to_json():
     design = _require_design()
+    order_state = _read_document_order_state()
+    records = _resolve_document_order_records(design, order_state.get("parameters") or {})
     params = design.userParameters
     updated = 0
+    skipped = 0
 
     for index in range(params.count):
         parameter = params.item(index)
         if not parameter:
             continue
 
-        group_name = _parameter_group_name(parameter)
-        metadata_changed_at = _parameter_metadata_changed_at(parameter)
-        _set_parameter_group_record(design, parameter, group_name, metadata_changed_at)
+        parameter_key = _parameter_entity_token(parameter)
+        json_record = records.get(parameter_key) if isinstance(records.get(parameter_key), dict) else {}
+        json_payload = _normalized_metadata_payload(
+            group_name=json_record.get("group") or "",
+            metadata_changed_at=json_record.get(METADATA_CHANGED_AT_RECORD_KEY),
+            revision=json_record.get(METADATA_REVISION_RECORD_KEY),
+            writer_id=json_record.get(METADATA_WRITER_ID_RECORD_KEY),
+            writer_version=json_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
+        )
+        fusion_payload = _parameter_metadata_payload(parameter)
+        if not _is_metadata_newer(fusion_payload, json_payload):
+            skipped += 1
+            continue
+        _set_parameter_group_record(
+            design,
+            parameter,
+            fusion_payload.get("group") or "",
+            fusion_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
+            fusion_payload.get(METADATA_REVISION_RECORD_KEY),
+            fusion_payload.get(METADATA_WRITER_ID_RECORD_KEY),
+            fusion_payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
+        )
         updated += 1
 
     return {
         "direction": "fusion_to_json",
         "updatedCount": updated,
+        "skippedCount": skipped,
+    }
+
+
+def _repair_metadata():
+    design = _require_design()
+    order_state = _read_document_order_state()
+    records = _resolve_document_order_records(design, order_state.get("parameters") or {})
+    params = design.userParameters
+
+    updated_fusion = 0
+    updated_json = 0
+    healed = 0
+    conflicts = 0
+    failed = 0
+    failed_names = []
+
+    for index in range(params.count):
+        parameter = params.item(index)
+        if not parameter:
+            continue
+        key = _parameter_entity_token(parameter)
+        if not key:
+            continue
+
+        json_record = records.get(key) if isinstance(records.get(key), dict) else {}
+        json_payload = _normalized_metadata_payload(
+            group_name=json_record.get("group") or "",
+            metadata_changed_at=json_record.get(METADATA_CHANGED_AT_RECORD_KEY),
+            revision=json_record.get(METADATA_REVISION_RECORD_KEY),
+            writer_id=json_record.get(METADATA_WRITER_ID_RECORD_KEY),
+            writer_version=json_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
+        )
+        fusion_payload = _parameter_metadata_payload(parameter)
+
+        json_missing = not json_record
+        fusion_missing = not _normalize_group_name(fusion_payload.get("group") or "")
+        winner_payload = _choose_latest_metadata(fusion_payload, json_payload)
+
+        if json_missing or fusion_missing:
+            healed += 1
+        if _is_metadata_newer(fusion_payload, json_payload) and _is_metadata_newer(json_payload, fusion_payload):
+            conflicts += 1
+
+        if _is_metadata_newer(winner_payload, fusion_payload):
+            write_result = _write_parameter_group_name_with_diagnostics(
+                parameter,
+                winner_payload.get("group") or "",
+                winner_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
+                winner_payload,
+            )
+            if write_result.get("ok"):
+                updated_fusion += 1
+            else:
+                failed += 1
+                failed_names.append(str(parameter.name or key or ""))
+
+        if _is_metadata_newer(winner_payload, json_payload) or json_missing:
+            _set_parameter_group_record(
+                design,
+                parameter,
+                winner_payload.get("group") or "",
+                winner_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
+                winner_payload.get(METADATA_REVISION_RECORD_KEY),
+                winner_payload.get(METADATA_WRITER_ID_RECORD_KEY),
+                winner_payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
+            )
+            updated_json += 1
+
+    if updated_json:
+        order_state = _read_document_order_state()
+        records = _resolve_document_order_records(design, order_state.get("parameters") or {})
+        _write_document_order_state(
+            {
+                "documentId": order_state.get("documentId", ""),
+                "documentName": order_state.get("documentName", ""),
+                "parameters": records,
+                "groupUi": order_state.get("groupUi", {"order": [], "collapsed": {}}),
+                UI_STATE_RECORD_KEY: _normalized_ui_state_record(order_state.get(UI_STATE_RECORD_KEY)),
+            }
+        )
+    _bump_document_metadata_state(design, _collect_document_metadata_payload_by_key(design))
+
+    return {
+        "direction": "repair",
+        "updatedFusionCount": updated_fusion,
+        "updatedJsonCount": updated_json,
+        "healedCount": healed,
+        "conflictCount": conflicts,
+        "failedCount": failed,
+        "failedNames": failed_names[:20],
+        "updatedCount": updated_fusion + updated_json,
         "skippedCount": 0,
     }
 
