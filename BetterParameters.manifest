@@ -6,7 +6,7 @@
   "description": {
     "": "Better Parameters displays and edits Fusion user parameters in a modeless palette."
   },
-  "version": "0.1.5",
+  "version": "0.1.6",
   "runOnStartup": true,
   "supportedOS": "windows|mac",
   "editEnabled": true

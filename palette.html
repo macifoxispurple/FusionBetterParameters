@@ -1050,6 +1050,11 @@
         status.className = kind ? `status ${kind}` : "status";
       }
 
+      function setParameterCountStatus(parameters) {
+        const count = Array.isArray(parameters) ? parameters.length : 0;
+        setStatus(`Loaded ${count} parameter(s).`, "success");
+      }
+
       function setNameError(message) {
         const nameInput = document.getElementById("newName");
         const nameError = document.getElementById("nameError");
@@ -1287,6 +1292,7 @@
 
         if (payload.parameters) {
           renderParameters(payload.parameters);
+          setParameterCountStatus(payload.parameters);
         }
 
         if (payload.updateInfo) {
