@@ -605,6 +605,60 @@
         color: var(--muted);
       }
 
+      .search-shell {
+        position: relative;
+        display: flex;
+        align-items: center;
+      }
+
+      .search-icon {
+        position: absolute;
+        left: 12px;
+        color: var(--muted);
+        pointer-events: none;
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+      }
+
+      .search-input {
+        padding-left: 36px;
+        padding-right: 36px;
+      }
+
+      .search-input::-webkit-search-cancel-button,
+      .search-input::-webkit-search-decoration {
+        -webkit-appearance: none;
+        appearance: none;
+      }
+
+      .search-clear {
+        position: absolute;
+        right: 8px;
+        width: 22px;
+        height: 22px;
+        border-radius: 999px;
+        border: 0;
+        background: var(--muted);
+        color: var(--panel-strong);
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background 120ms ease;
+        flex-shrink: 0;
+      }
+
+      .search-clear:hover {
+        background: var(--ink);
+        transform: none;
+      }
+
+      .search-clear[hidden] {
+        display: none;
+      }
+
       .toggle-row {
         display: flex;
         align-items: center;
@@ -1234,6 +1288,21 @@
             <p class="favorites-title">Favorites</p>
             <div id="favoritesList" class="favorites-list"></div>
           </div>
+          <div class="search-shell">
+            <span class="search-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="7"></circle>
+                <line x1="16.65" y1="16.65" x2="21" y2="21"></line>
+              </svg>
+            </span>
+            <input id="parameterSearchInput" class="search-input" type="search" placeholder="Search parameters" autocomplete="off" aria-label="Search parameters" />
+            <button id="parameterSearchClear" class="search-clear" type="button" aria-label="Clear search" hidden>
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
           <div id="parameterSummary" class="section-meta" aria-live="polite"></div>
           <div class="table-wrap">
             <table>
@@ -1488,6 +1557,7 @@
 
       const state = {
         parameters: [],
+        searchQuery: "",
         parameterNames: [],
         settings: {
           theme: (function () { try { var t = localStorage.getItem("bp_theme"); return t === "dark" || t === "light" ? t : "light"; } catch (_) { return "light"; } }()),
@@ -1709,9 +1779,58 @@
 
       function setParameterSummary(parameters) {
         const summary = document.getElementById("parameterSummary");
-        const count = Array.isArray(parameters) ? parameters.length : 0;
-        const noun = count === 1 ? "parameter" : "parameters";
-        summary.textContent = `${count} ${noun} in this document.`;
+        const allParameters = Array.isArray(parameters) ? parameters : [];
+        const totalCount = allParameters.length;
+        const filteredCount = getFilteredParameters(allParameters).length;
+        const totalNoun = totalCount === 1 ? "parameter" : "parameters";
+
+        if (!state.searchQuery.trim()) {
+          summary.textContent = `${totalCount} ${totalNoun} in this document.`;
+          return;
+        }
+
+        summary.textContent = `${filteredCount} of ${totalCount} parameters match.`;
+      }
+
+      function getParameterSearchNeedle() {
+        return String(state.searchQuery || "").trim().toLowerCase();
+      }
+
+      function getFilteredParameters(parameters) {
+        const needle = getParameterSearchNeedle();
+        const items = Array.isArray(parameters) ? parameters : [];
+        if (!needle) {
+          return items;
+        }
+
+        return items.filter((param) => {
+          const haystack = [
+            param.name,
+            param.expression,
+            param.comment,
+            param.unit,
+            param.valuePreview
+          ].map((value) => String(value || "").toLowerCase()).join("\n");
+          return haystack.includes(needle);
+        });
+      }
+
+      function renderSearchControls() {
+        const clearButton = document.getElementById("parameterSearchClear");
+        const searchInput = document.getElementById("parameterSearchInput");
+        if (!clearButton || !searchInput) {
+          return;
+        }
+
+        searchInput.value = state.searchQuery || "";
+        clearButton.hidden = !String(state.searchQuery || "").trim();
+      }
+
+      function setSearchQuery(value) {
+        state.searchQuery = String(value || "");
+        renderSearchControls();
+        renderParameters(state.parameters);
+        setParameterSummary(state.parameters);
       }
 
       function autoSizeTextarea(textarea) {
@@ -1753,6 +1872,10 @@
       function renderFavoritesSection(parameters) {
         const section = document.getElementById("favoritesSection");
         const list = document.getElementById("favoritesList");
+        if (state.searchQuery.trim()) {
+          section.style.display = "none";
+          return;
+        }
         const favorites = (parameters || []).filter((param) => !!param.isFavorite);
 
         if (!favorites.length) {
@@ -2009,13 +2132,21 @@
         state.parameters = parameters || [];
         const tbody = document.getElementById("parameterRows");
         renderFavoritesSection(state.parameters);
+        renderSearchControls();
 
         if (!state.parameters.length) {
           tbody.innerHTML = `<tr><td colspan="5" class="empty">No user parameters were found in the active design.</td></tr>`;
           return;
         }
 
-        tbody.innerHTML = state.parameters.map((param, index) => {
+        const filteredParameters = getFilteredParameters(state.parameters);
+        if (!filteredParameters.length) {
+          tbody.innerHTML = `<tr><td colspan="5" class="empty">No parameters match your search.</td></tr>`;
+          return;
+        }
+
+        const isSearchActive = !!state.searchQuery.trim();
+        tbody.innerHTML = filteredParameters.map((param, index) => {
           const safeKey = escapeHtml(param.key || param.name || "");
           const safeName = escapeHtml(param.name);
           const safeExpression = escapeHtml(param.expression);
@@ -2028,6 +2159,9 @@
           const favoriteTitle = param.isFavorite ? "Remove from favorites" : "Add to favorites";
           const favoriteIcon = param.isFavorite ? "★" : "☆";
           const favoriteClass = param.isFavorite ? "favorite-button is-on" : "favorite-button";
+          const reorderTitle = isSearchActive
+            ? "Clear search to reorder parameters."
+            : `Drag to reorder ${safeName}. Right-click for more options.`;
           const showRevert = state.settings.showRevertButtons !== false;
           const compactPreviousValue = previousValue.replace(/\s+/g, " ").trim();
           const revertTitle = previousExpression
@@ -2045,7 +2179,7 @@
             <tr data-index="${index}" data-parameter-key="${safeKey}" data-parameter-name="${safeName}">
               <td class="name-cell">
                 <div class="name-cell-main">
-                  <button class="reorder-handle" type="button" data-reorder-handle="true" tabindex="-1" aria-label="Drag to reorder ${safeName}. Right-click for more options." title="Drag to reorder. Right-click for more options."></button>
+                  <button class="reorder-handle" type="button" data-reorder-handle="true" tabindex="-1" aria-label="${reorderTitle}" title="${reorderTitle}"${isSearchActive ? " disabled" : ""}></button>
                   <div class="name-stack">
                     <strong>${safeName}</strong>
                     <div class="row-meta">
@@ -3380,6 +3514,25 @@
 
       const parameterRows = document.getElementById("parameterRows");
       let rowExpressionValidationTimer = null;
+      const parameterSearchInput = document.getElementById("parameterSearchInput");
+      const parameterSearchClear = document.getElementById("parameterSearchClear");
+
+      parameterSearchInput.addEventListener("input", (event) => {
+        setSearchQuery(event.currentTarget.value);
+      });
+
+      parameterSearchInput.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setSearchQuery("");
+          parameterSearchInput.focus();
+        }
+      });
+
+      parameterSearchClear.addEventListener("click", () => {
+        setSearchQuery("");
+        parameterSearchInput.focus();
+      });
 
       parameterRows.addEventListener("input", (event) => {
         const commentInput = event.target.closest(".comment-input");
@@ -3637,6 +3790,11 @@
           return;
         }
 
+        if (state.searchQuery.trim()) {
+          setGlobalStatus("Clear search to reorder parameters.");
+          return;
+        }
+
         if (event.button !== 0) {
           return;
         }
@@ -3652,6 +3810,12 @@
       parameterRows.addEventListener("contextmenu", (event) => {
         const handle = event.target.closest("[data-reorder-handle]");
         if (!handle) {
+          return;
+        }
+
+        if (state.searchQuery.trim()) {
+          event.preventDefault();
+          setGlobalStatus("Clear search to reorder parameters.");
           return;
         }
 
