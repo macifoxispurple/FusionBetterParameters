@@ -1388,7 +1388,7 @@ def _safe_call(fn):
 
 def _current_addin_version():
     try:
-        with open(MANIFEST_PATH, 'r', encoding='utf-8') as handle:
+        with open(MANIFEST_PATH, 'r', encoding='utf-8-sig') as handle:
             return str(json.load(handle).get('version', '')).strip() or '0.0.0'
     except Exception:
         return '0.0.0'
@@ -1621,7 +1621,7 @@ def _set_run_on_startup(enabled):
 def _set_manifest_version(version_text):
     if not version_text:
         return
-    with open(MANIFEST_PATH, 'r', encoding='utf-8') as handle:
+    with open(MANIFEST_PATH, 'r', encoding='utf-8-sig') as handle:
         manifest = json.load(handle)
     manifest['version'] = str(version_text).strip()
     with open(MANIFEST_PATH, 'w', encoding='utf-8') as handle:

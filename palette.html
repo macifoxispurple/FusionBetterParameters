@@ -1074,6 +1074,16 @@
         }
       }
     </style>
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("bp_theme");
+          if (t === "dark" || t === "light") {
+            document.documentElement.dataset.theme = t;
+          }
+        } catch (_) {}
+      })();
+    </script>
   </head>
   <body>
     <div class="page">
@@ -2160,6 +2170,7 @@
         state.settings.theme = normalizedTheme;
         document.documentElement.dataset.theme = normalizedTheme;
         renderToggle("themeToggle", normalizedTheme === "dark");
+        try { localStorage.setItem("bp_theme", normalizedTheme); } catch (_) {}
       }
 
       function applySettings(settings) {
@@ -4071,6 +4082,10 @@
           const response = await sendToFusion("downloadAndStageUpdate");
           if (response.ok !== false) {
             applyStateFromFusion(response);
+          } else {
+            setGlobalStatus(response.message || "Update failed.", "error");
+            renderUpdatePill();
+            renderUpdateCard();
           }
         } catch (error) {
           setGlobalStatus(error.message, "error");
