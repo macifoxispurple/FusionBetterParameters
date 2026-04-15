@@ -1,0 +1,2147 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Better Parameters</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg-top: #f8f5ef;
+        --bg-bottom: #efe8dc;
+        --flare: rgba(15, 118, 110, 0.14);
+        --panel: rgba(255, 252, 247, 0.96);
+        --panel-strong: #fffdf8;
+        --line: #d8cfc2;
+        --ink: #1f1b16;
+        --muted: #6b6258;
+        --accent: #0f766e;
+        --accent-strong: #115e59;
+        --error: #b91c1c;
+        --shadow: 0 18px 40px rgba(41, 34, 24, 0.12);
+        --ghost: #ece4d7;
+        --pill-bg: #e1f0ee;
+        --pill-ink: #115e59;
+      }
+
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --bg-top: #263748;
+        --bg-bottom: #1b2631;
+        --flare: rgba(111, 224, 212, 0.1);
+        --panel: rgba(39, 53, 67, 0.94);
+        --panel-strong: #314354;
+        --line: #46596b;
+        --ink: #eef5fb;
+        --muted: #b6c5d1;
+        --accent: #39b9ad;
+        --accent-strong: #74d8cf;
+        --error: #ff8d8d;
+        --shadow: 0 20px 46px rgba(8, 12, 18, 0.35);
+        --ghost: #3a4d5f;
+        --pill-bg: #203847;
+        --pill-ink: #8de7de;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top right, var(--flare), transparent 22rem),
+          linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+      }
+
+      .page {
+        min-height: 100vh;
+        padding: 16px;
+        position: relative;
+      }
+
+      .shell {
+        max-width: 960px;
+        margin: 0 auto;
+        display: grid;
+        gap: 14px;
+      }
+
+      .card {
+        background: var(--panel);
+        border: 1px solid rgba(216, 207, 194, 0.2);
+        border-radius: 18px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(10px);
+        position: relative;
+      }
+
+      .hero {
+        padding: 18px 20px;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      h1,
+      h2 {
+        margin: 0;
+        font-weight: 650;
+        letter-spacing: -0.02em;
+      }
+
+      h1 {
+        font-size: 1.35rem;
+      }
+
+      h2 {
+        font-size: 1rem;
+      }
+
+      p {
+        margin: 6px 0 0;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+      }
+
+      button {
+        border: 0;
+        border-radius: 999px;
+        padding: 10px 14px;
+        font: inherit;
+        cursor: pointer;
+        transition: transform 120ms ease, background 120ms ease, opacity 120ms ease;
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+      }
+
+      .primary {
+        background: var(--accent);
+        color: white;
+      }
+
+      .primary:hover {
+        background: var(--accent-strong);
+      }
+
+      .ghost {
+        background: var(--ghost);
+        color: var(--ink);
+      }
+
+      .stack {
+        display: grid;
+        gap: 14px;
+      }
+
+      .section {
+        padding: 16px 18px 18px;
+      }
+
+      .status {
+        min-height: 24px;
+        font-size: 0.95rem;
+        color: var(--muted);
+      }
+
+      .status.error {
+        color: var(--error);
+      }
+
+      .status.success {
+        color: var(--accent-strong);
+      }
+
+      .field-error {
+        min-height: 18px;
+        font-size: 0.84rem;
+        color: var(--error);
+      }
+
+      .field-error.is-valid {
+        color: var(--accent-strong);
+      }
+
+      input[aria-invalid="true"],
+      textarea[aria-invalid="true"] {
+        border-color: var(--error);
+      }
+
+      .field-shell {
+        position: relative;
+      }
+
+      form {
+        display: grid;
+        gap: 10px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        font-size: 0.92rem;
+        color: var(--muted);
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel-strong);
+        color: var(--ink);
+        padding: 10px 12px;
+        font: inherit;
+      }
+
+      textarea {
+        min-height: 76px;
+        resize: vertical;
+      }
+
+      .comment-input {
+        min-height: 45px;
+        height: 45px;
+        resize: vertical;
+        overflow: auto;
+      }
+
+      .table-wrap {
+        overflow: auto;
+      }
+
+      .table-wrap table thead th:last-child,
+      .table-wrap table tbody td:last-child {
+        min-width: 64px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+
+      th,
+      td {
+        padding: 11px 10px;
+        border-bottom: 1px solid rgba(216, 207, 194, 0.22);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        font-size: 0.82rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        position: relative;
+      }
+
+      .header-label {
+        display: block;
+        padding-right: 10px;
+      }
+
+      .column-resizer {
+        position: absolute;
+        top: 8px;
+        right: -6px;
+        width: 12px;
+        height: calc(100% - 16px);
+        cursor: col-resize;
+        border-radius: 999px;
+        background: transparent;
+      }
+
+      .column-resizer::before {
+        content: "";
+        position: absolute;
+        top: 20%;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 2px;
+        height: 60%;
+        border-radius: 999px;
+        background: rgba(107, 98, 88, 0.35);
+      }
+
+      .column-resizer:hover::before,
+      .column-resizer.is-active::before {
+        background: var(--accent);
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .mono {
+        font-family: "Consolas", "SFMono-Regular", monospace;
+        font-size: 0.92rem;
+      }
+
+      .pill {
+        display: inline-block;
+        padding: 3px 9px;
+        border-radius: 999px;
+        background: var(--pill-bg);
+        color: var(--pill-ink);
+        font-size: 0.8rem;
+        white-space: nowrap;
+      }
+
+      .empty {
+        padding: 18px 0 4px;
+        color: var(--muted);
+      }
+
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--ink);
+        font-size: 0.92rem;
+      }
+
+      .toggle {
+        position: relative;
+        width: 50px;
+        height: 28px;
+        border-radius: 999px;
+        background: var(--ghost);
+        border: 1px solid var(--line);
+        cursor: pointer;
+        transition: background 120ms ease;
+      }
+
+      .toggle::after {
+        content: "";
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--panel-strong);
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+        transition: transform 120ms ease;
+      }
+
+      .toggle.is-on {
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+
+      .toggle.is-on::after {
+        transform: translateX(22px);
+      }
+
+      .toggle-label {
+        min-width: 120px;
+      }
+
+      .unit-picker {
+        position: relative;
+      }
+
+      .unit-picker-button {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel-strong);
+        color: var(--ink);
+        padding: 10px 12px;
+        text-align: left;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .unit-picker-button::after {
+        content: "v";
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .unit-picker-menu {
+        position: absolute;
+        z-index: 2000;
+        top: 0;
+        left: 0;
+        width: 280px;
+        max-height: 340px;
+        overflow: auto;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        box-shadow: var(--shadow);
+        padding: 8px;
+      }
+
+      .unit-picker-menu[hidden] {
+        display: none;
+      }
+
+      .overlay-root {
+        position: absolute;
+        inset: 0;
+        z-index: 1500;
+        pointer-events: none;
+      }
+
+      .overlay-root .unit-picker-menu {
+        pointer-events: auto;
+      }
+
+      .overlay-root .expression-suggestions {
+        pointer-events: auto;
+      }
+
+      .unit-option {
+        width: 100%;
+        border-radius: 10px;
+        padding: 9px 10px;
+        text-align: left;
+        background: transparent;
+        color: var(--ink);
+      }
+
+      .unit-option:hover,
+      .unit-option.is-selected {
+        background: var(--ghost);
+      }
+
+      .unit-category {
+        border-top: 1px solid rgba(216, 207, 194, 0.22);
+        margin-top: 8px;
+        padding-top: 8px;
+      }
+
+      .unit-category:first-of-type {
+        border-top: 0;
+        margin-top: 0;
+        padding-top: 0;
+      }
+
+      .unit-category-header {
+        width: 100%;
+        padding: 8px 10px;
+        text-align: left;
+        background: transparent;
+        color: var(--ink);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        font-weight: 600;
+      }
+
+      .unit-category-header::after {
+        content: "v";
+        color: var(--muted);
+        transition: transform 120ms ease;
+      }
+
+      .unit-category-header.is-collapsed::after {
+        transform: rotate(-90deg);
+      }
+
+      .unit-category-options {
+        display: grid;
+        gap: 2px;
+        padding: 0 0 4px;
+      }
+
+      .unit-category-options[hidden] {
+        display: none;
+      }
+
+      .settings-inline {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        align-items: center;
+      }
+
+      .expression-suggestions {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 280px;
+        z-index: 2100;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        padding: 6px;
+        max-height: 220px;
+        overflow: auto;
+      }
+
+      .expression-suggestions[hidden] {
+        display: none;
+      }
+
+      .expression-suggestion {
+        width: 100%;
+        border-radius: 8px;
+        padding: 8px 10px;
+        text-align: left;
+        background: transparent;
+        color: var(--ink);
+      }
+
+      .expression-suggestion.is-highlighted,
+      .expression-suggestion:hover {
+        background: var(--ghost);
+      }
+
+      .expression-suggestion-section {
+        padding: 5px 10px 2px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--muted);
+        pointer-events: none;
+      }
+
+      .expression-suggestion-section + .expression-suggestion-section,
+      .expression-suggestion ~ .expression-suggestion-section {
+        border-top: 1px solid rgba(216, 207, 194, 0.22);
+        margin-top: 4px;
+        padding-top: 8px;
+      }
+
+      .update-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 0.82rem;
+        background: var(--ghost);
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .update-pill.has-update {
+        background: var(--pill-bg);
+        color: var(--pill-ink);
+        cursor: pointer;
+      }
+      .update-pill.is-staged {
+        background: var(--ghost);
+        color: var(--muted);
+      }
+
+      @media (max-width: 720px) {
+        .hero {
+          align-items: flex-start;
+        }
+
+        th:nth-child(4),
+        td:nth-child(4) {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="shell">
+        <section class="card hero">
+          <div>
+            <h1>Better Parameters</h1>
+            <p>Browse and edit Fusion user parameters without blocking the main UI.</p>
+          </div>
+          <div class="actions">
+            <div id="updatePill" class="update-pill" style="display:none" role="status"></div>
+            <div class="toggle-row">
+              <span class="toggle-label">Auto-update</span>
+              <button id="autoUpdateToggle" class="toggle" type="button" aria-pressed="true" aria-label="Toggle automatic update checks"></button>
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-label">Dark Theme</span>
+              <button id="themeToggle" class="toggle" type="button" aria-pressed="false" aria-label="Toggle dark theme"></button>
+            </div>
+            <button id="refreshButton" class="ghost" type="button">Refresh</button>
+          </div>
+        </section>
+
+        <section class="card section stack">
+          <div>
+            <h2>Create User Parameter</h2>
+            <p>Expressions follow Fusion's native parameter syntax, so references and units work the same way they do in the Parameters dialog.</p>
+          </div>
+          <div class="settings-inline">
+            <div class="toggle-row">
+              <span class="toggle-label">Remember Unit</span>
+              <button id="rememberUnitToggle" class="toggle" type="button" aria-pressed="false" aria-label="Toggle remember unit"></button>
+            </div>
+          </div>
+          <form id="createForm">
+            <div class="grid">
+              <label>
+                Name
+                <input id="newName" name="name" required />
+                <div id="nameError" class="field-error" aria-live="polite"></div>
+              </label>
+              <label class="unit-picker">
+                Units
+                <input id="newUnit" name="unit" type="hidden" value="" />
+                <button id="unitPickerButton" class="unit-picker-button" type="button" aria-haspopup="true" aria-expanded="false">
+                  <span id="unitPickerLabel">No Units</span>
+                </button>
+                <div id="unitPickerMenu" class="unit-picker-menu" hidden></div>
+              </label>
+            </div>
+            <label>
+              Expression
+              <div class="field-shell">
+                <input id="newExpression" name="expression" required placeholder="25 mm or Width / 2" autocomplete="off" />
+                <div id="expressionSuggestions" class="expression-suggestions" hidden></div>
+              </div>
+              <div id="expressionError" class="field-error" aria-live="polite"></div>
+            </label>
+            <label>
+              Comment
+              <textarea id="newComment" name="comment" class="comment-input" placeholder="Optional description"></textarea>
+            </label>
+            <div class="actions">
+              <button class="primary" type="submit">Create Parameter</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card section stack">
+          <div>
+            <h2>User Parameters</h2>
+            <p>Update the expression or comment for any existing user parameter and click Save.</p>
+          </div>
+          <div id="status" class="status" aria-live="polite"></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th><span class="header-label">Name</span><div class="column-resizer" data-col="name"></div></th>
+                  <th><span class="header-label">Expression</span><div class="column-resizer" data-col="expression"></div></th>
+                  <th><span class="header-label">Preview</span><div class="column-resizer" data-col="preview"></div></th>
+                  <th><span class="header-label">Comment</span></th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="parameterRows">
+                <tr>
+                  <td colspan="5" class="empty">Loading parameters...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+      <div id="overlayRoot" class="overlay-root"></div>
+    </div>
+
+    <script>
+      const UNIT_CATEGORIES = [
+        {
+          key: "Length",
+          label: "Length",
+          units: [
+            { value: "mm", label: "Millimeter (mm)" },
+            { value: "cm", label: "Centimeter (cm)" },
+            { value: "m", label: "Meter (m)" },
+            { value: "in", label: "Inch (in)" },
+            { value: "ft", label: "Foot (ft)" }
+          ]
+        },
+        {
+          key: "Angle",
+          label: "Angle",
+          units: [
+            { value: "deg", label: "Degree (deg)" },
+            { value: "rad", label: "Radian (rad)" }
+          ]
+        },
+        {
+          key: "Area",
+          label: "Area",
+          units: [
+            { value: "mm^2", label: "Square millimeter (mm^2)" },
+            { value: "cm^2", label: "Square centimeter (cm^2)" },
+            { value: "m^2", label: "Square meter (m^2)" },
+            { value: "in^2", label: "Square inch (in^2)" },
+            { value: "ft^2", label: "Square foot (ft^2)" }
+          ]
+        },
+        {
+          key: "Volume",
+          label: "Volume",
+          units: [
+            { value: "mm^3", label: "Cubic millimeter (mm^3)" },
+            { value: "cm^3", label: "Cubic centimeter (cm^3)" },
+            { value: "m^3", label: "Cubic meter (m^3)" },
+            { value: "in^3", label: "Cubic inch (in^3)" },
+            { value: "ft^3", label: "Cubic foot (ft^3)" },
+            { value: "L", label: "Liter (L)" }
+          ]
+        },
+        {
+          key: "Mass",
+          label: "Mass",
+          units: [
+            { value: "g", label: "Gram (g)" },
+            { value: "kg", label: "Kilogram (kg)" },
+            { value: "lbmass", label: "Pound mass (lbmass)" }
+          ]
+        },
+        {
+          key: "Time",
+          label: "Time",
+          units: [
+            { value: "s", label: "Second (s)" },
+            { value: "min", label: "Minute (min)" },
+            { value: "hour", label: "Hour (hour)" }
+          ]
+        },
+        {
+          key: "Density",
+          label: "Density",
+          units: [
+            { value: "kg/m^3", label: "Kilogram per cubic meter (kg/m^3)" },
+            { value: "g/cm^3", label: "Gram per cubic centimeter (g/cm^3)" }
+          ]
+        },
+        {
+          key: "Force",
+          label: "Force",
+          units: [
+            { value: "N", label: "Newton (N)" },
+            { value: "lbf", label: "Pound-force (lbf)" }
+          ]
+        },
+        {
+          key: "Pressure",
+          label: "Pressure",
+          units: [
+            { value: "Pa", label: "Pascal (Pa)" },
+            { value: "kPa", label: "Kilopascal (kPa)" },
+            { value: "MPa", label: "Megapascal (MPa)" },
+            { value: "psi", label: "Pound per square inch (psi)" }
+          ]
+        },
+        {
+          key: "Energy",
+          label: "Energy",
+          units: [
+            { value: "J", label: "Joule (J)" },
+            { value: "kJ", label: "Kilojoule (kJ)" }
+          ]
+        },
+        {
+          key: "Power",
+          label: "Power",
+          units: [
+            { value: "W", label: "Watt (W)" },
+            { value: "kW", label: "Kilowatt (kW)" },
+            { value: "hp", label: "Horsepower (hp)" }
+          ]
+        },
+        {
+          key: "Velocity",
+          label: "Velocity",
+          units: [
+            { value: "mm/s", label: "Millimeter per second (mm/s)" },
+            { value: "cm/s", label: "Centimeter per second (cm/s)" },
+            { value: "m/s", label: "Meter per second (m/s)" },
+            { value: "in/s", label: "Inch per second (in/s)" },
+            { value: "ft/s", label: "Foot per second (ft/s)" }
+          ]
+        }
+      ];
+
+      const TOP_LEVEL_UNITS = [
+        { value: "", label: "No Units" },
+        { value: "Text", label: "Text" }
+      ];
+
+      const DEFAULT_UNIT_CATEGORY_STATE = {
+        Length: true,
+        Angle: true,
+        Area: false,
+        Volume: false,
+        Mass: false,
+        Time: false,
+        Density: false,
+        Force: false,
+        Pressure: false,
+        Energy: false,
+        Power: false,
+        Velocity: false
+      };
+
+      const DEFAULT_TABLE_COLUMNS = {
+        name: 21,
+        expression: 27,
+        preview: 16,
+        comment: 24,
+        actions: 12
+      };
+
+      const COLUMN_KEYS = ["name", "expression", "preview", "comment", "actions"];
+
+      const EXPRESSION_FUNCTIONS = [
+        "abs", "acos", "acosh", "and", "asin", "asinh", "atan", "atanh",
+        "ceil", "cos", "cosh", "E", "exp", "floor", "Gravity", "if",
+        "ln", "log", "max", "min", "not", "or", "PI", "pow", "random",
+        "round", "sign", "sin", "sinh", "SpeedOfLight", "sqrt", "tan", "tanh"
+      ];
+
+      const EXPRESSION_CALLABLE = new Set([
+        "abs", "acos", "acosh", "asin", "asinh", "atan", "atanh",
+        "ceil", "cos", "cosh", "exp", "floor", "if",
+        "ln", "log", "max", "min", "pow", "random",
+        "round", "sign", "sin", "sinh", "sqrt", "tan", "tanh"
+      ]);
+
+
+      const state = {
+        parameters: [],
+        parameterNames: [],
+        settings: {
+          theme: "light",
+          rememberUnit: false,
+          lastUnit: "",
+          parameterTableColumns: { ...DEFAULT_TABLE_COLUMNS },
+          unitCategoryState: { ...DEFAULT_UNIT_CATEGORY_STATE }
+        },
+        documentDefaults: {
+          unit: "mm"
+        },
+        document: {
+          id: "",
+          name: ""
+        },
+        createUnit: "",
+        isUnitMenuOpen: false,
+        expressionAutocomplete: {
+          sections: [],
+          flatItems: [],
+          highlightedIndex: 0,
+          tokenStart: 0,
+          tokenEnd: 0,
+          tokenText: "",
+          insertionPrefix: "",
+          activeInputId: "",
+          activeParameterName: ""
+        },
+        paletteSize: {
+          width: 520,
+          height: 640
+        },
+        activeColumnResize: null,
+        updateInfo: {
+          currentVersion: "",
+          latestVersion: "",
+          hasUpdate: false,
+          latestUrl: "",
+          autoCheckUpdates: true,
+          updateState: "idle",
+          targetVersion: "",
+          error: ""
+        }
+      };
+
+      function normalizeColumnWidths(columns) {
+        const merged = { ...DEFAULT_TABLE_COLUMNS, ...(columns || {}) };
+        const total = Object.values(merged).reduce((sum, value) => sum + Number(value || 0), 0) || 100;
+        const normalized = {};
+        for (const [key, value] of Object.entries(merged)) {
+          normalized[key] = Number(((Number(value || 0) / total) * 100).toFixed(2));
+        }
+        return normalized;
+      }
+
+      function applyColumnWidths() {
+        const cols = state.settings.parameterTableColumns;
+        const headers = document.querySelectorAll(".table-wrap table thead th");
+        COLUMN_KEYS.forEach((key, i) => {
+          if (headers[i] && cols[key] !== undefined) {
+            headers[i].style.width = `${cols[key]}%`;
+          }
+        });
+      }
+
+      function setStatus(message, kind = "") {
+        const status = document.getElementById("status");
+        status.textContent = message || "";
+        status.className = kind ? `status ${kind}` : "status";
+      }
+
+      function setNameError(message) {
+        const nameInput = document.getElementById("newName");
+        const nameError = document.getElementById("nameError");
+        nameError.textContent = message || "";
+        nameInput.setAttribute("aria-invalid", message ? "true" : "false");
+      }
+
+      function setExpressionError(message) {
+        const expressionInput = document.getElementById("newExpression");
+        const expressionError = document.getElementById("expressionError");
+        expressionError.textContent = message || "";
+        expressionInput.setAttribute("aria-invalid", message ? "true" : "false");
+      }
+
+      function escapeHtml(value) {
+        return (value || "").replace(/[&<>"']/g, (char) => {
+          return ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+          })[char];
+        });
+      }
+
+      function getUnitDisplayLabel(value) {
+        for (const unit of TOP_LEVEL_UNITS) {
+          if (unit.value === value) {
+            return unit.label;
+          }
+        }
+
+        for (const category of UNIT_CATEGORIES) {
+          for (const unit of category.units) {
+            if (unit.value === value) {
+              return unit.label;
+            }
+          }
+        }
+
+        return value || "No Units";
+      }
+
+      function getDefaultCreateUnit() {
+        if (state.settings.rememberUnit && state.settings.lastUnit) {
+          return state.settings.lastUnit;
+        }
+        return state.documentDefaults.unit || "mm";
+      }
+
+      function applySelectedUnit(value, options = {}) {
+        const resolvedValue = value !== undefined ? value : getDefaultCreateUnit();
+        state.createUnit = resolvedValue;
+        document.getElementById("newUnit").value = resolvedValue;
+        document.getElementById("unitPickerLabel").textContent = getUnitDisplayLabel(resolvedValue);
+
+        if (options.persistLastUnit) {
+          state.settings.lastUnit = resolvedValue;
+        }
+      }
+
+      function renderToggle(id, isOn) {
+        const toggle = document.getElementById(id);
+        toggle.classList.toggle("is-on", isOn);
+        toggle.setAttribute("aria-pressed", String(isOn));
+      }
+
+      function renderUnitPicker() {
+        const menu = document.getElementById("unitPickerMenu");
+        const pieces = [];
+
+        for (const unit of TOP_LEVEL_UNITS) {
+          const selectedClass = unit.value === state.createUnit ? " is-selected" : "";
+          pieces.push(`<button class="unit-option${selectedClass}" type="button" data-unit-value="${escapeHtml(unit.value)}">${escapeHtml(unit.label)}</button>`);
+        }
+
+        for (const category of UNIT_CATEGORIES) {
+          const expanded = state.settings.unitCategoryState?.[category.key] !== false;
+          const headerClass = expanded ? "" : " is-collapsed";
+          const optionsHidden = expanded ? "" : " hidden";
+
+          pieces.push(`
+            <section class="unit-category" data-category-key="${escapeHtml(category.key)}">
+              <button class="unit-category-header${headerClass}" type="button" data-category-toggle="${escapeHtml(category.key)}">${escapeHtml(category.label)}</button>
+              <div class="unit-category-options"${optionsHidden}>
+                ${category.units.map((unit) => {
+                  const selectedClass = unit.value === state.createUnit ? " is-selected" : "";
+                  return `<button class="unit-option${selectedClass}" type="button" data-unit-value="${escapeHtml(unit.value)}">${escapeHtml(unit.label)}</button>`;
+                }).join("")}
+              </div>
+            </section>
+          `);
+        }
+
+        menu.innerHTML = pieces.join("");
+      }
+
+      function positionUnitMenu() {
+        const menu = document.getElementById("unitPickerMenu");
+        const button = document.getElementById("unitPickerButton");
+        const page = document.querySelector(".page");
+        const buttonRect = button.getBoundingClientRect();
+        const pageRect = page.getBoundingClientRect();
+        const gutter = 8;
+        const menuWidth = Math.max(buttonRect.width, 280);
+        const left = buttonRect.left - pageRect.left;
+        const top = buttonRect.bottom - pageRect.top + 6;
+        const maxLeft = Math.max(gutter, page.clientWidth - menuWidth - gutter);
+
+        menu.style.width = `${menuWidth}px`;
+        menu.style.left = `${Math.max(gutter, Math.min(left, maxLeft))}px`;
+        menu.style.top = `${Math.max(gutter, top)}px`;
+      }
+
+      function setUnitMenuOpen(isOpen) {
+        state.isUnitMenuOpen = isOpen;
+        const menu = document.getElementById("unitPickerMenu");
+        const button = document.getElementById("unitPickerButton");
+        const overlayRoot = document.getElementById("overlayRoot");
+        menu.hidden = !isOpen;
+        button.setAttribute("aria-expanded", String(isOpen));
+
+        if (isOpen) {
+          overlayRoot.appendChild(menu);
+          positionUnitMenu();
+        } else {
+          document.querySelector(".unit-picker").appendChild(menu);
+        }
+      }
+
+      function renderParameters(parameters) {
+        state.parameters = parameters || [];
+        const tbody = document.getElementById("parameterRows");
+
+        if (!state.parameters.length) {
+          tbody.innerHTML = `<tr><td colspan="5" class="empty">No user parameters were found in the active design.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = state.parameters.map((param, index) => {
+          const safeName = escapeHtml(param.name);
+          const safeExpression = escapeHtml(param.expression);
+          const safeComment = escapeHtml(param.comment);
+          const safePreview = escapeHtml(param.valuePreview);
+          const unitBadge = param.unit ? `<span class="pill">${escapeHtml(param.unit)}</span>` : "";
+          const favoriteBadge = param.isFavorite ? `<span class="pill">favorite</span>` : "";
+
+          return `
+            <tr data-index="${index}">
+              <td>
+                <strong>${safeName}</strong>
+                <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
+                  ${unitBadge}
+                  ${favoriteBadge}
+                </div>
+              </td>
+              <td>
+                <div class="field-shell">
+                  <input id="expressionRow${index}" class="mono expression-input" data-parameter-name="${safeName}" data-parameter-unit="${escapeHtml(param.unit || "")}" value="${safeExpression}" autocomplete="off" />
+                  <div class="field-error expression-field-error" aria-live="polite"></div>
+                </div>
+              </td>
+              <td class="mono">${safePreview}</td>
+              <td>
+                <textarea class="comment-input">${safeComment}</textarea>
+              </td>
+              <td>
+                <button class="primary save-button" type="button">Save</button>
+              </td>
+            </tr>
+          `;
+        }).join("");
+      }
+
+      function applyTheme(theme) {
+        const normalizedTheme = theme === "dark" ? "dark" : "light";
+        state.settings.theme = normalizedTheme;
+        document.documentElement.dataset.theme = normalizedTheme;
+        renderToggle("themeToggle", normalizedTheme === "dark");
+      }
+
+      function applySettings(settings) {
+        state.settings = {
+          ...state.settings,
+          ...settings,
+          parameterTableColumns: normalizeColumnWidths(
+            settings.parameterTableColumns || state.settings.parameterTableColumns
+          ),
+          unitCategoryState: {
+            ...DEFAULT_UNIT_CATEGORY_STATE,
+            ...state.settings.unitCategoryState,
+            ...(settings.unitCategoryState || {})
+          }
+        };
+
+        applyTheme(state.settings.theme);
+        renderToggle("rememberUnitToggle", !!state.settings.rememberUnit);
+        renderToggle("autoUpdateToggle", state.settings.autoCheckUpdates !== false);
+        renderUnitPicker();
+        applyColumnWidths();
+      }
+
+      function syncDefaultUnit(force = false) {
+        const nextUnit = getDefaultCreateUnit();
+        if (force || !document.getElementById("newUnit").value || !state.settings.rememberUnit) {
+          applySelectedUnit(nextUnit);
+          renderUnitPicker();
+        }
+      }
+
+      function applyStateFromFusion(payload) {
+        if (payload.document) {
+          state.document = { ...state.document, ...payload.document };
+        }
+
+        if (payload.settings && payload.settings.paletteSize) {
+          state.paletteSize = {
+            width: payload.settings.paletteSize.width || state.paletteSize.width,
+            height: payload.settings.paletteSize.height || state.paletteSize.height
+          };
+        }
+
+        if (payload.parameterNames) {
+          state.parameterNames = payload.parameterNames.slice();
+        }
+
+        if (payload.documentDefaults) {
+          state.documentDefaults = { ...state.documentDefaults, ...payload.documentDefaults };
+        }
+
+        if (payload.settings) {
+          applySettings(payload.settings);
+        }
+
+        if (payload.parameters) {
+          renderParameters(payload.parameters);
+        }
+
+        if (payload.updateInfo) {
+          state.updateInfo = { ...state.updateInfo, ...payload.updateInfo };
+          renderUpdatePill();
+        }
+
+        syncDefaultUnit();
+      }
+
+      async function refreshIfDocumentChanged() {
+        try {
+          const response = await sendToFusion("getActiveDocumentInfo");
+          if (!response.ok || !response.document) {
+            return;
+          }
+
+          const activeDocument = response.document;
+          const currentId = state.document.id || "";
+          const activeId = activeDocument.id || "";
+          const currentName = state.document.name || "";
+          const activeName = activeDocument.name || "";
+          const sameDocument = activeId ? activeId === currentId : activeName === currentName;
+
+          if (!sameDocument) {
+            await refreshParameters();
+          }
+        } catch (_error) {
+        }
+      }
+
+      function getFusionBridge() {
+        if (typeof adsk !== "undefined" && typeof adsk.fusionSendData === "function") {
+          return adsk;
+        }
+
+        if (window.adsk && typeof window.adsk.fusionSendData === "function") {
+          return window.adsk;
+        }
+
+        return null;
+      }
+
+      async function sendToFusion(action, data = {}) {
+        const bridge = getFusionBridge();
+        if (!bridge) {
+          throw new Error("Fusion palette bridge is not available.");
+        }
+
+        const rawResponse = await bridge.fusionSendData(action, JSON.stringify(data));
+        if (!rawResponse) {
+          return {};
+        }
+
+        if (typeof rawResponse === "string") {
+          return JSON.parse(rawResponse);
+        }
+
+        if (typeof rawResponse === "object") {
+          return rawResponse;
+        }
+
+        throw new Error(`Unexpected bridge response type: ${typeof rawResponse}`);
+      }
+
+      async function waitForFusionBridge(maxAttempts = 20, delayMs = 150) {
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+          if (getFusionBridge()) {
+            return true;
+          }
+
+          await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+        }
+
+        return false;
+      }
+
+      async function saveSettingsPartial(partialSettings, statusMessage = "") {
+        const response = await sendToFusion("saveSettings", partialSettings);
+        if (!response.ok) {
+          throw new Error(response.message || "Settings save failed.");
+        }
+
+        applyStateFromFusion(response);
+        if (statusMessage) {
+          setStatus(statusMessage, "success");
+        }
+
+        return response;
+      }
+
+      async function savePaletteSize() {
+        const width = Math.max(320, Math.round(window.innerWidth));
+        const height = Math.max(240, Math.round(window.innerHeight));
+        if (state.paletteSize.width === width && state.paletteSize.height === height) {
+          return;
+        }
+
+        state.paletteSize = { width, height };
+        try {
+          await saveSettingsPartial({ paletteSize: state.paletteSize });
+        } catch (error) {
+          setStatus(error.message, "error");
+        }
+      }
+
+      function getExpressionTokenAtCursor(input) {
+        const value = input.value;
+        const cursor = input.selectionStart ?? value.length;
+        const tokenPattern = /[A-Za-z0-9_"$Â°Âµ]/;
+
+        let start = cursor;
+        while (start > 0 && tokenPattern.test(value[start - 1])) {
+          start -= 1;
+        }
+
+        let end = cursor;
+        while (end < value.length && tokenPattern.test(value[end])) {
+          end += 1;
+        }
+
+        const tokenText = value.slice(start, end);
+        return { start, end, tokenText };
+      }
+
+      function closeExpressionSuggestions() {
+        state.expressionAutocomplete = {
+          sections: [],
+          flatItems: [],
+          highlightedIndex: 0,
+          tokenStart: 0,
+          tokenEnd: 0,
+          tokenText: "",
+          insertionPrefix: "",
+          activeInputId: "",
+          activeParameterName: ""
+        };
+        document.getElementById("expressionSuggestions").hidden = true;
+        document.getElementById("expressionSuggestions").innerHTML = "";
+      }
+
+      function renderExpressionSuggestions() {
+        const box = document.getElementById("expressionSuggestions");
+        const { sections, flatItems, highlightedIndex } = state.expressionAutocomplete;
+        if (!flatItems.length) {
+          box.hidden = true;
+          box.innerHTML = "";
+          return;
+        }
+
+        let flatIndex = 0;
+        const pieces = [];
+        for (const section of sections) {
+          pieces.push(`<div class="expression-suggestion-section">${escapeHtml(section.label)}</div>`);
+          for (const item of section.items) {
+            const highlightedClass = flatIndex === highlightedIndex ? " is-highlighted" : "";
+            const displayText = EXPRESSION_CALLABLE.has(item) ? `${item}()` : item;
+            pieces.push(`<button class="expression-suggestion${highlightedClass}" type="button" data-expression-suggestion="${escapeHtml(item)}">${escapeHtml(displayText)}</button>`);
+            flatIndex++;
+          }
+        }
+        box.innerHTML = pieces.join("");
+        box.hidden = false;
+      }
+
+      function positionExpressionSuggestions(input) {
+        const box = document.getElementById("expressionSuggestions");
+        const overlayRoot = document.getElementById("overlayRoot");
+        const page = document.querySelector(".page");
+        const inputRect = input.getBoundingClientRect();
+        const pageRect = page.getBoundingClientRect();
+        const gutter = 8;
+        const boxWidth = Math.max(inputRect.width, 280);
+        const left = inputRect.left - pageRect.left;
+        const top = inputRect.bottom - pageRect.top + 6;
+        const maxLeft = Math.max(gutter, page.clientWidth - boxWidth - gutter);
+
+        overlayRoot.appendChild(box);
+        box.style.width = `${boxWidth}px`;
+        box.style.left = `${Math.max(gutter, Math.min(left, maxLeft))}px`;
+        box.style.top = `${Math.max(gutter, top)}px`;
+      }
+
+      function updateExpressionSuggestions(input, parameterName = "") {
+        const { start, end, tokenText } = getExpressionTokenAtCursor(input);
+
+        if (!tokenText) {
+          closeExpressionSuggestions();
+          return;
+        }
+
+        function buildUnitSections(folded, exactToken) {
+          const result = [];
+          for (const category of UNIT_CATEGORIES) {
+            const matches = category.units.map((u) => u.value).filter((v) => v.toLowerCase().startsWith(folded));
+            if (!matches.length) continue;
+            const exact = matches.filter((v) => v === exactToken);
+            const rest = matches.filter((v) => v !== exactToken);
+            result.push({ label: category.label, items: [...exact, ...rest].slice(0, 12) });
+          }
+          return result;
+        }
+
+        // Case 1: identifier starting with a letter → parameters, functions, grouped units
+        if (/^[A-Za-z_"$Â°Âµ][A-Za-z0-9_"$Â°Âµ]*$/.test(tokenText)) {
+          const folded = tokenText.toLowerCase();
+
+          function buildItems(pool, exclude) {
+            const matches = pool.filter((item) => item.toLowerCase().startsWith(folded) && item !== exclude);
+            const exact = matches.filter((item) => item === tokenText);
+            const rest = matches.filter((item) => item !== tokenText);
+            return [...exact, ...rest].slice(0, 12);
+          }
+
+          const paramItems = buildItems(state.parameterNames, parameterName);
+          const funcItems = buildItems(EXPRESSION_FUNCTIONS, null);
+          const unitSections = buildUnitSections(folded, tokenText);
+
+          const sections = [];
+          if (paramItems.length) sections.push({ label: "Parameters", items: paramItems });
+          if (funcItems.length) sections.push({ label: "Functions", items: funcItems });
+          sections.push(...unitSections);
+
+          const flatItems = sections.flatMap((s) => s.items);
+
+          if (!flatItems.length) {
+            closeExpressionSuggestions();
+            return;
+          }
+
+          state.expressionAutocomplete = {
+            sections,
+            flatItems,
+            highlightedIndex: 0,
+            tokenStart: start,
+            tokenEnd: end,
+            tokenText,
+            insertionPrefix: "",
+            activeInputId: input.id || "",
+            activeParameterName: parameterName || ""
+          };
+          positionExpressionSuggestions(input);
+          renderExpressionSuggestions();
+          return;
+        }
+
+        // Case 2: token starts with a digit and has a trailing letter suffix → grouped unit completion
+        if (/^[0-9]/.test(tokenText)) {
+          let letterIdx = tokenText.length;
+          for (let i = tokenText.length - 1; i >= 0; i--) {
+            if (/[A-Za-z]/.test(tokenText[i])) {
+              letterIdx = i;
+            } else {
+              break;
+            }
+          }
+
+          if (letterIdx < tokenText.length) {
+            const letterPart = tokenText.slice(letterIdx);
+            const folded = letterPart.toLowerCase();
+            const unitSections = buildUnitSections(folded, letterPart);
+            const flatItems = unitSections.flatMap((s) => s.items);
+
+            if (flatItems.length) {
+              state.expressionAutocomplete = {
+                sections: unitSections,
+                flatItems,
+                highlightedIndex: 0,
+                tokenStart: start + letterIdx,
+                tokenEnd: end,
+                tokenText: letterPart,
+                insertionPrefix: " ",
+                activeInputId: input.id || "",
+                activeParameterName: parameterName || ""
+              };
+              positionExpressionSuggestions(input);
+              renderExpressionSuggestions();
+              return;
+            }
+          }
+        }
+
+        closeExpressionSuggestions();
+      }
+
+      function applyExpressionSuggestion(name) {
+        const input = document.getElementById(state.expressionAutocomplete.activeInputId);
+        if (!input) {
+          closeExpressionSuggestions();
+          return;
+        }
+        const { tokenStart, tokenEnd, insertionPrefix } = state.expressionAutocomplete;
+        const prefix = insertionPrefix || "";
+        const isCallable = EXPRESSION_CALLABLE.has(name);
+        const insertion = isCallable ? `${prefix}${name}(  )` : `${prefix}${name}`;
+        input.value = `${input.value.slice(0, tokenStart)}${insertion}${input.value.slice(tokenEnd)}`;
+        const caret = tokenStart + prefix.length + name.length + (isCallable ? 2 : 0);
+        input.focus();
+        input.setSelectionRange(caret, caret);
+        closeExpressionSuggestions();
+        validateExpressionAgainstFusion(input);
+      }
+
+      function setExpressionValidationState(input, message, kind = "error") {
+        if (input.id === "newExpression") {
+          setExpressionError(message);
+          return;
+        }
+
+        const errorNode = input.parentElement ? input.parentElement.querySelector(".expression-field-error") : null;
+        if (errorNode) {
+          errorNode.textContent = message || "";
+          errorNode.classList.toggle("is-valid", kind === "success");
+        }
+        input.setAttribute("aria-invalid", (message && kind === "error") ? "true" : "false");
+      }
+
+      async function validateExpressionAgainstFusion(input) {
+        const expression = typeof input === "string" ? input : input.value;
+        const currentParameterName =
+          typeof input === "string"
+            ? ""
+            : (
+                input.getAttribute("data-parameter-name")
+                || input.getAttribute("data-current-parameter-name")
+                || (input.id === "newExpression" ? document.getElementById("newName").value.trim() : "")
+              );
+        const units =
+          typeof input === "string"
+            ? document.getElementById("newUnit").value
+            : (
+                input.getAttribute("data-parameter-unit")
+                || (input.id === "newExpression" ? document.getElementById("newUnit").value : "")
+              );
+        if (!expression || !expression.trim()) {
+          if (typeof input === "string") {
+            setExpressionError("Expression is required.");
+          } else {
+            setExpressionValidationState(input, "Expression is required.");
+          }
+          return false;
+        }
+
+        try {
+          const response = await sendToFusion("validateExpression", { expression, currentParameterName, units });
+          if (!response.ok) {
+            if (typeof input === "string") {
+              setExpressionError(response.message || "Invalid expression.");
+            } else {
+              setExpressionValidationState(input, response.message || "Invalid expression.");
+            }
+            return false;
+          }
+        } catch (error) {
+          if (typeof input === "string") {
+            setExpressionError(error.message);
+          } else {
+            setExpressionValidationState(input, error.message);
+          }
+          return false;
+        }
+
+        if (typeof input === "string") {
+          setExpressionError("");
+        } else {
+          setExpressionValidationState(input, "Expression valid.", "success");
+        }
+        return true;
+      }
+
+      function validateParameterNameLocally(name) {
+        if (!name) {
+          return "Name is required.";
+        }
+        if (name.trim() !== name) {
+          return "Name cannot start or end with whitespace.";
+        }
+        if (/\s/.test(name)) {
+          return "Name cannot contain spaces or other whitespace.";
+        }
+        if (!/^[A-Za-z_"$°µ][A-Za-z0-9_"$°µ]*$/.test(name)) {
+          return 'Use letters, digits, and only these symbols: _, ", $, °, µ. The name must not start with a digit.';
+        }
+        return "";
+      }
+
+      async function validateCreateNameAgainstFusion(name) {
+        const localError = validateParameterNameLocally(name);
+        if (localError) {
+          setNameError(localError);
+          return false;
+        }
+
+        try {
+          const response = await sendToFusion("validateParameterName", { name });
+          if (!response.ok) {
+            setNameError(response.message || "Invalid parameter name.");
+            return false;
+          }
+        } catch (error) {
+          setNameError(error.message);
+          return false;
+        }
+
+        setNameError("");
+        return true;
+      }
+
+      async function refreshParameters() {
+        setStatus("Refreshing parameters...");
+        try {
+          const response = await sendToFusion("refresh");
+          if (!response.ok) {
+            throw new Error(response.message || "Refresh failed.");
+          }
+
+          applyStateFromFusion(response);
+          setStatus(`Loaded ${response.parameters.length} parameter(s).`, "success");
+        } catch (error) {
+          setStatus(error.message, "error");
+        }
+      }
+
+      document.getElementById("refreshButton").addEventListener("click", () => {
+        refreshParameters();
+      });
+
+      document.getElementById("themeToggle").addEventListener("click", async () => {
+        const nextTheme = state.settings.theme === "dark" ? "light" : "dark";
+        const previousTheme = state.settings.theme;
+
+        applyTheme(nextTheme);
+        setStatus("Saving appearance setting...");
+
+        try {
+          await saveSettingsPartial({ theme: nextTheme }, `Appearance updated to ${nextTheme} mode.`);
+        } catch (error) {
+          applyTheme(previousTheme);
+          setStatus(error.message, "error");
+        }
+      });
+
+      document.getElementById("autoUpdateToggle").addEventListener("click", async () => {
+        const nextValue = state.settings.autoCheckUpdates === false ? true : false;
+        const previousValue = state.settings.autoCheckUpdates !== false;
+
+        state.settings.autoCheckUpdates = nextValue;
+        renderToggle("autoUpdateToggle", nextValue);
+
+        try {
+          await saveSettingsPartial({ autoCheckUpdates: nextValue });
+          if (nextValue && !state.updateInfo.latestVersion) {
+            const response = await sendToFusion("checkForUpdates");
+            if (response.ok !== false) {
+              applyStateFromFusion(response);
+            }
+          }
+        } catch (error) {
+          state.settings.autoCheckUpdates = previousValue;
+          renderToggle("autoUpdateToggle", previousValue);
+          setStatus(error.message, "error");
+        }
+      });
+
+      let nameValidationTimer = null;
+      document.getElementById("newName").addEventListener("input", (event) => {
+        const value = event.currentTarget.value;
+        const localError = validateParameterNameLocally(value);
+        setNameError(localError);
+
+        if (nameValidationTimer) {
+          window.clearTimeout(nameValidationTimer);
+        }
+
+        if (localError || !value) {
+          return;
+        }
+
+        nameValidationTimer = window.setTimeout(() => {
+          validateCreateNameAgainstFusion(value);
+        }, 180);
+      });
+
+      document.getElementById("newName").addEventListener("blur", async (event) => {
+        if (nameValidationTimer) {
+          window.clearTimeout(nameValidationTimer);
+        }
+        await validateCreateNameAgainstFusion(event.currentTarget.value);
+      });
+
+      let expressionValidationTimer = null;
+      document.getElementById("newExpression").addEventListener("input", (event) => {
+        updateExpressionSuggestions(event.currentTarget, document.getElementById("newName").value.trim());
+
+        if (expressionValidationTimer) {
+          window.clearTimeout(expressionValidationTimer);
+        }
+
+        const input = event.currentTarget;
+        const value = input.value;
+        if (!value.trim()) {
+          setExpressionError("Expression is required.");
+          return;
+        }
+
+        expressionValidationTimer = window.setTimeout(() => {
+          validateExpressionAgainstFusion(input);
+        }, 200);
+      });
+
+      document.getElementById("newExpression").addEventListener("click", (event) => {
+        updateExpressionSuggestions(event.currentTarget, document.getElementById("newName").value.trim());
+      });
+
+      document.getElementById("newExpression").addEventListener("keydown", (event) => {
+        const { flatItems, highlightedIndex } = state.expressionAutocomplete;
+        if (!flatItems.length) {
+          return;
+        }
+
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          state.expressionAutocomplete.highlightedIndex = (highlightedIndex + 1) % flatItems.length;
+          renderExpressionSuggestions();
+          return;
+        }
+
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          state.expressionAutocomplete.highlightedIndex = (highlightedIndex - 1 + flatItems.length) % flatItems.length;
+          renderExpressionSuggestions();
+          return;
+        }
+
+        if (event.key === "Enter") {
+          event.preventDefault();
+          applyExpressionSuggestion(flatItems[highlightedIndex]);
+          return;
+        }
+
+        if (event.key === "Escape") {
+          closeExpressionSuggestions();
+        }
+      });
+
+      document.getElementById("newExpression").addEventListener("blur", async (event) => {
+        window.setTimeout(() => closeExpressionSuggestions(), 120);
+        if (expressionValidationTimer) {
+          window.clearTimeout(expressionValidationTimer);
+        }
+        await validateExpressionAgainstFusion(event.currentTarget);
+      });
+
+      document.getElementById("expressionSuggestions").addEventListener("mousedown", (event) => {
+        event.preventDefault();
+      });
+
+      document.getElementById("expressionSuggestions").addEventListener("click", (event) => {
+        const suggestion = event.target.closest("[data-expression-suggestion]");
+        if (!suggestion) {
+          return;
+        }
+        applyExpressionSuggestion(suggestion.getAttribute("data-expression-suggestion"));
+      });
+
+      const parameterRows = document.getElementById("parameterRows");
+      let rowExpressionValidationTimer = null;
+
+      parameterRows.addEventListener("input", (event) => {
+        const input = event.target.closest(".expression-input");
+        if (!input) {
+          return;
+        }
+
+        updateExpressionSuggestions(input, input.getAttribute("data-parameter-name") || "");
+
+        if (rowExpressionValidationTimer) {
+          window.clearTimeout(rowExpressionValidationTimer);
+        }
+
+        const value = input.value;
+        if (!value.trim()) {
+          setExpressionValidationState(input, "Expression is required.");
+          return;
+        }
+
+        rowExpressionValidationTimer = window.setTimeout(() => {
+          validateExpressionAgainstFusion(input);
+        }, 200);
+      });
+
+      parameterRows.addEventListener("click", (event) => {
+        const input = event.target.closest(".expression-input");
+        if (!input) {
+          return;
+        }
+
+        updateExpressionSuggestions(input, input.getAttribute("data-parameter-name") || "");
+      });
+
+      parameterRows.addEventListener("keydown", (event) => {
+        const input = event.target.closest(".expression-input");
+        if (!input) {
+          return;
+        }
+
+        const { flatItems, highlightedIndex, activeInputId } = state.expressionAutocomplete;
+        if (!flatItems.length || activeInputId !== input.id) {
+          return;
+        }
+
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          state.expressionAutocomplete.highlightedIndex = (highlightedIndex + 1) % flatItems.length;
+          renderExpressionSuggestions();
+          return;
+        }
+
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          state.expressionAutocomplete.highlightedIndex = (highlightedIndex - 1 + flatItems.length) % flatItems.length;
+          renderExpressionSuggestions();
+          return;
+        }
+
+        if (event.key === "Enter") {
+          event.preventDefault();
+          applyExpressionSuggestion(flatItems[highlightedIndex]);
+          return;
+        }
+
+        if (event.key === "Escape") {
+          closeExpressionSuggestions();
+        }
+      });
+
+      parameterRows.addEventListener("focusout", async (event) => {
+        const input = event.target.closest(".expression-input");
+        if (!input) {
+          return;
+        }
+
+        window.setTimeout(() => closeExpressionSuggestions(), 120);
+        if (rowExpressionValidationTimer) {
+          window.clearTimeout(rowExpressionValidationTimer);
+        }
+        await validateExpressionAgainstFusion(input);
+      });
+
+      document.getElementById("rememberUnitToggle").addEventListener("click", async () => {
+        const nextValue = !state.settings.rememberUnit;
+        const previousValue = state.settings.rememberUnit;
+
+        state.settings.rememberUnit = nextValue;
+        renderToggle("rememberUnitToggle", nextValue);
+        if (!nextValue) {
+          applySelectedUnit(state.documentDefaults.unit || "mm");
+          renderUnitPicker();
+        }
+
+        setStatus("Saving unit preference...");
+
+        try {
+          await saveSettingsPartial({
+            rememberUnit: nextValue,
+            lastUnit: state.createUnit
+          }, `Remember Unit ${nextValue ? "enabled" : "disabled"}.`);
+        } catch (error) {
+          state.settings.rememberUnit = previousValue;
+          renderToggle("rememberUnitToggle", previousValue);
+          syncDefaultUnit(true);
+          setStatus(error.message, "error");
+        }
+      });
+
+      document.getElementById("unitPickerMenu").addEventListener("click", async (event) => {
+        event.stopPropagation();
+
+        const unitButton = event.target.closest("[data-unit-value]");
+        if (unitButton) {
+          const unitValue = unitButton.getAttribute("data-unit-value");
+          applySelectedUnit(unitValue, { persistLastUnit: true });
+          renderUnitPicker();
+          setUnitMenuOpen(false);
+
+          if (state.settings.rememberUnit) {
+            try {
+              await saveSettingsPartial({ lastUnit: unitValue });
+            } catch (error) {
+              setStatus(error.message, "error");
+            }
+          }
+          return;
+        }
+
+        const categoryButton = event.target.closest("[data-category-toggle]");
+        if (!categoryButton) {
+          return;
+        }
+
+        const categoryKey = categoryButton.getAttribute("data-category-toggle");
+        const nextCategoryState = {
+          ...state.settings.unitCategoryState,
+          [categoryKey]: !(state.settings.unitCategoryState?.[categoryKey] !== false)
+        };
+
+        state.settings.unitCategoryState = nextCategoryState;
+        renderUnitPicker();
+        positionUnitMenu();
+
+        try {
+          await saveSettingsPartial({ unitCategoryState: nextCategoryState });
+          setUnitMenuOpen(true);
+        } catch (error) {
+          setStatus(error.message, "error");
+        }
+      });
+
+      document.getElementById("unitPickerButton").addEventListener("click", (event) => {
+        event.stopPropagation();
+        setUnitMenuOpen(!state.isUnitMenuOpen);
+      });
+
+      document.addEventListener("click", (event) => {
+        const picker = event.target.closest(".unit-picker");
+        const menu = event.target.closest("#unitPickerMenu");
+        if (!picker && !menu) {
+          setUnitMenuOpen(false);
+        }
+
+        const expressionField = event.target.closest(".field-shell") || event.target.closest(".expression-input");
+        const expressionMenu = event.target.closest("#expressionSuggestions");
+        if (!expressionField && !expressionMenu) {
+          closeExpressionSuggestions();
+        }
+      });
+
+      window.addEventListener("resize", () => {
+        if (state.isUnitMenuOpen) {
+          positionUnitMenu();
+        }
+        if (state.expressionAutocomplete.activeInputId) {
+          const activeInput = document.getElementById(state.expressionAutocomplete.activeInputId);
+          if (activeInput) {
+            positionExpressionSuggestions(activeInput);
+          }
+        }
+      });
+
+      let paletteResizeTimer = null;
+      window.addEventListener("resize", () => {
+        if (paletteResizeTimer) {
+          window.clearTimeout(paletteResizeTimer);
+        }
+        paletteResizeTimer = window.setTimeout(() => {
+          savePaletteSize();
+        }, 160);
+      });
+
+      window.addEventListener("scroll", () => {
+        if (state.isUnitMenuOpen) {
+          positionUnitMenu();
+        }
+        if (state.expressionAutocomplete.activeInputId) {
+          const activeInput = document.getElementById(state.expressionAutocomplete.activeInputId);
+          if (activeInput) {
+            positionExpressionSuggestions(activeInput);
+          }
+        }
+      });
+
+      document.addEventListener("mousedown", (event) => {
+        const resizer = event.target.closest(".column-resizer");
+        if (!resizer) {
+          return;
+        }
+
+        const colKey = resizer.dataset.col;
+        const colIndex = COLUMN_KEYS.indexOf(colKey);
+        if (colIndex < 0 || colIndex >= COLUMN_KEYS.length - 1) {
+          return;
+        }
+
+        const nextColKey = COLUMN_KEYS[colIndex + 1];
+        const table = document.querySelector(".table-wrap table");
+        const tableWidth = table ? table.getBoundingClientRect().width : 1;
+
+        state.activeColumnResize = {
+          colKey,
+          nextColKey,
+          startX: event.clientX,
+          startWidthA: state.settings.parameterTableColumns[colKey],
+          startWidthB: state.settings.parameterTableColumns[nextColKey],
+          tableWidth,
+          resizer
+        };
+
+        resizer.classList.add("is-active");
+        event.preventDefault();
+      });
+
+      document.addEventListener("mousemove", (event) => {
+        if (!state.activeColumnResize) {
+          return;
+        }
+
+        const { colKey, nextColKey, startX, startWidthA, startWidthB, tableWidth } = state.activeColumnResize;
+        const deltaX = event.clientX - startX;
+        const deltaPct = (deltaX / tableWidth) * 100;
+        const minWidth = 5;
+        const combined = startWidthA + startWidthB;
+        const newA = Math.max(minWidth, Math.min(startWidthA + deltaPct, combined - minWidth));
+        const newB = combined - newA;
+
+        state.settings.parameterTableColumns[colKey] = Number(newA.toFixed(2));
+        state.settings.parameterTableColumns[nextColKey] = Number(newB.toFixed(2));
+        applyColumnWidths();
+      });
+
+      document.addEventListener("mouseup", async () => {
+        if (!state.activeColumnResize) {
+          return;
+        }
+
+        state.activeColumnResize.resizer.classList.remove("is-active");
+        state.activeColumnResize = null;
+
+        try {
+          await saveSettingsPartial({ parameterTableColumns: state.settings.parameterTableColumns });
+        } catch (error) {
+          setStatus(error.message, "error");
+        }
+      });
+
+      document.getElementById("createForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const isNameValid = await validateCreateNameAgainstFusion(form.name.value);
+        if (!isNameValid) {
+          return;
+        }
+
+        const isExpressionValid = await validateExpressionAgainstFusion(form.expression);
+        if (!isExpressionValid) {
+          return;
+        }
+
+        const data = {
+          name: form.name.value,
+          unit: document.getElementById("newUnit").value,
+          expression: form.expression.value,
+          comment: form.comment.value
+        };
+
+        setStatus(`Creating ${data.name}...`);
+        try {
+          const response = await sendToFusion("createParameter", data);
+          if (!response.ok) {
+            throw new Error(response.message || "Create failed.");
+          }
+
+          form.reset();
+          setNameError("");
+          setExpressionError("");
+          syncDefaultUnit(true);
+          applyStateFromFusion(response);
+          setStatus(`Created ${data.name}.`, "success");
+        } catch (error) {
+          setStatus(error.message, "error");
+        }
+      });
+
+      document.getElementById("parameterRows").addEventListener("click", async (event) => {
+        const button = event.target.closest(".save-button");
+        if (!button) {
+          return;
+        }
+
+        const row = button.closest("tr");
+        const index = Number(row.dataset.index);
+        const parameter = state.parameters[index];
+        if (!parameter) {
+          return;
+        }
+
+        const expression = row.querySelector(".expression-input").value;
+        const expressionInput = row.querySelector(".expression-input");
+        const comment = row.querySelector(".comment-input").value;
+
+        const isExpressionValid = await validateExpressionAgainstFusion(expressionInput);
+        if (!isExpressionValid) {
+          return;
+        }
+
+        setStatus(`Saving ${parameter.name}...`);
+        try {
+          const response = await sendToFusion("updateParameter", {
+            name: parameter.name,
+            expression,
+            comment
+          });
+          if (!response.ok) {
+            throw new Error(response.message || "Save failed.");
+          }
+
+          applyStateFromFusion(response);
+          setStatus(`Saved ${parameter.name}.`, "success");
+        } catch (error) {
+          setStatus(error.message, "error");
+        }
+      });
+
+      function renderUpdatePill() {
+        const pill = document.getElementById("updatePill");
+        const info = state.updateInfo;
+        if (!info || !info.currentVersion) {
+          pill.style.display = "none";
+          return;
+        }
+        pill.style.display = "";
+        if (info.updateState === "staged") {
+          pill.className = "update-pill is-staged";
+          pill.textContent = `v${info.currentVersion} — Restart to apply v${info.targetVersion}`;
+          pill.onclick = null;
+          return;
+        }
+        if (info.hasUpdate) {
+          pill.className = "update-pill has-update";
+          pill.textContent = `v${info.currentVersion} — Update available: v${info.latestVersion}`;
+          pill.onclick = () => handleInstallUpdate();
+          return;
+        }
+        pill.className = "update-pill";
+        pill.textContent = `v${info.currentVersion}`;
+        pill.onclick = null;
+      }
+
+      async function handleInstallUpdate() {
+        const pill = document.getElementById("updatePill");
+        pill.className = "update-pill is-staged";
+        pill.textContent = "Downloading update…";
+        pill.onclick = null;
+        try {
+          const response = await sendToFusion("downloadAndStageUpdate");
+          if (response.ok !== false) {
+            applyStateFromFusion(response);
+          }
+        } catch (error) {
+          setStatus(error.message, "error");
+          renderUpdatePill();
+        }
+      }
+
+      window.fusionJavaScriptHandler = {
+        handle(action, payload) {
+          try {
+            const data = payload ? JSON.parse(payload) : {};
+            if (action === "renderState" || action === "renderParameters") {
+              applyStateFromFusion(data);
+            }
+          } catch (error) {
+            console.error(error);
+            return "FAILED";
+          }
+
+          return "OK";
+        }
+      };
+
+      window.addEventListener("load", async () => {
+        try {
+          applySettings(state.settings);
+          syncDefaultUnit(true);
+          renderUnitPicker();
+
+          const bridgeReady = await waitForFusionBridge();
+          if (!bridgeReady) {
+            throw new Error("Fusion palette bridge is not available.");
+          }
+
+          const response = await sendToFusion("ready");
+          if (response.ok) {
+            applyStateFromFusion(response);
+            setStatus(`Loaded ${response.parameters.length} parameter(s).`, "success");
+
+            window.setTimeout(async () => {
+              try {
+                const autoCheck = state.settings.autoCheckUpdates !== false;
+                const hasCached = !!(state.updateInfo && state.updateInfo.latestVersion);
+                if (autoCheck && !hasCached) {
+                  const updateResponse = await sendToFusion("checkForUpdates");
+                  if (updateResponse.ok !== false) {
+                    applyStateFromFusion(updateResponse);
+                  }
+                }
+              } catch (_error) {
+              }
+            }, 0);
+          }
+        } catch (error) {
+          setStatus(error.message, "error");
+        }
+      });
+
+      window.addEventListener("focus", () => {
+        refreshIfDocumentChanged();
+      });
+    </script>
+  </body>
+</html>
