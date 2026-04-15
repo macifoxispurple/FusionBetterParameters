@@ -4080,10 +4080,12 @@
           setGlobalStatus(`Loaded ${response.parameters.length} parameter(s).`, "success");
 
           if (state.settings.autoFitColumns === true) {
-            const nextColumns = buildAutoFitColumnWidths();
-            state.settings.parameterTableColumns = nextColumns;
-            applyColumnWidths();
-            saveSettingsPartial({ parameterTableColumns: nextColumns }).catch(() => {});
+            requestAnimationFrame(() => {
+              const nextColumns = buildAutoFitColumnWidths();
+              state.settings.parameterTableColumns = nextColumns;
+              applyColumnWidths();
+              saveSettingsPartial({ parameterTableColumns: nextColumns }).catch(() => {});
+            });
           }
         } catch (error) {
           setGlobalStatus(error.message, "error");
