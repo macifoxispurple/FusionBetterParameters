@@ -166,6 +166,16 @@
         color: var(--accent-strong);
       }
 
+      .global-status {
+        padding: 0 4px;
+      }
+
+      .section-meta {
+        min-height: 20px;
+        font-size: 0.92rem;
+        color: var(--muted);
+      }
+
       .field-error {
         min-height: 18px;
         font-size: 0.84rem;
@@ -222,9 +232,9 @@
 
       .comment-input {
         min-height: 45px;
-        height: 45px;
-        resize: vertical;
-        overflow: auto;
+        height: auto;
+        resize: none;
+        overflow: hidden;
       }
 
       .table-wrap {
@@ -247,7 +257,7 @@
         padding: 11px 10px;
         border-bottom: 1px solid rgba(216, 207, 194, 0.22);
         text-align: left;
-        vertical-align: top;
+        vertical-align: middle;
       }
 
       th {
@@ -714,6 +724,8 @@
           </div>
         </section>
 
+        <div id="globalStatus" class="status global-status" aria-live="polite"></div>
+
         <section class="card section stack">
           <div>
             <h2>Create User Parameter</h2>
@@ -767,7 +779,7 @@
             </div>
             <button id="refreshButton" class="ghost" type="button">Refresh</button>
           </div>
-          <div id="status" class="status" aria-live="polite"></div>
+          <div id="parameterSummary" class="section-meta" aria-live="polite"></div>
           <div class="table-wrap">
             <table>
               <thead>
@@ -1044,15 +1056,31 @@
         });
       }
 
-      function setStatus(message, kind = "") {
-        const status = document.getElementById("status");
+      function setGlobalStatus(message, kind = "") {
+        const status = document.getElementById("globalStatus");
         status.textContent = message || "";
         status.className = kind ? `status ${kind}` : "status";
+        status.classList.add("global-status");
       }
 
-      function setParameterCountStatus(parameters) {
+      function setParameterSummary(parameters) {
+        const summary = document.getElementById("parameterSummary");
         const count = Array.isArray(parameters) ? parameters.length : 0;
-        setStatus(`Loaded ${count} parameter(s).`, "success");
+        const noun = count === 1 ? "parameter" : "parameters";
+        summary.textContent = `${count} ${noun} in this document.`;
+      }
+
+      function autoSizeTextarea(textarea) {
+        if (!textarea) {
+          return;
+        }
+
+        textarea.style.height = "auto";
+        textarea.style.height = `${Math.max(textarea.scrollHeight, 45)}px`;
+      }
+
+      function autoSizeCommentInputs(root = document) {
+        root.querySelectorAll(".comment-input").forEach((textarea) => autoSizeTextarea(textarea));
       }
 
       function setNameError(message) {
@@ -1200,7 +1228,7 @@
           const safeExpression = escapeHtml(param.expression);
           const safeComment = escapeHtml(param.comment);
           const safePreview = escapeHtml(param.valuePreview);
-          const unitBadge = param.unit ? `<span class="pill">${escapeHtml(param.unit)}</span>` : "";
+          const unitBadge = `<span class="pill">${escapeHtml(param.unit || "No Units")}</span>`;
           const favoriteBadge = param.isFavorite ? `<span class="pill">favorite</span>` : "";
 
           return `
@@ -1228,6 +1256,8 @@
             </tr>
           `;
         }).join("");
+
+        autoSizeCommentInputs(tbody);
       }
 
       function applyTheme(theme) {
@@ -1292,7 +1322,7 @@
 
         if (payload.parameters) {
           renderParameters(payload.parameters);
-          setParameterCountStatus(payload.parameters);
+          setParameterSummary(payload.parameters);
         }
 
         if (payload.updateInfo) {
@@ -1379,7 +1409,7 @@
 
         applyStateFromFusion(response);
         if (statusMessage) {
-          setStatus(statusMessage, "success");
+          setGlobalStatus(statusMessage, "success");
         }
 
         return response;
@@ -1396,7 +1426,7 @@
         try {
           await saveSettingsPartial({ paletteSize: state.paletteSize });
         } catch (error) {
-          setStatus(error.message, "error");
+          setGlobalStatus(error.message, "error");
         }
       }
 
@@ -1703,7 +1733,7 @@
       }
 
       async function refreshParameters() {
-        setStatus("Refreshing parameters...");
+        setGlobalStatus("Refreshing parameters...");
         try {
           const response = await sendToFusion("refresh");
           if (!response.ok) {
@@ -1711,9 +1741,9 @@
           }
 
           applyStateFromFusion(response);
-          setStatus(`Loaded ${response.parameters.length} parameter(s).`, "success");
+          setGlobalStatus(`Loaded ${response.parameters.length} parameter(s).`, "success");
         } catch (error) {
-          setStatus(error.message, "error");
+          setGlobalStatus(error.message, "error");
         }
       }
 
@@ -1726,13 +1756,13 @@
         const previousTheme = state.settings.theme;
 
         applyTheme(nextTheme);
-        setStatus("Saving appearance setting...");
+        setGlobalStatus("Saving appearance setting...");
 
         try {
           await saveSettingsPartial({ theme: nextTheme }, `Appearance updated to ${nextTheme} mode.`);
         } catch (error) {
           applyTheme(previousTheme);
-          setStatus(error.message, "error");
+          setGlobalStatus(error.message, "error");
         }
       });
 
@@ -1754,7 +1784,7 @@
         } catch (error) {
           state.settings.autoCheckUpdates = previousValue;
           renderToggle("autoUpdateToggle", previousValue);
-          setStatus(error.message, "error");
+          setGlobalStatus(error.message, "error");
         }
       });
 
@@ -1865,6 +1895,12 @@
       let rowExpressionValidationTimer = null;
 
       parameterRows.addEventListener("input", (event) => {
+        const commentInput = event.target.closest(".comment-input");
+        if (commentInput) {
+          autoSizeTextarea(commentInput);
+          return;
+        }
+
         const input = event.target.closest(".expression-input");
         if (!input) {
           return;
@@ -1885,6 +1921,10 @@
         rowExpressionValidationTimer = window.setTimeout(() => {
           validateExpressionAgainstFusion(input);
         }, 200);
+      });
+
+      document.getElementById("newComment").addEventListener("input", (event) => {
+        autoSizeTextarea(event.currentTarget);
       });
 
       parameterRows.addEventListener("click", (event) => {
@@ -1956,7 +1996,7 @@
           renderUnitPicker();
         }
 
-        setStatus("Saving unit preference...");
+        setGlobalStatus("Saving unit preference...");
 
         try {
           await saveSettingsPartial({
@@ -1967,7 +2007,7 @@
           state.settings.rememberUnit = previousValue;
           renderToggle("rememberUnitToggle", previousValue);
           syncDefaultUnit(true);
-          setStatus(error.message, "error");
+          setGlobalStatus(error.message, "error");
         }
       });
 
@@ -1985,7 +2025,7 @@
             try {
               await saveSettingsPartial({ lastUnit: unitValue });
             } catch (error) {
-              setStatus(error.message, "error");
+              setGlobalStatus(error.message, "error");
             }
           }
           return;
@@ -2010,7 +2050,7 @@
           await saveSettingsPartial({ unitCategoryState: nextCategoryState });
           setUnitMenuOpen(true);
         } catch (error) {
-          setStatus(error.message, "error");
+          setGlobalStatus(error.message, "error");
         }
       });
 
@@ -2126,7 +2166,7 @@
         try {
           await saveSettingsPartial({ parameterTableColumns: state.settings.parameterTableColumns });
         } catch (error) {
-          setStatus(error.message, "error");
+          setGlobalStatus(error.message, "error");
         }
       });
 
@@ -2150,7 +2190,7 @@
           comment: form.comment.value
         };
 
-        setStatus(`Creating ${data.name}...`);
+        setGlobalStatus(`Creating ${data.name}...`);
         try {
           const response = await sendToFusion("createParameter", data);
           if (!response.ok) {
@@ -2162,9 +2202,9 @@
           setExpressionError("");
           syncDefaultUnit(true);
           applyStateFromFusion(response);
-          setStatus(`Created ${data.name}.`, "success");
+          setGlobalStatus(`Created ${data.name}.`, "success");
         } catch (error) {
-          setStatus(error.message, "error");
+          setGlobalStatus(error.message, "error");
         }
       });
 
@@ -2190,7 +2230,7 @@
           return;
         }
 
-        setStatus(`Saving ${parameter.name}...`);
+        setGlobalStatus(`Saving ${parameter.name}...`);
         try {
           const response = await sendToFusion("updateParameter", {
             name: parameter.name,
@@ -2202,9 +2242,9 @@
           }
 
           applyStateFromFusion(response);
-          setStatus(`Saved ${parameter.name}.`, "success");
+          setGlobalStatus(`Saved ${parameter.name}.`, "success");
         } catch (error) {
-          setStatus(error.message, "error");
+          setGlobalStatus(error.message, "error");
         }
       });
 
@@ -2326,7 +2366,7 @@
             applyStateFromFusion(response);
           }
         } catch (error) {
-          setStatus(error.message, "error");
+          setGlobalStatus(error.message, "error");
           renderUpdatePill();
           renderUpdateCard();
         } finally {
@@ -2408,6 +2448,7 @@
           applySettings(state.settings);
           syncDefaultUnit(true);
           renderUnitPicker();
+          autoSizeCommentInputs();
 
           const bridgeReady = await waitForFusionBridge();
           if (!bridgeReady) {
@@ -2417,7 +2458,7 @@
           const response = await sendToFusion("ready");
           if (response.ok) {
             applyStateFromFusion(response);
-            setStatus(`Loaded ${response.parameters.length} parameter(s).`, "success");
+            setGlobalStatus(`Loaded ${response.parameters.length} parameter(s).`, "success");
 
             window.setTimeout(async () => {
               try {
@@ -2438,7 +2479,7 @@
             }, 0);
           }
         } catch (error) {
-          setStatus(error.message, "error");
+          setGlobalStatus(error.message, "error");
         }
       });
 
