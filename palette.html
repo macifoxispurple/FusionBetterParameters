@@ -63,7 +63,8 @@
       }
 
       .shell {
-        max-width: 960px;
+        width: 100%;
+        max-width: min(1760px, calc(100vw - 32px));
         margin: 0 auto;
         display: grid;
         gap: 14px;
@@ -391,6 +392,12 @@
         cursor: not-allowed;
         display: inline-block;
         margin-left: auto;
+        align-self: flex-end;
+        width: 74px;
+        min-width: 74px;
+        max-width: 74px;
+        text-align: center;
+        white-space: nowrap;
       }
 
       .save-button:hover {
@@ -409,18 +416,28 @@
       }
 
       .row-actions {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-end;
+        display: grid;
+        justify-items: end;
         gap: 6px;
+        width: 74px;
+        min-width: 74px;
+        max-width: 74px;
+        margin-left: auto;
       }
 
       .revert-button {
         background: var(--ghost);
         color: var(--muted);
         cursor: not-allowed;
-        font-size: 0.8rem;
+        font-size: 0.75rem;
         padding: 8px 10px;
+        width: 74px;
+        min-width: 74px;
+        max-width: 74px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        text-align: center;
       }
 
       .revert-button.is-ready {
@@ -1451,6 +1468,8 @@
           error: ""
         }
       };
+      const EXPRESSION_STATUS_CLEAR_DELAY_MS = 5000;
+      const expressionStatusClearTimers = new Map();
 
       function normalizeColumnWidths(columns) {
         const merged = { ...DEFAULT_TABLE_COLUMNS, ...(columns || {}) };
@@ -1469,18 +1488,52 @@
         return context.measureText(text || "").width;
       }
 
+      function getActionsColumnPercent(tableWidth) {
+        const safeTableWidth = Math.max(tableWidth || 1, 1);
+        const saveButton = document.querySelector("#parameterRows .save-button");
+        const saveButtonWidth = Math.ceil(saveButton?.getBoundingClientRect().width || 74);
+        const actionsPx = Math.max(saveButtonWidth + 2, 70);
+        return Number(((actionsPx / safeTableWidth) * 100).toFixed(2));
+      }
+
       function getColumnMinimumPercents(tableWidth) {
         const safeTableWidth = Math.max(tableWidth || 1, 1);
-        const actionButtons = Array.from(document.querySelectorAll("#parameterRows .row-actions button"));
-        const widestActionButton = actionButtons.reduce((maxWidth, button) => Math.max(maxWidth, Math.ceil(button.getBoundingClientRect().width || 0)), 0);
-        const actionsPx = Math.max(widestActionButton + 2, 70);
         return {
           name: 10,
           expression: 16,
           preview: 12,
           comment: 10,
-          actions: Number(((actionsPx / safeTableWidth) * 100).toFixed(2))
+          actions: getActionsColumnPercent(safeTableWidth)
         };
+      }
+
+      function clampActionsColumnWidth() {
+        const table = document.querySelector(".table-wrap table");
+        if (!table) {
+          return;
+        }
+
+        const tableWidth = Math.max(table.getBoundingClientRect().width, 1);
+        const mins = getColumnMinimumPercents(tableWidth);
+        const targetActions = mins.actions;
+        const cols = state.settings.parameterTableColumns || {};
+        const currentActions = Number(cols.actions || 0);
+        if (!Number.isFinite(currentActions) || Math.abs(currentActions - targetActions) < 0.01) {
+          return;
+        }
+
+        let next = { ...cols };
+        const delta = currentActions - targetActions;
+        next.actions = targetActions;
+        next.comment = Number(next.comment || 0) + delta;
+
+        if (next.comment < mins.comment) {
+          const needed = mins.comment - next.comment;
+          next.comment = mins.comment;
+          next.expression = Math.max(mins.expression, Number(next.expression || 0) - needed);
+        }
+
+        state.settings.parameterTableColumns = normalizeColumnWidths(next);
       }
 
       function buildAutoFitColumnWidths() {
@@ -1511,9 +1564,9 @@
           return Math.max(maxWidth, Math.ceil(measureTextWidth(current, monoFont) + 26));
         }, 120);
 
-        const actionButtons = Array.from(document.querySelectorAll("#parameterRows .row-actions button"));
-        const widestActionButton = actionButtons.reduce((maxWidth, button) => Math.max(maxWidth, Math.ceil(button.getBoundingClientRect().width || 0)), 0);
-        const actionsPx = Math.max(widestActionButton + 2, 70);
+        const saveButton = document.querySelector("#parameterRows .save-button");
+        const saveButtonWidth = Math.ceil(saveButton?.getBoundingClientRect().width || 74);
+        const actionsPx = Math.max(saveButtonWidth + 2, 70);
 
         const fixedPx = namePx + previewPx + actionsPx;
         const remainingPx = Math.max(tableWidth - fixedPx, 180);
@@ -1540,6 +1593,7 @@
       }
 
       function applyColumnWidths() {
+        clampActionsColumnWidth();
         const cols = state.settings.parameterTableColumns;
         const headers = document.querySelectorAll(".table-wrap table thead th");
         COLUMN_KEYS.forEach((key, i) => {
@@ -1802,15 +1856,23 @@
           const safeComment = escapeHtml(param.comment);
           const safePreview = escapeHtml(param.valuePreview);
           const previousExpression = String(param.previousExpression || "");
+          const previousValue = String(param.previousValue || "");
           const safePreviousExpression = escapeHtml(previousExpression);
           const unitBadge = `<span class="pill">${escapeHtml(param.unit || "No Units")}</span>`;
           const favoriteTitle = param.isFavorite ? "Remove from favorites" : "Add to favorites";
           const favoriteIcon = param.isFavorite ? "★" : "☆";
           const favoriteClass = param.isFavorite ? "favorite-button is-on" : "favorite-button";
-          const revertLabelValue = previousExpression ? (previousExpression.length > 18 ? `${previousExpression.slice(0, 15)}...` : previousExpression) : "";
           const showRevert = state.settings.showRevertButtons !== false;
+          const compactPreviousValue = previousValue.replace(/\s+/g, " ").trim();
+          const revertTitle = previousExpression
+            ? `Revert to: ${escapeHtml(previousExpression)}${compactPreviousValue ? ` (${escapeHtml(compactPreviousValue)})` : ""}`
+            : (
+              compactPreviousValue
+                ? `Revert to: ${escapeHtml(compactPreviousValue)}`
+                : "No previous value"
+            );
           const revertButton = showRevert
-            ? `<button class="revert-button" type="button" data-previous-expression="${safePreviousExpression}" title="${previousExpression ? `Revert: ${escapeHtml(previousExpression)}` : "No previous value"}"${previousExpression ? "" : " disabled"}>${previousExpression ? `Revert: ${escapeHtml(revertLabelValue)}` : "Revert"}</button>`
+            ? `<button class="revert-button" type="button" data-previous-expression="${safePreviousExpression}" title="${revertTitle}"${previousExpression ? "" : " disabled"}>Revert</button>`
             : "";
 
           return `
@@ -2703,6 +2765,61 @@
         input.setAttribute("aria-invalid", (message && kind === "error") ? "true" : "false");
       }
 
+      function getExpressionInputTimerKey(input) {
+        if (!input) {
+          return "";
+        }
+
+        if (input.id) {
+          return `id:${input.id}`;
+        }
+
+        const row = input.closest ? input.closest("tr") : null;
+        const rowKey = row
+          ? (row.getAttribute("data-parameter-key") || row.getAttribute("data-parameter-name") || "")
+          : "";
+        return rowKey ? `row:${rowKey}` : "";
+      }
+
+      function cancelExpressionStatusClear(input) {
+        const key = getExpressionInputTimerKey(input);
+        if (!key) {
+          return;
+        }
+
+        const timerId = expressionStatusClearTimers.get(key);
+        if (!timerId) {
+          return;
+        }
+
+        window.clearTimeout(timerId);
+        expressionStatusClearTimers.delete(key);
+      }
+
+      function scheduleExpressionStatusClear(input, delayMs = EXPRESSION_STATUS_CLEAR_DELAY_MS) {
+        const key = getExpressionInputTimerKey(input);
+        if (!key) {
+          return;
+        }
+
+        cancelExpressionStatusClear(input);
+        const timerId = window.setTimeout(() => {
+          expressionStatusClearTimers.delete(key);
+          if (!input || document.activeElement === input) {
+            return;
+          }
+
+          if (input.id === "newExpression") {
+            setExpressionError("");
+            return;
+          }
+
+          setExpressionValidationState(input, "", "success");
+        }, delayMs);
+
+        expressionStatusClearTimers.set(key, timerId);
+      }
+
       function getRowPreviewCell(input) {
         const row = input && input.closest ? input.closest("tr") : null;
         return row ? row.querySelector(".preview-cell") : null;
@@ -2990,6 +3107,7 @@
 
       let expressionValidationTimer = null;
       document.getElementById("newExpression").addEventListener("input", (event) => {
+        cancelExpressionStatusClear(event.currentTarget);
         updateExpressionSuggestions(event.currentTarget, document.getElementById("newName").value.trim());
         updateFunctionHelper(event.currentTarget);
 
@@ -3010,8 +3128,13 @@
       });
 
       document.getElementById("newExpression").addEventListener("click", (event) => {
+        cancelExpressionStatusClear(event.currentTarget);
         updateExpressionSuggestions(event.currentTarget, document.getElementById("newName").value.trim());
         updateFunctionHelper(event.currentTarget);
+      });
+
+      document.getElementById("newExpression").addEventListener("focus", (event) => {
+        cancelExpressionStatusClear(event.currentTarget);
       });
 
       document.getElementById("newExpression").addEventListener("keydown", (event) => {
@@ -3071,6 +3194,7 @@
           window.clearTimeout(expressionValidationTimer);
         }
         await validateExpressionAgainstFusion(event.currentTarget);
+        scheduleExpressionStatusClear(event.currentTarget);
       });
 
       document.getElementById("expressionSuggestions").addEventListener("mousedown", (event) => {
@@ -3100,6 +3224,7 @@
         if (!input) {
           return;
         }
+        cancelExpressionStatusClear(input);
 
         updateExpressionSuggestions(input, input.getAttribute("data-parameter-name") || "");
         updateFunctionHelper(input);
@@ -3141,6 +3266,7 @@
         if (!input) {
           return;
         }
+        cancelExpressionStatusClear(input);
 
         updateExpressionSuggestions(input, input.getAttribute("data-parameter-name") || "");
         updateFunctionHelper(input);
@@ -3151,6 +3277,7 @@
         if (!input) {
           return;
         }
+        cancelExpressionStatusClear(input);
 
         if (
           event.key === "Backspace" &&
@@ -3212,6 +3339,15 @@
           window.clearTimeout(rowExpressionValidationTimer);
         }
         await validateExpressionAgainstFusion(input);
+        scheduleExpressionStatusClear(input);
+      });
+
+      parameterRows.addEventListener("focusin", (event) => {
+        const input = event.target.closest(".expression-input");
+        if (!input) {
+          return;
+        }
+        cancelExpressionStatusClear(input);
       });
 
       document.getElementById("favoritesList").addEventListener("click", (event) => {
@@ -3620,8 +3756,12 @@
         const minWidthA = mins[colKey] || 5;
         const minWidthB = mins[nextColKey] || 5;
         const combined = startWidthA + startWidthB;
-        const newA = Math.max(minWidthA, Math.min(startWidthA + deltaPct, combined - minWidthB));
-        const newB = combined - newA;
+        let newA = Math.max(minWidthA, Math.min(startWidthA + deltaPct, combined - minWidthB));
+        let newB = combined - newA;
+        if (nextColKey === "actions") {
+          newB = minWidthB;
+          newA = Math.max(minWidthA, combined - newB);
+        }
 
         state.settings.parameterTableColumns[colKey] = Number(newA.toFixed(2));
         state.settings.parameterTableColumns[nextColKey] = Number(newB.toFixed(2));
@@ -3725,17 +3865,17 @@
           }
           const row = revertButton.closest("tr");
           const parameter = getParameterForRow(row);
-          const previousExpression = revertButton.getAttribute("data-previous-expression") || "";
-          if (!parameter || !previousExpression) {
+          if (!parameter) {
             return;
           }
 
           const comment = row.querySelector(".comment-input")?.value ?? parameter.comment ?? "";
+          revertButton.disabled = true;
           setGlobalStatus(`Reverting ${parameter.name}...`);
           try {
-            const response = await sendToFusion("updateParameter", {
+            const response = await sendToFusion("revertParameter", {
+              key: parameter.key || "",
               name: parameter.name,
-              expression: previousExpression,
               comment
             });
             if (!response.ok) {
@@ -3744,6 +3884,7 @@
             applyStateFromFusion(response);
             setGlobalStatus(`Reverted ${parameter.name}.`, "success");
           } catch (error) {
+            revertButton.disabled = false;
             setGlobalStatus(error.message, "error");
           }
           return;
