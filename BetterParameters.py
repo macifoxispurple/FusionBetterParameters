@@ -101,7 +101,7 @@ DEFAULT_SETTINGS = {
     },
     "customUnits": [],
     "showRevertButtons": True,
-    "autoFitColumns": False,
+    "autoFitColumns": True,
     "pinnedUnits": [],
     "autoCheckUpdates": True,
     "updateCheck": {},
