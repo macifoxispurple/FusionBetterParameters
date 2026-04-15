@@ -53,8 +53,8 @@ ALLOWED_EXPRESSION_IDENTIFIERS = {
 PARAMETER_NAME_PATTERN = re.compile(r'^[A-Za-z_"\$°µ][A-Za-z0-9_"\$°µ]*$')
 
 MANIFEST_PATH = os.path.join(ADDIN_DIR, "BetterParameters.manifest")
-LATEST_RELEASE_API_URL = "https://api.github.com/repos/macifoxispurple/FusionBetterExport/releases/latest"
-LATEST_RELEASE_PAGE_URL = "https://github.com/macifoxispurple/FusionBetterExport/releases/latest"
+LATEST_RELEASE_API_URL = "https://api.github.com/repos/macifoxispurple/FusionBetterParameters/releases/latest"
+LATEST_RELEASE_PAGE_URL = "https://github.com/macifoxispurple/FusionBetterParameters/releases/latest"
 UPDATE_CACHE_MAX_AGE_SECONDS = 5 * 60
 PENDING_UPDATE_DIR = os.path.join(ADDIN_DIR, "_pending_update")
 PENDING_UPDATE_INFO_PATH = os.path.join(PENDING_UPDATE_DIR, "update.json")
