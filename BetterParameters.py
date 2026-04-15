@@ -48,6 +48,8 @@ DEFAULT_PALETTE_HEIGHT = 640
 ATTRIBUTE_NAMESPACE = "BetterParameters"
 ATTRIBUTE_PARAMETER_GROUP_NAME = "group"
 ATTRIBUTE_METADATA_CHANGED_AT_NAME = "metadataChangedAt"
+ATTRIBUTE_DOCUMENT_METADATA_MAP_NAME = "parameterMetadataMap"
+ATTRIBUTE_DOCUMENT_METADATA_ITEM_NAMESPACE = "BetterParametersMeta"
 GROUP_UNGROUPED_LABEL = "Ungrouped"
 MAX_GROUP_NAME_LENGTH = 80
 METADATA_CHANGED_AT_RECORD_KEY = "metadata_changed_at"
@@ -436,6 +438,28 @@ def _handle_palette_action(action, data):
         release_info = _latest_release_info(force_refresh=True, allow_cached_on_error=False)
         _stage_update_payload(release_info)
         return _current_state_payload()
+
+    if action == "getMetadataDebugSnapshot":
+        return {
+            "ok": True,
+            "debugMetadata": _collect_metadata_debug_snapshot(),
+        }
+
+    if action == "syncMetadataJsonToFusion":
+        sync_result = _sync_metadata_json_to_fusion()
+        payload = _current_state_payload()
+        payload["syncResult"] = sync_result
+        payload["debugMetadata"] = _collect_metadata_debug_snapshot()
+        _send_to_palette("renderState", payload)
+        return payload
+
+    if action == "syncMetadataFusionToJson":
+        sync_result = _sync_metadata_fusion_to_json()
+        payload = _current_state_payload()
+        payload["syncResult"] = sync_result
+        payload["debugMetadata"] = _collect_metadata_debug_snapshot()
+        _send_to_palette("renderState", payload)
+        return payload
 
     return {"ok": False, "message": f"Unknown action: {action}"}
 
@@ -1611,6 +1635,348 @@ def _metadata_changed_at_value(value):
         return 0
 
 
+def _read_document_metadata_map(design):
+    for owner in _document_metadata_owner_candidates(design):
+        attributes = getattr(owner, "attributes", None)
+        if attributes is None:
+            continue
+        try:
+            attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_DOCUMENT_METADATA_MAP_NAME)
+        except Exception:
+            attribute = None
+        if attribute is None:
+            continue
+
+        try:
+            loaded = json.loads(str(attribute.value or ""))
+        except Exception:
+            continue
+        if not isinstance(loaded, dict):
+            continue
+
+        normalized = {}
+        for key, value in loaded.items():
+            if not isinstance(key, str) or not key:
+                continue
+            if not isinstance(value, dict):
+                continue
+            normalized[key] = {
+                "group": _normalize_group_name(value.get("group") or ""),
+                METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(value.get(METADATA_CHANGED_AT_RECORD_KEY)),
+            }
+        return normalized
+    return {}
+
+
+def _write_document_metadata_map(design, metadata_map):
+    payload = {}
+    for key, value in (metadata_map or {}).items():
+        if not isinstance(key, str) or not key:
+            continue
+        if not isinstance(value, dict):
+            continue
+        payload[key] = {
+            "group": _normalize_group_name(value.get("group") or ""),
+            METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(value.get(METADATA_CHANGED_AT_RECORD_KEY)),
+        }
+
+    serialized = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+    for owner in _document_metadata_owner_candidates(design):
+        attributes = getattr(owner, "attributes", None)
+        if attributes is None:
+            continue
+        try:
+            attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_DOCUMENT_METADATA_MAP_NAME)
+        except Exception:
+            attribute = None
+
+        if attribute is not None:
+            try:
+                attribute.value = serialized
+                return True
+            except Exception:
+                pass
+
+        try:
+            attributes.add(ATTRIBUTE_NAMESPACE, ATTRIBUTE_DOCUMENT_METADATA_MAP_NAME, serialized)
+            return True
+        except Exception:
+            pass
+    return False
+
+
+def _document_metadata_owner_candidates(design):
+    owners = []
+    for candidate in (
+        design,
+        _safe_call(lambda: design.rootComponent) if design else None,
+        _safe_call(lambda: design.userParameters) if design else None,
+        _safe_call(lambda: design.allParameters) if design else None,
+        app.activeDocument if app else None,
+    ):
+        if not candidate:
+            continue
+        if candidate in owners:
+            continue
+        owners.append(candidate)
+    return owners
+
+
+def _owner_debug_label(owner):
+    if not owner:
+        return "None"
+    type_name = type(owner).__name__
+    object_type = ""
+    try:
+        object_type = str(getattr(owner, "objectType", "") or "")
+    except Exception:
+        object_type = ""
+    if object_type:
+        return f"{type_name}<{object_type}>"
+    return type_name
+
+
+def _write_document_attribute_with_diagnostics(owners, namespace, name, value):
+    details = {
+        "ok": False,
+        "ownerTypes": [],
+        "errors": [],
+    }
+    owner_labels = []
+    for owner in owners or []:
+        owner_label = _owner_debug_label(owner)
+        owner_labels.append(owner_label)
+        attributes = getattr(owner, "attributes", None)
+        if attributes is None:
+            details["errors"].append(f"{owner_label}: no attributes collection")
+            continue
+
+        attribute = None
+        try:
+            attribute = attributes.itemByName(namespace, name)
+        except Exception as error:
+            details["errors"].append(f"{owner_label}: itemByName failed: {error}")
+
+        if attribute is not None:
+            try:
+                attribute.value = value
+                details["ok"] = True
+                details["ownerTypes"] = owner_labels
+                return details
+            except Exception as error:
+                details["errors"].append(f"{owner_label}: attribute.value failed: {error}")
+
+        try:
+            attributes.add(namespace, name, value)
+            details["ok"] = True
+            details["ownerTypes"] = owner_labels
+            return details
+        except Exception as error:
+            details["errors"].append(f"{owner_label}: attributes.add failed: {error}")
+
+    details["ownerTypes"] = owner_labels
+    return details
+
+
+def _document_metadata_entry(design, parameter):
+    if not design or not parameter:
+        return {}
+    parameter_key = _parameter_entity_token(parameter)
+    if not parameter_key:
+        return {}
+
+    metadata_map = _read_document_metadata_map(design)
+    map_entry = metadata_map.get(parameter_key) if isinstance(metadata_map.get(parameter_key), dict) else {}
+    item_entry = _read_document_metadata_item_entry(design, parameter_key)
+    map_changed_at = _metadata_changed_at_value(map_entry.get(METADATA_CHANGED_AT_RECORD_KEY))
+    item_changed_at = _metadata_changed_at_value(item_entry.get(METADATA_CHANGED_AT_RECORD_KEY))
+    entry = map_entry
+    if item_changed_at > map_changed_at:
+        entry = item_entry
+    elif item_changed_at == map_changed_at and _normalize_group_name(item_entry.get("group") or "") and not _normalize_group_name(map_entry.get("group") or ""):
+        entry = item_entry
+    return {
+        "group": _normalize_group_name(entry.get("group") or ""),
+        METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(entry.get(METADATA_CHANGED_AT_RECORD_KEY)),
+    }
+
+
+def _set_document_metadata_entry(design, parameter, group_name=None, metadata_changed_at=None):
+    if not design or not parameter:
+        return False
+
+    parameter_key = _parameter_entity_token(parameter)
+    if not parameter_key:
+        return False
+
+    metadata_map = _read_document_metadata_map(design)
+    current_entry = metadata_map.get(parameter_key) if isinstance(metadata_map.get(parameter_key), dict) else {}
+    next_group = _normalize_group_name(group_name if group_name is not None else current_entry.get("group") or "")
+    next_changed_at = _metadata_changed_at_value(
+        metadata_changed_at if metadata_changed_at is not None else current_entry.get(METADATA_CHANGED_AT_RECORD_KEY)
+    )
+    metadata_map[parameter_key] = {
+        "group": next_group,
+        METADATA_CHANGED_AT_RECORD_KEY: next_changed_at,
+    }
+    map_ok = _write_document_metadata_map(design, metadata_map)
+    item_ok = _write_document_metadata_item_entry(design, parameter_key, next_group, next_changed_at)
+    return bool(map_ok or item_ok)
+
+
+def _set_document_metadata_entry_with_diagnostics(design, parameter, group_name=None, metadata_changed_at=None):
+    details = {
+        "ok": False,
+        "mapOk": False,
+        "itemOk": False,
+        "errors": [],
+        "ownerTypes": [],
+    }
+    if not design or not parameter:
+        details["errors"].append("missing design or parameter")
+        return details
+
+    parameter_key = _parameter_entity_token(parameter)
+    if not parameter_key:
+        details["errors"].append("missing parameter entity token")
+        return details
+
+    owners = _document_metadata_owner_candidates(design)
+    details["ownerTypes"] = [_owner_debug_label(owner) for owner in owners]
+    if not owners:
+        details["errors"].append("no document metadata owner candidates")
+
+    metadata_map = _read_document_metadata_map(design)
+    current_entry = metadata_map.get(parameter_key) if isinstance(metadata_map.get(parameter_key), dict) else {}
+    next_group = _normalize_group_name(group_name if group_name is not None else current_entry.get("group") or "")
+    next_changed_at = _metadata_changed_at_value(
+        metadata_changed_at if metadata_changed_at is not None else current_entry.get(METADATA_CHANGED_AT_RECORD_KEY)
+    )
+    metadata_map[parameter_key] = {
+        "group": next_group,
+        METADATA_CHANGED_AT_RECORD_KEY: next_changed_at,
+    }
+
+    map_payload = {}
+    for key, value in (metadata_map or {}).items():
+        if not isinstance(key, str) or not key:
+            continue
+        if not isinstance(value, dict):
+            continue
+        map_payload[key] = {
+            "group": _normalize_group_name(value.get("group") or ""),
+            METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(value.get(METADATA_CHANGED_AT_RECORD_KEY)),
+        }
+    map_serialized = json.dumps(map_payload, separators=(",", ":"), sort_keys=True)
+    map_write = _write_document_attribute_with_diagnostics(
+        owners,
+        ATTRIBUTE_NAMESPACE,
+        ATTRIBUTE_DOCUMENT_METADATA_MAP_NAME,
+        map_serialized,
+    )
+    details["mapOk"] = bool(map_write.get("ok"))
+    for error in (map_write.get("errors") or []):
+        details["errors"].append(f"doc map: {error}")
+
+    item_payload = {
+        "k": str(parameter_key),
+        "g": next_group,
+        "t": next_changed_at,
+    }
+    item_serialized = json.dumps(item_payload, separators=(",", ":"), sort_keys=True)
+    item_write = _write_document_attribute_with_diagnostics(
+        owners,
+        ATTRIBUTE_DOCUMENT_METADATA_ITEM_NAMESPACE,
+        _document_metadata_item_name(parameter_key),
+        item_serialized,
+    )
+    details["itemOk"] = bool(item_write.get("ok"))
+    for error in (item_write.get("errors") or []):
+        details["errors"].append(f"doc item: {error}")
+
+    details["ok"] = bool(details["mapOk"] or details["itemOk"])
+    if not details["ok"] and not details["errors"]:
+        details["errors"].append("document metadata writes returned false")
+    return details
+
+
+def _document_metadata_item_name(parameter_key):
+    return "p_" + hashlib.sha1(str(parameter_key or "").encode("utf-8")).hexdigest()[:30]
+
+
+def _read_document_metadata_item_entry(design, parameter_key):
+    if not design or not parameter_key:
+        return {}
+
+    item_name = _document_metadata_item_name(parameter_key)
+    best_entry = {}
+    best_timestamp = 0
+    for owner in _document_metadata_owner_candidates(design):
+        attributes = getattr(owner, "attributes", None)
+        if attributes is None:
+            continue
+        try:
+            attribute = attributes.itemByName(ATTRIBUTE_DOCUMENT_METADATA_ITEM_NAMESPACE, item_name)
+        except Exception:
+            attribute = None
+        if attribute is None:
+            continue
+        try:
+            payload = json.loads(str(attribute.value or ""))
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if str(payload.get("k") or "") != str(parameter_key):
+            continue
+        group_value = _normalize_group_name(payload.get("g") or "")
+        changed_at_value = _metadata_changed_at_value(payload.get("t"))
+        if changed_at_value < best_timestamp:
+            continue
+        best_entry = {
+            "group": group_value,
+            METADATA_CHANGED_AT_RECORD_KEY: changed_at_value,
+        }
+        best_timestamp = changed_at_value
+    return best_entry
+
+
+def _write_document_metadata_item_entry(design, parameter_key, group_name, metadata_changed_at):
+    if not design or not parameter_key:
+        return False
+
+    item_name = _document_metadata_item_name(parameter_key)
+    payload = {
+        "k": str(parameter_key),
+        "g": _normalize_group_name(group_name or ""),
+        "t": _metadata_changed_at_value(metadata_changed_at),
+    }
+    serialized = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+
+    for owner in _document_metadata_owner_candidates(design):
+        attributes = getattr(owner, "attributes", None)
+        if attributes is None:
+            continue
+        try:
+            attribute = attributes.itemByName(ATTRIBUTE_DOCUMENT_METADATA_ITEM_NAMESPACE, item_name)
+        except Exception:
+            attribute = None
+
+        if attribute is not None:
+            try:
+                attribute.value = serialized
+                return True
+            except Exception:
+                pass
+
+        try:
+            attributes.add(ATTRIBUTE_DOCUMENT_METADATA_ITEM_NAMESPACE, item_name, serialized)
+            return True
+        except Exception:
+            pass
+    return False
+
+
 def _normalize_group_name(value):
     text = str(value or "")
     text = re.sub(r"\s+", " ", text).strip()
@@ -1628,21 +1994,23 @@ def _parameter_group_name(parameter):
         return ""
 
     attributes = getattr(parameter, "attributes", None)
-    if not attributes:
-        return ""
 
     try:
         attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_PARAMETER_GROUP_NAME)
     except Exception:
         attribute = None
 
-    if not attribute:
-        return ""
+    if attribute is not None:
+        try:
+            value = _normalize_group_name(attribute.value)
+            if value:
+                return value
+        except Exception:
+            pass
 
-    try:
-        return _normalize_group_name(attribute.value)
-    except Exception:
-        return ""
+    design = _design()
+    entry = _document_metadata_entry(design, parameter)
+    return _normalize_group_name(entry.get("group") or "")
 
 
 def _parameter_metadata_changed_at(parameter):
@@ -1650,21 +2018,23 @@ def _parameter_metadata_changed_at(parameter):
         return 0
 
     attributes = getattr(parameter, "attributes", None)
-    if not attributes:
-        return 0
 
     try:
         attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_METADATA_CHANGED_AT_NAME)
     except Exception:
         attribute = None
 
-    if not attribute:
-        return 0
+    if attribute is not None:
+        try:
+            value = _metadata_changed_at_value(attribute.value)
+            if value > 0:
+                return value
+        except Exception:
+            pass
 
-    try:
-        return _metadata_changed_at_value(attribute.value)
-    except Exception:
-        return 0
+    design = _design()
+    entry = _document_metadata_entry(design, parameter)
+    return _metadata_changed_at_value(entry.get(METADATA_CHANGED_AT_RECORD_KEY))
 
 
 def _set_parameter_metadata_changed_at(parameter, metadata_changed_at):
@@ -1676,71 +2046,140 @@ def _set_parameter_metadata_changed_at(parameter, metadata_changed_at):
         return False
 
     attributes = getattr(parameter, "attributes", None)
-    if not attributes:
-        return False
+    success = False
 
-    try:
-        attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_METADATA_CHANGED_AT_NAME)
-    except Exception:
-        attribute = None
+    attribute = None
+    if attributes is not None:
+        try:
+            attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_METADATA_CHANGED_AT_NAME)
+        except Exception:
+            attribute = None
 
-    if attribute:
+    if attribute is not None:
         try:
             attribute.value = str(metadata_changed_at_value)
-            return True
+            success = True
         except Exception:
             pass
 
-    try:
-        attributes.add(ATTRIBUTE_NAMESPACE, ATTRIBUTE_METADATA_CHANGED_AT_NAME, str(metadata_changed_at_value))
-        return True
-    except Exception:
-        return False
+    if attributes is not None and not success:
+        try:
+            attributes.add(ATTRIBUTE_NAMESPACE, ATTRIBUTE_METADATA_CHANGED_AT_NAME, str(metadata_changed_at_value))
+            success = True
+        except Exception:
+            pass
+
+    design = _design()
+    existing_group = _parameter_group_name(parameter)
+    if _set_document_metadata_entry(design, parameter, existing_group, metadata_changed_at_value):
+        success = True
+    return success
 
 
-def _write_parameter_group_name(parameter, group_name, metadata_changed_at=None):
+def _write_parameter_group_name_with_diagnostics(parameter, group_name, metadata_changed_at=None):
+    details = {
+        "ok": False,
+        "parameterName": "",
+        "groupName": "",
+        "parameterAttributeOk": False,
+        "metadataChangedAtAttributeOk": False,
+        "documentMetadataOk": False,
+        "documentMapOk": False,
+        "documentItemOk": False,
+        "documentOwnerTypes": [],
+        "errors": [],
+    }
     if not parameter:
-        return
+        details["errors"].append("missing parameter")
+        return details
 
     normalized_group = _normalize_group_name(group_name)
+    details["groupName"] = normalized_group
+    details["parameterName"] = str(getattr(parameter, "name", "") or "")
     metadata_changed_at_value = _metadata_changed_at_value(metadata_changed_at)
     attributes = getattr(parameter, "attributes", None)
-    if not attributes:
-        return
+    success = False
 
-    try:
-        attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_PARAMETER_GROUP_NAME)
-    except Exception:
-        attribute = None
+    attribute = None
+    if attributes is not None:
+        try:
+            attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_PARAMETER_GROUP_NAME)
+        except Exception:
+            attribute = None
 
-    if attribute:
+    if attribute is not None:
         try:
             attribute.value = normalized_group
             if metadata_changed_at_value > 0:
-                _set_parameter_metadata_changed_at(parameter, metadata_changed_at_value)
-            return True
+                changed_ok = _set_parameter_metadata_changed_at(parameter, metadata_changed_at_value)
+                details["metadataChangedAtAttributeOk"] = bool(changed_ok)
+            success = True
+            details["parameterAttributeOk"] = True
         except Exception:
+            details["errors"].append("parameter group attribute update failed")
             if not normalized_group:
                 try:
                     attribute.deleteMe()
                     if metadata_changed_at_value > 0:
-                        _set_parameter_metadata_changed_at(parameter, metadata_changed_at_value)
-                    return True
+                        changed_ok = _set_parameter_metadata_changed_at(parameter, metadata_changed_at_value)
+                        details["metadataChangedAtAttributeOk"] = bool(changed_ok)
+                    success = True
+                    details["parameterAttributeOk"] = True
                 except Exception:
-                    pass
+                    details["errors"].append("parameter group attribute delete failed")
 
+    if attributes is not None and not success and normalized_group:
+        try:
+            attributes.add(ATTRIBUTE_NAMESPACE, ATTRIBUTE_PARAMETER_GROUP_NAME, normalized_group)
+            if metadata_changed_at_value > 0:
+                changed_ok = _set_parameter_metadata_changed_at(parameter, metadata_changed_at_value)
+                details["metadataChangedAtAttributeOk"] = bool(changed_ok)
+            success = True
+            details["parameterAttributeOk"] = True
+        except Exception:
+            details["errors"].append("parameter group attribute add failed")
+    elif attributes is None:
+        details["errors"].append("parameter has no attributes collection")
+
+    design = _design()
+    doc_timestamp = metadata_changed_at_value
+    if doc_timestamp <= 0:
+        doc_timestamp = _parameter_metadata_changed_at(parameter)
+    if doc_timestamp <= 0:
+        doc_timestamp = _now_metadata_timestamp_ms()
+    doc_write = _set_document_metadata_entry_with_diagnostics(design, parameter, normalized_group, doc_timestamp)
+    details["documentMetadataOk"] = bool(doc_write.get("ok"))
+    details["documentMapOk"] = bool(doc_write.get("mapOk"))
+    details["documentItemOk"] = bool(doc_write.get("itemOk"))
+    details["documentOwnerTypes"] = list(doc_write.get("ownerTypes") or [])
+    for error in (doc_write.get("errors") or []):
+        details["errors"].append(f"doc: {error}")
+    if details["documentMetadataOk"]:
+        success = True
+
+    if metadata_changed_at_value > 0:
+        changed_ok = _set_parameter_metadata_changed_at(parameter, metadata_changed_at_value)
+        if changed_ok:
+            details["metadataChangedAtAttributeOk"] = True
+
+    if not normalized_group and not success:
+        details["ok"] = False
+        return details
     if not normalized_group:
-        if metadata_changed_at_value > 0:
-            _set_parameter_metadata_changed_at(parameter, metadata_changed_at_value)
-        return True
+        details["ok"] = True
+        return details
+    if success:
+        details["ok"] = True
+        return details
+    details["ok"] = False
+    if not details["errors"]:
+        details["errors"].append("all metadata write paths failed")
+    return details
 
-    try:
-        attributes.add(ATTRIBUTE_NAMESPACE, ATTRIBUTE_PARAMETER_GROUP_NAME, normalized_group)
-        if metadata_changed_at_value > 0:
-            _set_parameter_metadata_changed_at(parameter, metadata_changed_at_value)
-        return True
-    except Exception:
-        return False
+
+def _write_parameter_group_name(parameter, group_name, metadata_changed_at=None):
+    result = _write_parameter_group_name_with_diagnostics(parameter, group_name, metadata_changed_at)
+    return bool(result.get("ok"))
 
 
 def _parameter_group_from_record(design, parameter):
@@ -1796,6 +2235,178 @@ def _set_parameter_group_record(design, parameter, group_name, metadata_changed_
             "parameters": records,
         }
     )
+
+
+def _collect_metadata_debug_snapshot():
+    design = _design()
+    if not design:
+        return {
+            "document": _active_document_info(),
+            "recordCount": 0,
+            "rows": [],
+        }
+
+    order_state = _read_document_order_state()
+    records = _resolve_document_order_records(design, order_state.get("parameters") or {})
+    rows = []
+    params = design.userParameters
+    for index in range(params.count):
+        parameter = params.item(index)
+        if not parameter:
+            continue
+
+        key = _parameter_entity_token(parameter)
+        record = records.get(key) if isinstance(records.get(key), dict) else {}
+        attr_group = ""
+        attr_changed_at = 0
+        attributes = getattr(parameter, "attributes", None)
+        if attributes is not None:
+            try:
+                group_attr = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_PARAMETER_GROUP_NAME)
+            except Exception:
+                group_attr = None
+            if group_attr:
+                try:
+                    attr_group = _normalize_group_name(group_attr.value)
+                except Exception:
+                    attr_group = ""
+
+            try:
+                changed_attr = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_METADATA_CHANGED_AT_NAME)
+            except Exception:
+                changed_attr = None
+            if changed_attr:
+                try:
+                    attr_changed_at = _metadata_changed_at_value(changed_attr.value)
+                except Exception:
+                    attr_changed_at = 0
+
+        doc_entry = _document_metadata_entry(design, parameter)
+        doc_group = _normalize_group_name(doc_entry.get("group") or "")
+        doc_changed_at = _metadata_changed_at_value(doc_entry.get(METADATA_CHANGED_AT_RECORD_KEY))
+        fusion_group = attr_group or doc_group
+        fusion_changed_at = max(attr_changed_at, doc_changed_at)
+        json_group = _normalize_group_name(record.get("group") or "")
+        json_changed_at = _metadata_changed_at_value(record.get(METADATA_CHANGED_AT_RECORD_KEY))
+
+        latest_source = "equal"
+        if fusion_changed_at > json_changed_at:
+            latest_source = "fusion"
+        elif json_changed_at > fusion_changed_at:
+            latest_source = "json"
+
+        rows.append(
+            {
+                "name": str(parameter.name or ""),
+                "key": key,
+                "fusionGroup": fusion_group,
+                "fusionMetadataChangedAt": fusion_changed_at,
+                "fusionParameterGroup": attr_group,
+                "fusionParameterMetadataChangedAt": attr_changed_at,
+                "fusionDocumentGroup": doc_group,
+                "fusionDocumentMetadataChangedAt": doc_changed_at,
+                "jsonGroup": json_group,
+                "jsonMetadataChangedAt": json_changed_at,
+                "latestSource": latest_source,
+            }
+        )
+
+    rows.sort(key=lambda item: item.get("name", "").casefold())
+    return {
+        "document": _active_document_info(),
+        "recordCount": len(records),
+        "rows": rows,
+    }
+
+
+def _sync_metadata_json_to_fusion():
+    design = _require_design()
+    order_state = _read_document_order_state()
+    records = _resolve_document_order_records(design, order_state.get("parameters") or {})
+    params = design.userParameters
+    updated = 0
+    skipped = 0
+    failed = 0
+    failed_names = []
+    failed_details = []
+
+    for index in range(params.count):
+        parameter = params.item(index)
+        if not parameter:
+            continue
+
+        key = _parameter_entity_token(parameter)
+        record = records.get(key) if isinstance(records.get(key), dict) else None
+        if not record:
+            skipped += 1
+            continue
+
+        group_name = _normalize_group_name(record.get("group") or "")
+        metadata_changed_at = _metadata_changed_at_value(record.get(METADATA_CHANGED_AT_RECORD_KEY))
+        if metadata_changed_at <= 0:
+            metadata_changed_at = _now_metadata_timestamp_ms()
+            record[METADATA_CHANGED_AT_RECORD_KEY] = metadata_changed_at
+
+        write_result = _write_parameter_group_name_with_diagnostics(parameter, group_name, metadata_changed_at)
+        if write_result.get("ok"):
+            updated += 1
+        else:
+            failed += 1
+            failed_names.append(str(parameter.name or key or ""))
+            if len(failed_details) < 10:
+                errors = write_result.get("errors") or []
+                failed_details.append(
+                    {
+                        "name": str(parameter.name or key or ""),
+                        "group": group_name,
+                        "errors": errors[:5],
+                        "documentOwnerTypes": write_result.get("documentOwnerTypes") or [],
+                        "parameterAttributeOk": bool(write_result.get("parameterAttributeOk")),
+                        "metadataChangedAtAttributeOk": bool(write_result.get("metadataChangedAtAttributeOk")),
+                        "documentMapOk": bool(write_result.get("documentMapOk")),
+                        "documentItemOk": bool(write_result.get("documentItemOk")),
+                    }
+                )
+
+    if updated or failed:
+        _write_document_order_state(
+            {
+                "documentId": order_state.get("documentId", ""),
+                "documentName": order_state.get("documentName", ""),
+                "parameters": records,
+            }
+        )
+
+    return {
+        "direction": "json_to_fusion",
+        "updatedCount": updated,
+        "skippedCount": skipped,
+        "failedCount": failed,
+        "failedNames": failed_names[:20],
+        "failedDetails": failed_details,
+    }
+
+
+def _sync_metadata_fusion_to_json():
+    design = _require_design()
+    params = design.userParameters
+    updated = 0
+
+    for index in range(params.count):
+        parameter = params.item(index)
+        if not parameter:
+            continue
+
+        group_name = _parameter_group_name(parameter)
+        metadata_changed_at = _parameter_metadata_changed_at(parameter)
+        _set_parameter_group_record(design, parameter, group_name, metadata_changed_at)
+        updated += 1
+
+    return {
+        "direction": "fusion_to_json",
+        "updatedCount": updated,
+        "skippedCount": 0,
+    }
 
 
 def _message_box(message):
