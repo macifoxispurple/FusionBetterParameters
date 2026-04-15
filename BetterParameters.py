@@ -45,6 +45,12 @@ SETTINGS_FILE = "settings.json"
 DOCUMENT_ORDER_DIRNAME = "document_orders"
 DEFAULT_PALETTE_WIDTH = 520
 DEFAULT_PALETTE_HEIGHT = 640
+ATTRIBUTE_NAMESPACE = "BetterParameters"
+ATTRIBUTE_PARAMETER_GROUP_NAME = "group"
+ATTRIBUTE_METADATA_CHANGED_AT_NAME = "metadataChangedAt"
+GROUP_UNGROUPED_LABEL = "Ungrouped"
+MAX_GROUP_NAME_LENGTH = 80
+METADATA_CHANGED_AT_RECORD_KEY = "metadata_changed_at"
 EXPRESSION_TOKEN_PATTERN = re.compile('[A-Za-z_"\\$\\u00B0\\u00B5][A-Za-z0-9_"\\$\\u00B0\\u00B5]*')
 ALLOWED_EXPRESSION_IDENTIFIERS = {
     "PI", "E", "Gravity", "SpeedOfLight",
@@ -361,6 +367,24 @@ def _handle_palette_action(action, data):
         _send_to_palette("renderState", payload)
         return payload
 
+    if action == "setParameterGroup":
+        _set_parameter_group(data)
+        payload = _current_state_payload()
+        _send_to_palette("renderState", payload)
+        return payload
+
+    if action == "renameGroup":
+        _rename_group(data)
+        payload = _current_state_payload()
+        _send_to_palette("renderState", payload)
+        return payload
+
+    if action == "deleteGroup":
+        _delete_group(data)
+        payload = _current_state_payload()
+        _send_to_palette("renderState", payload)
+        return payload
+
     if action == "saveParameterOrder":
         _save_parameter_order(data)
         payload = _current_state_payload()
@@ -428,9 +452,11 @@ def _send_to_palette(action, payload):
 
 def _current_state_payload(settings=None):
     active_settings = settings if settings is not None else _load_settings()
+    parameters = _collect_user_parameters()
     return {
         "ok": True,
-        "parameters": _collect_user_parameters(),
+        "parameters": parameters,
+        "groups": _collect_parameter_groups(parameters),
         "parameterNames": _collect_all_parameter_names(),
         "settings": active_settings,
         "document": _active_document_info(),
@@ -490,6 +516,19 @@ def _collect_user_parameters():
         sort_order = saved_record.get("order")
         if not isinstance(sort_order, int):
             sort_order = params.count + index
+        attr_group_name = _parameter_group_name(param)
+        attr_metadata_changed_at = _parameter_metadata_changed_at(param)
+        saved_group_name = _normalize_group_name(saved_record.get("group") or "")
+        saved_metadata_changed_at = _metadata_changed_at_value(saved_record.get(METADATA_CHANGED_AT_RECORD_KEY))
+        if attr_metadata_changed_at > saved_metadata_changed_at:
+            group_name = attr_group_name
+            metadata_changed_at = attr_metadata_changed_at
+        elif saved_metadata_changed_at > attr_metadata_changed_at:
+            group_name = saved_group_name
+            metadata_changed_at = saved_metadata_changed_at
+        else:
+            group_name = attr_group_name or saved_group_name
+            metadata_changed_at = max(attr_metadata_changed_at, saved_metadata_changed_at)
 
         results.append(
             {
@@ -499,9 +538,11 @@ def _collect_user_parameters():
                 "unit": param.unit,
                 "comment": param.comment or "",
                 "isFavorite": param.isFavorite,
+                "group": group_name,
                 "valuePreview": _format_parameter_value(param, units_manager),
                 "previousExpression": str(saved_record.get("previous_expression") or ""),
                 "previousValue": str(saved_record.get("previous_value") or ""),
+                "metadataChangedAt": metadata_changed_at,
                 "_sortOrder": sort_order,
                 "_sourceIndex": index,
             }
@@ -513,6 +554,23 @@ def _collect_user_parameters():
         item.pop("_sortOrder", None)
         item.pop("_sourceIndex", None)
     return results
+
+
+def _collect_parameter_groups(parameters):
+    names = []
+    seen = set()
+    for parameter in parameters or []:
+        group_name = _normalize_group_name(parameter.get("group") or "")
+        if not group_name:
+            continue
+        folded = group_name.casefold()
+        if folded in seen:
+            continue
+        names.append(group_name)
+        seen.add(folded)
+
+    names.sort(key=str.casefold)
+    return names
 
 
 def _collect_all_parameter_names():
@@ -628,6 +686,8 @@ def _read_document_order_state():
                 "previous_expression": str(record.get("previous_expression") or ""),
                 "current_value": str(record.get("current_value") or ""),
                 "previous_value": str(record.get("previous_value") or ""),
+                "group": _normalize_group_name(record.get("group") or ""),
+                METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(record.get(METADATA_CHANGED_AT_RECORD_KEY)),
             }
 
     state["documentId"] = str(loaded.get("documentId") or state["documentId"])
@@ -703,12 +763,15 @@ def _resolve_document_order_records(design, records):
             "previous_expression": str(record.get("previous_expression") or ""),
             "current_value": str(record.get("current_value") or ""),
             "previous_value": str(record.get("previous_value") or ""),
+            "group": _normalize_group_name(record.get("group") or ""),
+            METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(record.get(METADATA_CHANGED_AT_RECORD_KEY)),
         }
     return resolved
 
 
 def _persist_document_order_snapshot(parameters, previous_state=None):
     info = _active_document_info()
+    design = _design()
     records = {}
     previous_records = {}
     if isinstance(previous_state, dict) and isinstance(previous_state.get("parameters"), dict):
@@ -729,13 +792,38 @@ def _persist_document_order_snapshot(parameters, previous_state=None):
 
         previous_expression = str(previous_record.get("previous_expression") or "")
         previous_value = str(previous_record.get("previous_value") or "")
+        previous_group = _normalize_group_name(previous_record.get("group") or "")
+        previous_metadata_changed_at = _metadata_changed_at_value(previous_record.get(METADATA_CHANGED_AT_RECORD_KEY))
         old_current_expression = str(previous_record.get("current_expression") or "")
         old_current_value = str(previous_record.get("current_value") or "")
+        incoming_group = _normalize_group_name(parameter.get("group") or previous_group)
+        incoming_metadata_changed_at = _metadata_changed_at_value(parameter.get("metadataChangedAt"))
 
         if old_current_expression and old_current_expression != incoming_expression:
             previous_expression = old_current_expression
         if old_current_value and old_current_value != incoming_value:
             previous_value = old_current_value
+
+        has_metadata_change = (
+            int(previous_record.get("order") if isinstance(previous_record.get("order"), int) else -1) != index
+            or str(previous_record.get("name") or "") != str(parameter.get("name") or "")
+            or str(previous_record.get("current_expression") or "") != incoming_expression
+            or str(previous_record.get("previous_expression") or "") != previous_expression
+            or str(previous_record.get("current_value") or "") != incoming_value
+            or str(previous_record.get("previous_value") or "") != previous_value
+            or _normalize_group_name(previous_record.get("group") or "") != incoming_group
+        )
+        touch_attribute_timestamp = False
+        if has_metadata_change:
+            if incoming_metadata_changed_at > previous_metadata_changed_at:
+                metadata_changed_at = incoming_metadata_changed_at
+            else:
+                metadata_changed_at = _now_metadata_timestamp_ms()
+                touch_attribute_timestamp = True
+        else:
+            metadata_changed_at = max(previous_metadata_changed_at, incoming_metadata_changed_at)
+            if metadata_changed_at <= 0:
+                metadata_changed_at = _now_metadata_timestamp_ms()
 
         records[key] = {
             "order": index,
@@ -744,7 +832,13 @@ def _persist_document_order_snapshot(parameters, previous_state=None):
             "previous_expression": previous_expression,
             "current_value": incoming_value,
             "previous_value": previous_value,
+            "group": incoming_group,
+            METADATA_CHANGED_AT_RECORD_KEY: metadata_changed_at,
         }
+        if touch_attribute_timestamp and design:
+            parameter_entity = _find_user_parameter_by_token(design, key)
+            if parameter_entity:
+                _set_parameter_metadata_changed_at(parameter_entity, metadata_changed_at)
 
     next_state = {
         "documentId": info.get("id", ""),
@@ -1106,6 +1200,7 @@ def _revert_parameter(data):
     order_value = record.get("order")
     if not isinstance(order_value, int):
         order_value = len(stored_records)
+    metadata_changed_at = _now_metadata_timestamp_ms()
 
     stored_records[parameter_key] = {
         "order": order_value,
@@ -1114,7 +1209,10 @@ def _revert_parameter(data):
         "previous_expression": current_expression,
         "current_value": reverted_value,
         "previous_value": current_value,
+        "group": _normalize_group_name(record.get("group") or _parameter_group_name(parameter) or ""),
+        METADATA_CHANGED_AT_RECORD_KEY: metadata_changed_at,
     }
+    _set_parameter_metadata_changed_at(parameter, metadata_changed_at)
     _write_document_order_state(
         {
             "documentId": order_state.get("documentId", ""),
@@ -1134,6 +1232,72 @@ def _set_parameter_favorite(data):
         raise ValueError(f'User parameter "{name}" was not found.')
 
     param.isFavorite = is_favorite
+
+
+def _set_parameter_group(data):
+    design = _require_design()
+    key = str(data.get("key") or "").strip()
+    name = str(data.get("name") or "").strip()
+    if not key and not name:
+        raise ValueError('Either "key" or "name" is required.')
+
+    group_name = _normalize_group_name(data.get("group") or "")
+    parameter = _find_user_parameter_by_token(design, key) if key else None
+    if not parameter and name:
+        parameter = design.userParameters.itemByName(name)
+    if not parameter:
+        raise ValueError("User parameter was not found.")
+    metadata_changed_at = _now_metadata_timestamp_ms()
+    _write_parameter_group_name(parameter, group_name, metadata_changed_at)
+    _set_parameter_group_record(design, parameter, group_name, metadata_changed_at)
+
+
+def _rename_group(data):
+    design = _require_design()
+    old_group = _normalize_group_name(_required_text(data, "oldGroup"))
+    if not old_group:
+        raise ValueError("Ungrouped cannot be renamed.")
+
+    new_group = _normalize_group_name(_required_text(data, "newGroup"))
+    if not new_group:
+        raise ValueError("Ungrouped cannot be used as a rename target.")
+    if old_group.casefold() == new_group.casefold():
+        return
+
+    params = design.userParameters
+    metadata_changed_at = _now_metadata_timestamp_ms()
+    for index in range(params.count):
+        parameter = params.item(index)
+        if not parameter:
+            continue
+        existing_group = _parameter_group_name(parameter)
+        if not existing_group:
+            existing_group = _parameter_group_from_record(design, parameter)
+        if existing_group.casefold() != old_group.casefold():
+            continue
+        _write_parameter_group_name(parameter, new_group, metadata_changed_at)
+        _set_parameter_group_record(design, parameter, new_group, metadata_changed_at)
+
+
+def _delete_group(data):
+    design = _require_design()
+    group_name = _normalize_group_name(_required_text(data, "group"))
+    if not group_name:
+        raise ValueError("Ungrouped cannot be deleted.")
+
+    params = design.userParameters
+    metadata_changed_at = _now_metadata_timestamp_ms()
+    for index in range(params.count):
+        parameter = params.item(index)
+        if not parameter:
+            continue
+        existing_group = _parameter_group_name(parameter)
+        if not existing_group:
+            existing_group = _parameter_group_from_record(design, parameter)
+        if existing_group.casefold() != group_name.casefold():
+            continue
+        _write_parameter_group_name(parameter, "", metadata_changed_at)
+        _set_parameter_group_record(design, parameter, "", metadata_changed_at)
 
 
 def _save_parameter_order(data):
@@ -1419,6 +1583,212 @@ def _required_text(data, key):
     if not value:
         raise ValueError(f'"{key}" is required.')
     return value
+
+
+def _now_metadata_timestamp_ms():
+    return int(time.time() * 1000)
+
+
+def _metadata_changed_at_value(value):
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return value if value > 0 else 0
+    if isinstance(value, float):
+        parsed = int(value)
+        return parsed if parsed > 0 else 0
+    try:
+        parsed = int(str(value or "").strip())
+        return parsed if parsed > 0 else 0
+    except Exception:
+        return 0
+
+
+def _normalize_group_name(value):
+    text = str(value or "")
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return ""
+    if text.casefold() == GROUP_UNGROUPED_LABEL.casefold():
+        return ""
+    if len(text) > MAX_GROUP_NAME_LENGTH:
+        text = text[:MAX_GROUP_NAME_LENGTH].strip()
+    return text
+
+
+def _parameter_group_name(parameter):
+    if not parameter:
+        return ""
+
+    attributes = getattr(parameter, "attributes", None)
+    if not attributes:
+        return ""
+
+    try:
+        attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_PARAMETER_GROUP_NAME)
+    except Exception:
+        attribute = None
+
+    if not attribute:
+        return ""
+
+    try:
+        return _normalize_group_name(attribute.value)
+    except Exception:
+        return ""
+
+
+def _parameter_metadata_changed_at(parameter):
+    if not parameter:
+        return 0
+
+    attributes = getattr(parameter, "attributes", None)
+    if not attributes:
+        return 0
+
+    try:
+        attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_METADATA_CHANGED_AT_NAME)
+    except Exception:
+        attribute = None
+
+    if not attribute:
+        return 0
+
+    try:
+        return _metadata_changed_at_value(attribute.value)
+    except Exception:
+        return 0
+
+
+def _set_parameter_metadata_changed_at(parameter, metadata_changed_at):
+    if not parameter:
+        return False
+
+    metadata_changed_at_value = _metadata_changed_at_value(metadata_changed_at)
+    if metadata_changed_at_value <= 0:
+        return False
+
+    attributes = getattr(parameter, "attributes", None)
+    if not attributes:
+        return False
+
+    try:
+        attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_METADATA_CHANGED_AT_NAME)
+    except Exception:
+        attribute = None
+
+    if attribute:
+        try:
+            attribute.value = str(metadata_changed_at_value)
+            return True
+        except Exception:
+            pass
+
+    try:
+        attributes.add(ATTRIBUTE_NAMESPACE, ATTRIBUTE_METADATA_CHANGED_AT_NAME, str(metadata_changed_at_value))
+        return True
+    except Exception:
+        return False
+
+
+def _write_parameter_group_name(parameter, group_name, metadata_changed_at=None):
+    if not parameter:
+        return
+
+    normalized_group = _normalize_group_name(group_name)
+    metadata_changed_at_value = _metadata_changed_at_value(metadata_changed_at)
+    attributes = getattr(parameter, "attributes", None)
+    if not attributes:
+        return
+
+    try:
+        attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_PARAMETER_GROUP_NAME)
+    except Exception:
+        attribute = None
+
+    if attribute:
+        try:
+            attribute.value = normalized_group
+            if metadata_changed_at_value > 0:
+                _set_parameter_metadata_changed_at(parameter, metadata_changed_at_value)
+            return True
+        except Exception:
+            if not normalized_group:
+                try:
+                    attribute.deleteMe()
+                    if metadata_changed_at_value > 0:
+                        _set_parameter_metadata_changed_at(parameter, metadata_changed_at_value)
+                    return True
+                except Exception:
+                    pass
+
+    if not normalized_group:
+        if metadata_changed_at_value > 0:
+            _set_parameter_metadata_changed_at(parameter, metadata_changed_at_value)
+        return True
+
+    try:
+        attributes.add(ATTRIBUTE_NAMESPACE, ATTRIBUTE_PARAMETER_GROUP_NAME, normalized_group)
+        if metadata_changed_at_value > 0:
+            _set_parameter_metadata_changed_at(parameter, metadata_changed_at_value)
+        return True
+    except Exception:
+        return False
+
+
+def _parameter_group_from_record(design, parameter):
+    if not design or not parameter:
+        return ""
+
+    parameter_key = _parameter_entity_token(parameter)
+    if not parameter_key:
+        return ""
+
+    state = _read_document_order_state()
+    records = _resolve_document_order_records(design, state.get("parameters") or {})
+    record = records.get(parameter_key) if isinstance(records.get(parameter_key), dict) else {}
+    return _normalize_group_name(record.get("group") or "")
+
+
+def _set_parameter_group_record(design, parameter, group_name, metadata_changed_at=None):
+    if not design or not parameter:
+        return
+
+    parameter_key = _parameter_entity_token(parameter)
+    if not parameter_key:
+        return
+
+    order_state = _read_document_order_state()
+    records = _resolve_document_order_records(design, order_state.get("parameters") or {})
+    existing_record = records.get(parameter_key) if isinstance(records.get(parameter_key), dict) else {}
+    order_value = existing_record.get("order")
+    if not isinstance(order_value, int):
+        order_value = len(records)
+    resolved_metadata_changed_at = _metadata_changed_at_value(metadata_changed_at)
+    if resolved_metadata_changed_at <= 0:
+        resolved_metadata_changed_at = _metadata_changed_at_value(existing_record.get(METADATA_CHANGED_AT_RECORD_KEY))
+    if resolved_metadata_changed_at <= 0:
+        resolved_metadata_changed_at = _now_metadata_timestamp_ms()
+
+    units_manager = design.unitsManager
+    records[parameter_key] = {
+        "order": order_value,
+        "name": str(parameter.name or ""),
+        "current_expression": str(existing_record.get("current_expression") or parameter.expression or ""),
+        "previous_expression": str(existing_record.get("previous_expression") or ""),
+        "current_value": str(existing_record.get("current_value") or _format_parameter_value(parameter, units_manager)),
+        "previous_value": str(existing_record.get("previous_value") or ""),
+        "group": _normalize_group_name(group_name or ""),
+        METADATA_CHANGED_AT_RECORD_KEY: resolved_metadata_changed_at,
+    }
+
+    _write_document_order_state(
+        {
+            "documentId": order_state.get("documentId", ""),
+            "documentName": order_state.get("documentName", ""),
+            "parameters": records,
+        }
+    )
 
 
 def _message_box(message):

@@ -554,8 +554,20 @@
         background: rgba(57, 185, 173, 0.08);
       }
 
+      #parameterRows tr.group-header-row.is-group-dragging .group-header {
+        opacity: 0.76;
+        background: color-mix(in srgb, var(--accent) 15%, var(--ghost));
+        border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+      }
+
       body.is-row-dragging,
       body.is-row-dragging * {
+        cursor: grabbing !important;
+        user-select: none;
+      }
+
+      body.is-group-dragging,
+      body.is-group-dragging * {
         cursor: grabbing !important;
         user-select: none;
       }
@@ -657,6 +669,130 @@
 
       .search-clear[hidden] {
         display: none;
+      }
+
+      .group-header-row td {
+        padding: 8px 0 6px 0;
+        border-bottom: 0;
+        background: transparent;
+      }
+
+      .group-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        background: color-mix(in srgb, var(--ghost) 58%, transparent);
+        border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+        border-radius: 12px;
+        padding: 6px 8px;
+      }
+
+      .group-header-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .group-drag-handle {
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border-radius: 8px;
+        background: var(--panel-strong);
+        color: var(--muted);
+        border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+        position: relative;
+      }
+
+      .group-drag-handle::before {
+        content: "";
+        position: absolute;
+        inset: 7px 9px;
+        background:
+          radial-gradient(circle, currentColor 1.2px, transparent 1.3px) left top / 6px 6px repeat-y,
+          radial-gradient(circle, currentColor 1.2px, transparent 1.3px) right top / 6px 6px repeat-y;
+        opacity: 0.82;
+      }
+
+      .group-toggle {
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border-radius: 8px;
+        background: var(--panel-strong);
+        color: var(--ink);
+        font-size: 0.85rem;
+        line-height: 1;
+      }
+
+      .group-name {
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+
+      .group-meta {
+        font-size: 0.83rem;
+        color: var(--muted);
+      }
+
+      .group-header-actions {
+        display: flex;
+        gap: 6px;
+      }
+
+      .group-action {
+        border-radius: 9px;
+        padding: 5px 9px;
+        font-size: 0.82rem;
+        background: var(--panel-strong);
+        color: var(--ink);
+      }
+
+      .group-action.delete {
+        color: var(--error);
+      }
+
+      .parameter-row.is-hidden-by-group {
+        display: none;
+      }
+
+      .reorder-menu-section {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+        display: grid;
+        gap: 8px;
+      }
+
+      .reorder-menu-label {
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+
+      .reorder-menu-section input {
+        width: 100%;
+      }
+
+      .group-pill-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .group-pill {
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 0.82rem;
+        background: var(--panel-strong);
+        color: var(--ink);
+        border: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+      }
+
+      .group-pill.is-active {
+        background: var(--pill-bg);
+        color: var(--pill-ink);
+        border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
       }
 
       .toggle-row {
@@ -1349,12 +1485,19 @@
       <div id="functionHelper" class="function-helper" hidden></div>
       <div id="reorderMenu" class="reorder-menu" hidden>
         <div class="reorder-menu-actions">
-          <button id="moveRowTopButton" class="ghost" type="button">Move to Top</button>
-          <button id="moveRowBottomButton" class="ghost" type="button">Move to Bottom</button>
+          <button id="moveRowTopButton" class="ghost" type="button">Move to Group Top</button>
+          <button id="moveRowBottomButton" class="ghost" type="button">Move to Group Bottom</button>
         </div>
         <div class="reorder-menu-row">
-          <input id="moveRowNumberInput" type="number" min="1" step="1" placeholder="Row #" />
+          <input id="moveRowNumberInput" type="number" min="1" step="1" placeholder="Group Row #" />
           <button id="moveRowNumberButton" class="primary" type="button">Move</button>
+        </div>
+        <div class="reorder-menu-section">
+          <label class="reorder-menu-label">Groups</label>
+          <div id="moveRowGroupPills" class="group-pill-list"></div>
+          <label class="reorder-menu-label" for="moveRowNewGroupInput">Add New Group</label>
+          <input id="moveRowNewGroupInput" type="text" placeholder="Type new group name" />
+          <button id="moveRowGroupButton" class="primary" type="button">Create + Assign</button>
         </div>
       </div>
     </div>
@@ -1510,6 +1653,7 @@
       };
 
       const COLUMN_KEYS = ["name", "expression", "preview", "comment", "actions"];
+      const UNGROUPED_GROUP_LABEL = "Ungrouped";
 
       const EXPRESSION_FUNCTIONS = [
         "abs", "acos", "acosh", "and", "asin", "asinh", "atan", "atanh",
@@ -1558,6 +1702,7 @@
       const state = {
         parameters: [],
         searchQuery: "",
+        groups: [],
         parameterNames: [],
         settings: {
           theme: (function () { try { var t = localStorage.getItem("bp_theme"); return t === "dark" || t === "light" ? t : "light"; } catch (_) { return "light"; } }()),
@@ -1603,11 +1748,16 @@
         },
         activeColumnResize: null,
         activeRowDrag: null,
+        activeGroupDrag: null,
+        groupUi: {
+          collapsed: {}
+        },
         reorderMenu: {
           key: "",
           left: 0,
           top: 0,
-          hideTimer: null
+          hideTimer: null,
+          group: ""
         },
         rowPreviewRequestNonce: 0,
         updateInfo: {
@@ -1815,6 +1965,117 @@
         });
       }
 
+      function normalizeGroupName(value) {
+        return String(value || "").replace(/\s+/g, " ").trim();
+      }
+
+      function canonicalGroupName(value) {
+        const normalized = normalizeGroupName(value);
+        if (!normalized || normalized.toLowerCase() === UNGROUPED_GROUP_LABEL.toLowerCase()) {
+          return "";
+        }
+        return normalized;
+      }
+
+      function displayGroupName(value) {
+        const canonical = canonicalGroupName(value);
+        return canonical || UNGROUPED_GROUP_LABEL;
+      }
+
+      function groupSortKey(label) {
+        const display = displayGroupName(label);
+        if (display === UNGROUPED_GROUP_LABEL) {
+          return "";
+        }
+        return display.toLowerCase();
+      }
+
+      function ensureGroupUiState(groupLabel) {
+        const key = groupSortKey(groupLabel);
+        if (!(key in state.groupUi.collapsed)) {
+          state.groupUi.collapsed[key] = false;
+        }
+      }
+
+      function isGroupCollapsed(groupLabel) {
+        ensureGroupUiState(groupLabel);
+        return !!state.groupUi.collapsed[groupSortKey(groupLabel)];
+      }
+
+      function collectKnownGroups() {
+        const names = [];
+        const seen = new Set();
+        const register = (candidate) => {
+          const canonical = canonicalGroupName(candidate);
+          if (!canonical) {
+            return;
+          }
+          const folded = canonical.toLowerCase();
+          if (seen.has(folded)) {
+            return;
+          }
+          seen.add(folded);
+          names.push(canonical);
+        };
+
+        (state.groups || []).forEach((name) => register(name));
+        (state.parameters || []).forEach((param) => register(param.group));
+        names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+        return names;
+      }
+
+      function getGroupCounts(parameters) {
+        const counts = new Map();
+        for (const parameter of (parameters || [])) {
+          const label = displayGroupName(parameter.group);
+          counts.set(label, (counts.get(label) || 0) + 1);
+        }
+        if (!counts.has(UNGROUPED_GROUP_LABEL)) {
+          counts.set(UNGROUPED_GROUP_LABEL, 0);
+        }
+        return counts;
+      }
+
+      function buildGroupedParameters(parameters) {
+        const groups = new Map();
+        const allCounts = getGroupCounts(state.parameters || []);
+        const filteredCounts = getGroupCounts(parameters || []);
+        for (const parameter of (parameters || [])) {
+          const label = displayGroupName(parameter.group);
+          if (!groups.has(label)) {
+            groups.set(label, []);
+          }
+          groups.get(label).push(parameter);
+        }
+        const orderedLabels = [];
+        const seen = new Set();
+        const pushLabel = (candidate) => {
+          const label = displayGroupName(candidate);
+          const key = label.toLowerCase();
+          if (seen.has(key)) {
+            return;
+          }
+          seen.add(key);
+          orderedLabels.push(label);
+        };
+
+        for (const parameter of (state.parameters || [])) {
+          pushLabel(parameter.group);
+        }
+        for (const parameter of (parameters || [])) {
+          pushLabel(parameter.group);
+        }
+
+        const labels = orderedLabels.filter((label) => groups.has(label));
+
+        return labels.map((label) => ({
+          label,
+          parameters: groups.get(label) || [],
+          allCount: allCounts.get(label) || 0,
+          filteredCount: filteredCounts.get(label) || 0
+        }));
+      }
+
       function renderSearchControls() {
         const clearButton = document.getElementById("parameterSearchClear");
         const searchInput = document.getElementById("parameterSearchInput");
@@ -1831,6 +2092,7 @@
         renderSearchControls();
         renderParameters(state.parameters);
         setParameterSummary(state.parameters);
+        setReorderMenuMode();
       }
 
       function autoSizeTextarea(textarea) {
@@ -2136,80 +2398,119 @@
 
         if (!state.parameters.length) {
           tbody.innerHTML = `<tr><td colspan="5" class="empty">No user parameters were found in the active design.</td></tr>`;
+          renderReorderMenuGroupOptions();
           return;
         }
 
         const filteredParameters = getFilteredParameters(state.parameters);
         if (!filteredParameters.length) {
           tbody.innerHTML = `<tr><td colspan="5" class="empty">No parameters match your search.</td></tr>`;
+          renderReorderMenuGroupOptions();
           return;
         }
 
         const isSearchActive = !!state.searchQuery.trim();
-        tbody.innerHTML = filteredParameters.map((param, index) => {
-          const safeKey = escapeHtml(param.key || param.name || "");
-          const safeName = escapeHtml(param.name);
-          const safeExpression = escapeHtml(param.expression);
-          const safeComment = escapeHtml(param.comment);
-          const safePreview = escapeHtml(param.valuePreview);
-          const previousExpression = String(param.previousExpression || "");
-          const previousValue = String(param.previousValue || "");
-          const safePreviousExpression = escapeHtml(previousExpression);
-          const unitBadge = `<span class="pill">${escapeHtml(param.unit || "No Units")}</span>`;
-          const favoriteTitle = param.isFavorite ? "Remove from favorites" : "Add to favorites";
-          const favoriteIcon = param.isFavorite ? "★" : "☆";
-          const favoriteClass = param.isFavorite ? "favorite-button is-on" : "favorite-button";
-          const reorderTitle = isSearchActive
-            ? "Clear search to reorder parameters."
-            : `Drag to reorder ${safeName}. Right-click for more options.`;
-          const showRevert = state.settings.showRevertButtons !== false;
-          const compactPreviousValue = previousValue.replace(/\s+/g, " ").trim();
-          const revertTitle = previousExpression
-            ? `Revert to: ${escapeHtml(previousExpression)}${compactPreviousValue ? ` (${escapeHtml(compactPreviousValue)})` : ""}`
-            : (
-              compactPreviousValue
-                ? `Revert to: ${escapeHtml(compactPreviousValue)}`
-                : "No previous value"
-            );
-          const revertButton = showRevert
-            ? `<button class="revert-button" type="button" data-previous-expression="${safePreviousExpression}" title="${revertTitle}"${previousExpression ? "" : " disabled"}>Revert</button>`
-            : "";
-
-          return `
-            <tr data-index="${index}" data-parameter-key="${safeKey}" data-parameter-name="${safeName}">
-              <td class="name-cell">
-                <div class="name-cell-main">
-                  <button class="reorder-handle" type="button" data-reorder-handle="true" tabindex="-1" aria-label="${reorderTitle}" title="${reorderTitle}"${isSearchActive ? " disabled" : ""}></button>
-                  <div class="name-stack">
-                    <strong>${safeName}</strong>
-                    <div class="row-meta">
-                      <button class="${favoriteClass}" type="button" data-favorite-toggle="true" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}">${favoriteIcon}</button>
-                      ${unitBadge}
-                    </div>
+        const grouped = buildGroupedParameters(filteredParameters);
+        const pieces = [];
+        let renderRowCounter = 0;
+        for (const groupBlock of grouped) {
+          ensureGroupUiState(groupBlock.label);
+          const groupCollapsed = isGroupCollapsed(groupBlock.label);
+          const safeGroupLabel = escapeHtml(groupBlock.label);
+          const isUngrouped = groupBlock.label === UNGROUPED_GROUP_LABEL;
+          const countText = isSearchActive
+            ? `${groupBlock.filteredCount} of ${groupBlock.allCount}`
+            : `${groupBlock.allCount}`;
+          const toggleGlyph = groupCollapsed ? "▸" : "▾";
+          pieces.push(`
+            <tr class="group-header-row" data-group-header="${safeGroupLabel}">
+              <td colspan="5">
+                <div class="group-header">
+                  <div class="group-header-left">
+                    <button class="group-drag-handle" type="button" data-group-drag-handle="true" aria-label="Drag to reorder group ${safeGroupLabel}"></button>
+                    <button class="group-toggle" type="button" data-group-toggle="${safeGroupLabel}" aria-expanded="${groupCollapsed ? "false" : "true"}">${toggleGlyph}</button>
+                    <span class="group-name">${safeGroupLabel}</span>
+                    <span class="group-meta">${escapeHtml(countText)} parameter${(groupBlock.allCount === 1 && !isSearchActive) || (groupBlock.filteredCount === 1 && isSearchActive) ? "" : "s"}</span>
+                  </div>
+                  <div class="group-header-actions">
+                    ${isUngrouped ? "" : `<button class="group-action" type="button" data-group-rename="${safeGroupLabel}">Rename</button>`}
+                    ${isUngrouped ? "" : `<button class="group-action delete" type="button" data-group-delete="${safeGroupLabel}">Delete</button>`}
                   </div>
                 </div>
               </td>
-              <td>
-                <div class="field-shell">
-                  <input id="expressionRow${index}" class="mono expression-input" data-parameter-name="${safeName}" data-parameter-unit="${escapeHtml(param.unit || "")}" data-saved-expression="${safeExpression}" value="${safeExpression}" autocomplete="off" />
-                  <div class="field-error expression-field-error" aria-live="polite"></div>
-                </div>
-              </td>
-              <td class="mono preview-cell" data-saved-preview="${safePreview}">
-                <div class="preview-value"></div>
-              </td>
-              <td>
-                <textarea class="comment-input" data-saved-comment="${safeComment}">${safeComment}</textarea>
-              </td>
-              <td>
-                <div class="row-actions">
-                  ${revertButton}
-                  <button class="save-button" type="button" disabled>Save</button>
-                </div>
-              </td>
             </tr>
-          `;
-        }).join("");
+          `);
+
+          groupBlock.parameters.forEach((param, index) => {
+            renderRowCounter += 1;
+            const safeKey = escapeHtml(param.key || param.name || "");
+            const safeName = escapeHtml(param.name);
+            const safeExpression = escapeHtml(param.expression);
+            const safeComment = escapeHtml(param.comment);
+            const safePreview = escapeHtml(param.valuePreview);
+            const previousExpression = String(param.previousExpression || "");
+            const previousValue = String(param.previousValue || "");
+            const safePreviousExpression = escapeHtml(previousExpression);
+            const unitBadge = `<span class="pill">${escapeHtml(param.unit || "No Units")}</span>`;
+            const favoriteTitle = param.isFavorite ? "Remove from favorites" : "Add to favorites";
+            const favoriteIcon = param.isFavorite ? "★" : "☆";
+            const favoriteClass = param.isFavorite ? "favorite-button is-on" : "favorite-button";
+            const reorderTitle = isSearchActive
+              ? "Clear search to reorder parameters."
+              : `Drag to reorder ${safeName}. Right-click for group + reorder options.`;
+            const showRevert = state.settings.showRevertButtons !== false;
+            const compactPreviousValue = previousValue.replace(/\s+/g, " ").trim();
+            const revertTitle = previousExpression
+              ? `Revert to: ${escapeHtml(previousExpression)}${compactPreviousValue ? ` (${escapeHtml(compactPreviousValue)})` : ""}`
+              : (
+                compactPreviousValue
+                  ? `Revert to: ${escapeHtml(compactPreviousValue)}`
+                  : "No previous value"
+              );
+            const revertButton = showRevert
+              ? `<button class="revert-button" type="button" data-previous-expression="${safePreviousExpression}" title="${revertTitle}"${previousExpression ? "" : " disabled"}>Revert</button>`
+              : "";
+            const hiddenClass = groupCollapsed ? " is-hidden-by-group" : "";
+
+            pieces.push(`
+              <tr class="parameter-row${hiddenClass}" data-index="0" data-group-index="${index}" data-group-name="${safeGroupLabel}" data-parameter-key="${safeKey}" data-parameter-name="${safeName}">
+                <td class="name-cell">
+                  <div class="name-cell-main">
+                    <button class="reorder-handle" type="button" data-reorder-handle="true" tabindex="-1" aria-label="${reorderTitle}" title="${reorderTitle}"${isSearchActive ? " disabled" : ""}></button>
+                    <div class="name-stack">
+                      <strong>${safeName}</strong>
+                      <div class="row-meta">
+                        <button class="${favoriteClass}" type="button" data-favorite-toggle="true" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}">${favoriteIcon}</button>
+                        ${unitBadge}
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div class="field-shell">
+                    <input id="expressionRow${renderRowCounter}" class="mono expression-input" data-parameter-name="${safeName}" data-parameter-unit="${escapeHtml(param.unit || "")}" data-saved-expression="${safeExpression}" value="${safeExpression}" autocomplete="off" />
+                    <div class="field-error expression-field-error" aria-live="polite"></div>
+                  </div>
+                </td>
+                <td class="mono preview-cell" data-saved-preview="${safePreview}">
+                  <div class="preview-value"></div>
+                </td>
+                <td>
+                  <textarea class="comment-input" data-saved-comment="${safeComment}">${safeComment}</textarea>
+                </td>
+                <td>
+                  <div class="row-actions">
+                    ${revertButton}
+                    <button class="save-button" type="button" disabled>Save</button>
+                  </div>
+                </td>
+              </tr>
+            `);
+          });
+        }
+
+        tbody.innerHTML = pieces.join("");
+        renderReorderMenuGroupOptions();
 
         autoSizeCommentInputs(tbody);
         tbody.querySelectorAll(".preview-cell").forEach((previewCell) => {
@@ -2220,9 +2521,42 @@
       }
 
       function syncParameterRowIndices() {
-        Array.from(document.querySelectorAll("#parameterRows tr[data-parameter-key]")).forEach((row, index) => {
+        const rows = Array.from(document.querySelectorAll("#parameterRows tr[data-parameter-key]"));
+        rows.forEach((row, index) => {
           row.dataset.index = String(index);
         });
+        const groupCounters = {};
+        rows.forEach((row) => {
+          const groupName = displayGroupName(row.getAttribute("data-group-name") || "");
+          const nextIndex = Number(groupCounters[groupName] || 0);
+          row.dataset.groupIndex = String(nextIndex);
+          groupCounters[groupName] = nextIndex + 1;
+        });
+      }
+
+      function renderReorderMenuGroupOptions() {
+        const pillRoot = document.getElementById("moveRowGroupPills");
+        if (!pillRoot) {
+          return;
+        }
+        const currentGroup = canonicalGroupName(state.reorderMenu.group || "");
+        const options = [UNGROUPED_GROUP_LABEL, ...collectKnownGroups()];
+        const seen = new Set();
+        const normalized = options.filter((group) => {
+          const key = displayGroupName(group).toLowerCase();
+          if (seen.has(key)) {
+            return false;
+          }
+          seen.add(key);
+          return true;
+        });
+
+        pillRoot.innerHTML = normalized.map((group) => {
+          const canonical = canonicalGroupName(group);
+          const display = displayGroupName(group);
+          const active = canonical === currentGroup ? " is-active" : "";
+          return `<button class="group-pill${active}" type="button" data-group-pill="${escapeHtml(canonical)}">${escapeHtml(display)}</button>`;
+        }).join("");
       }
 
       function getParameterForRow(row) {
@@ -2248,6 +2582,12 @@
           .find((row) => (row.getAttribute("data-parameter-key") || "") === key) || null;
       }
 
+      function getRowsInGroup(groupLabel) {
+        const normalizedLabel = displayGroupName(groupLabel || "");
+        return Array.from(document.querySelectorAll("#parameterRows tr[data-parameter-key]"))
+          .filter((row) => displayGroupName(row.getAttribute("data-group-name") || "") === normalizedLabel);
+      }
+
       function reorderDraggedRow(clientY) {
         const dragState = state.activeRowDrag;
         const tbody = document.getElementById("parameterRows");
@@ -2256,7 +2596,9 @@
           return;
         }
 
-        const candidateRows = Array.from(tbody.querySelectorAll("tr[data-parameter-key]")).filter((row) => row !== draggingRow);
+        const groupName = displayGroupName(draggingRow.getAttribute("data-group-name") || "");
+        const candidateRows = getRowsInGroup(groupName)
+          .filter((row) => row !== draggingRow && !row.classList.contains("is-hidden-by-group"));
         const nextRow = candidateRows.find((row) => {
           const rect = row.getBoundingClientRect();
           return clientY < rect.top + (rect.height / 2);
@@ -2280,8 +2622,23 @@
           key: "",
           left: 0,
           top: 0,
-          hideTimer: null
+          hideTimer: null,
+          group: ""
         };
+      }
+
+      function setReorderMenuMode() {
+        const searchActive = !!state.searchQuery.trim();
+        const moveTop = document.getElementById("moveRowTopButton");
+        const moveBottom = document.getElementById("moveRowBottomButton");
+        const moveNumber = document.getElementById("moveRowNumberButton");
+        const moveNumberInput = document.getElementById("moveRowNumberInput");
+        const disabled = searchActive;
+        [moveTop, moveBottom, moveNumber, moveNumberInput].forEach((el) => {
+          if (el) {
+            el.disabled = disabled;
+          }
+        });
       }
 
       function openReorderMenu(row, clientX, clientY) {
@@ -2292,17 +2649,25 @@
         const menu = document.getElementById("reorderMenu");
         const page = document.querySelector(".page");
         const input = document.getElementById("moveRowNumberInput");
-        const rowCount = document.querySelectorAll("#parameterRows tr[data-parameter-key]").length;
+        const newGroupInput = document.getElementById("moveRowNewGroupInput");
+        const groupName = displayGroupName(row.getAttribute("data-group-name") || "");
+        const rowCount = getRowsInGroup(groupName).length;
         state.reorderMenu = {
           key: row.getAttribute("data-parameter-key") || "",
           left: clientX,
           top: clientY,
-          hideTimer: null
+          hideTimer: null,
+          group: canonicalGroupName(groupName)
         };
         menu.hidden = false;
         document.getElementById("overlayRoot").appendChild(menu);
-        input.value = row.dataset.index ? String(Number(row.dataset.index) + 1) : "";
+        input.value = row.dataset.groupIndex ? String(Number(row.dataset.groupIndex) + 1) : "";
         input.max = String(Math.max(rowCount, 1));
+        if (newGroupInput) {
+          newGroupInput.value = "";
+        }
+        renderReorderMenuGroupOptions();
+        setReorderMenuMode();
 
         const pageRect = page.getBoundingClientRect();
         const gutter = 8;
@@ -2341,7 +2706,8 @@
 
       async function moveRowToIndex(row, targetIndex) {
         const tbody = document.getElementById("parameterRows");
-        const rows = Array.from(tbody.querySelectorAll("tr[data-parameter-key]"));
+        const groupName = displayGroupName(row?.getAttribute("data-group-name") || "");
+        const rows = getRowsInGroup(groupName);
         if (!row || !rows.length) {
           return;
         }
@@ -2376,8 +2742,12 @@
         if (!row || !tbody) {
           return;
         }
-
-        tbody.insertBefore(row, tbody.querySelector("tr[data-parameter-key]"));
+        const groupName = displayGroupName(row.getAttribute("data-group-name") || "");
+        const rows = getRowsInGroup(groupName);
+        if (!rows.length) {
+          return;
+        }
+        tbody.insertBefore(row, rows[0]);
         syncParameterRowIndices();
         setGlobalStatus("Saving parameter order...");
         await persistParameterRowOrder();
@@ -2388,8 +2758,17 @@
         if (!row || !tbody) {
           return;
         }
-
-        tbody.appendChild(row);
+        const groupName = displayGroupName(row.getAttribute("data-group-name") || "");
+        const rows = getRowsInGroup(groupName);
+        if (!rows.length) {
+          return;
+        }
+        const anchor = rows[rows.length - 1];
+        if (anchor.nextElementSibling) {
+          tbody.insertBefore(row, anchor.nextElementSibling);
+        } else {
+          tbody.appendChild(row);
+        }
         syncParameterRowIndices();
         setGlobalStatus("Saving parameter order...");
         await persistParameterRowOrder();
@@ -2455,6 +2834,155 @@
         event.preventDefault();
       }
 
+      function getCurrentGroupOrder() {
+        return Array.from(document.querySelectorAll("#parameterRows tr.group-header-row"))
+          .map((row) => displayGroupName(row.getAttribute("data-group-header") || ""))
+          .filter(Boolean);
+      }
+
+      function getGroupHeaderByName(groupName) {
+        const target = displayGroupName(groupName || "");
+        return Array.from(document.querySelectorAll("#parameterRows tr.group-header-row"))
+          .find((row) => displayGroupName(row.getAttribute("data-group-header") || "") === target) || null;
+      }
+
+      function getGroupBlockRows(headerRow) {
+        if (!headerRow || !headerRow.parentElement) {
+          return [];
+        }
+        const rows = [headerRow];
+        let cursor = headerRow.nextElementSibling;
+        while (cursor) {
+          if (cursor.classList.contains("group-header-row")) {
+            break;
+          }
+          rows.push(cursor);
+          cursor = cursor.nextElementSibling;
+        }
+        return rows;
+      }
+
+      function moveGroupBlockBefore(groupLabel, referenceHeader) {
+        const header = getGroupHeaderByName(groupLabel);
+        const tbody = document.getElementById("parameterRows");
+        if (!header || !tbody) {
+          return;
+        }
+
+        const blockRows = getGroupBlockRows(header);
+        if (!blockRows.length) {
+          return;
+        }
+
+        const fragment = document.createDocumentFragment();
+        blockRows.forEach((row) => fragment.appendChild(row));
+        if (referenceHeader) {
+          tbody.insertBefore(fragment, referenceHeader);
+        } else {
+          tbody.appendChild(fragment);
+        }
+      }
+
+      function reorderDraggedGroup(clientY) {
+        const dragState = state.activeGroupDrag;
+        const groupLabel = dragState?.groupLabel;
+        if (!groupLabel) {
+          return;
+        }
+
+        const draggingHeader = getGroupHeaderByName(groupLabel);
+        if (!draggingHeader) {
+          return;
+        }
+
+        const candidateHeaders = Array.from(document.querySelectorAll("#parameterRows tr.group-header-row"))
+          .filter((row) => row !== draggingHeader);
+        const nextHeader = candidateHeaders.find((row) => {
+          const rect = row.getBoundingClientRect();
+          return clientY < rect.top + (rect.height / 2);
+        });
+
+        moveGroupBlockBefore(groupLabel, nextHeader || null);
+        const refreshedHeader = getGroupHeaderByName(groupLabel);
+        if (refreshedHeader) {
+          refreshedHeader.classList.add("is-group-dragging");
+        }
+      }
+
+      function startGroupDrag(groupLabel, event) {
+        if (!groupLabel) {
+          return;
+        }
+
+        const previousCollapsed = { ...state.groupUi.collapsed };
+        const priorOrder = getCurrentGroupOrder();
+        const allGroups = priorOrder;
+        const collapsed = {};
+        allGroups.forEach((label) => {
+          collapsed[groupSortKey(label)] = true;
+        });
+        state.groupUi.collapsed = collapsed;
+        renderParameters(state.parameters);
+        setParameterSummary(state.parameters);
+
+        const header = getGroupHeaderByName(groupLabel);
+        if (!header) {
+          state.groupUi.collapsed = previousCollapsed;
+          renderParameters(state.parameters);
+          setParameterSummary(state.parameters);
+          return;
+        }
+
+        header.classList.add("is-group-dragging");
+        state.activeGroupDrag = {
+          groupLabel: displayGroupName(groupLabel),
+          startOrder: priorOrder,
+          previousCollapsed
+        };
+        document.body.classList.add("is-group-dragging");
+        event.preventDefault();
+      }
+
+      async function finishGroupDrag() {
+        const dragState = state.activeGroupDrag;
+        if (!dragState) {
+          return;
+        }
+
+        const draggingHeader = getGroupHeaderByName(dragState.groupLabel);
+        if (draggingHeader) {
+          draggingHeader.classList.remove("is-group-dragging");
+        }
+        document.body.classList.remove("is-group-dragging");
+
+        const previousCollapsed = dragState.previousCollapsed || {};
+        const startOrder = dragState.startOrder || [];
+        const nextOrder = getCurrentGroupOrder();
+        state.activeGroupDrag = null;
+
+        const orderChanged = startOrder.join("|") !== nextOrder.join("|");
+        if (!orderChanged) {
+          state.groupUi.collapsed = previousCollapsed;
+          renderParameters(state.parameters);
+          setParameterSummary(state.parameters);
+          return;
+        }
+
+        setGlobalStatus("Saving group order...");
+        try {
+          await persistParameterRowOrder("Group order updated.");
+          state.groupUi.collapsed = previousCollapsed;
+          renderParameters(state.parameters);
+          setParameterSummary(state.parameters);
+        } catch (error) {
+          state.groupUi.collapsed = previousCollapsed;
+          renderParameters(state.parameters);
+          setParameterSummary(state.parameters);
+          setGlobalStatus(error.message, "error");
+          await refreshParameters();
+        }
+      }
+
       function applyTheme(theme) {
         const normalizedTheme = theme === "dark" ? "dark" : "light";
         state.settings.theme = normalizedTheme;
@@ -2499,6 +3027,70 @@
         }
       }
 
+      async function setParameterGroupForRow(row, requestedGroupName) {
+        const parameter = getParameterForRow(row);
+        if (!parameter) {
+          throw new Error("Parameter row is no longer available.");
+        }
+        const nextGroup = canonicalGroupName(requestedGroupName);
+        const response = await sendToFusion("setParameterGroup", {
+          key: parameter.key || "",
+          name: parameter.name || "",
+          group: nextGroup
+        });
+        if (!response.ok) {
+          throw new Error(response.message || "Failed to update parameter group.");
+        }
+        applyStateFromFusion(response);
+        const groupLabel = displayGroupName(nextGroup);
+        setGlobalStatus(`Assigned ${parameter.name} to ${groupLabel}.`, "success");
+      }
+
+      async function renameGroup(oldGroupName) {
+        const existing = canonicalGroupName(oldGroupName);
+        if (!existing) {
+          return;
+        }
+        const promptValue = window.prompt("Rename group:", existing);
+        if (promptValue === null) {
+          return;
+        }
+        const nextName = canonicalGroupName(promptValue);
+        if (!nextName) {
+          setGlobalStatus("Group name cannot be empty.", "error");
+          return;
+        }
+        if (nextName.toLowerCase() === existing.toLowerCase()) {
+          return;
+        }
+        const response = await sendToFusion("renameGroup", {
+          oldGroup: existing,
+          newGroup: nextName
+        });
+        if (!response.ok) {
+          throw new Error(response.message || "Failed to rename group.");
+        }
+        applyStateFromFusion(response);
+        setGlobalStatus(`Renamed group ${existing} to ${nextName}.`, "success");
+      }
+
+      async function deleteGroup(groupName) {
+        const existing = canonicalGroupName(groupName);
+        if (!existing) {
+          return;
+        }
+        const confirmed = window.confirm(`Delete group "${existing}"? Parameters move to Ungrouped.`);
+        if (!confirmed) {
+          return;
+        }
+        const response = await sendToFusion("deleteGroup", { group: existing });
+        if (!response.ok) {
+          throw new Error(response.message || "Failed to delete group.");
+        }
+        applyStateFromFusion(response);
+        setGlobalStatus(`Deleted group ${existing}.`, "success");
+      }
+
       function applyStateFromFusion(payload) {
         if (payload.document) {
           state.document = { ...state.document, ...payload.document };
@@ -2513,6 +3105,10 @@
 
         if (payload.parameterNames) {
           state.parameterNames = payload.parameterNames.slice();
+        }
+
+        if (Array.isArray(payload.groups)) {
+          state.groups = payload.groups.slice();
         }
 
         if (payload.documentDefaults) {
@@ -3574,6 +4170,29 @@
       });
 
       parameterRows.addEventListener("click", (event) => {
+        const groupToggle = event.target.closest("[data-group-toggle]");
+        if (groupToggle) {
+          const groupLabel = groupToggle.getAttribute("data-group-toggle") || "";
+          const key = groupSortKey(groupLabel);
+          state.groupUi.collapsed[key] = !isGroupCollapsed(groupLabel);
+          renderParameters(state.parameters);
+          return;
+        }
+
+        const renameGroupButton = event.target.closest("[data-group-rename]");
+        if (renameGroupButton) {
+          const oldGroup = renameGroupButton.getAttribute("data-group-rename") || "";
+          renameGroup(oldGroup).catch((error) => setGlobalStatus(error.message, "error"));
+          return;
+        }
+
+        const deleteGroupButton = event.target.closest("[data-group-delete]");
+        if (deleteGroupButton) {
+          const groupName = deleteGroupButton.getAttribute("data-group-delete") || "";
+          deleteGroup(groupName).catch((error) => setGlobalStatus(error.message, "error"));
+          return;
+        }
+
         const reorderHandle = event.target.closest("[data-reorder-handle]");
         if (reorderHandle) {
           return;
@@ -3733,7 +4352,8 @@
       document.getElementById("moveRowNumberButton").addEventListener("click", async () => {
         const row = getParameterRowByKey(state.reorderMenu.key);
         const input = document.getElementById("moveRowNumberInput");
-        const rowCount = document.querySelectorAll("#parameterRows tr[data-parameter-key]").length;
+        const groupName = displayGroupName(row?.getAttribute("data-group-name") || "");
+        const rowCount = getRowsInGroup(groupName).length;
         const parsed = Number.parseInt(String(input.value || "").replace(/[^0-9-]/g, ""), 10);
         const normalizedIndex = Number.isFinite(parsed) ? Math.max(0, Math.min(parsed - 1, Math.max(rowCount - 1, 0))) : 0;
         closeReorderMenu();
@@ -3761,6 +4381,54 @@
         }
       });
 
+      document.getElementById("moveRowGroupButton").addEventListener("click", async () => {
+        cancelReorderMenuClose();
+        const row = getParameterRowByKey(state.reorderMenu.key);
+        if (!row) {
+          closeReorderMenu();
+          return;
+        }
+        const groupInput = document.getElementById("moveRowNewGroupInput");
+        const nextGroup = groupInput ? groupInput.value : "";
+        if (!canonicalGroupName(nextGroup)) {
+          setGlobalStatus("Type a new group name first, or click an existing group pill.", "error");
+          return;
+        }
+        try {
+          await setParameterGroupForRow(row, nextGroup);
+          closeReorderMenu();
+        } catch (error) {
+          setGlobalStatus(error.message, "error");
+        }
+      });
+
+      document.getElementById("moveRowNewGroupInput").addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          document.getElementById("moveRowGroupButton").click();
+        }
+      });
+
+      document.getElementById("moveRowGroupPills").addEventListener("click", async (event) => {
+        const pill = event.target.closest("[data-group-pill]");
+        if (!pill) {
+          return;
+        }
+        cancelReorderMenuClose();
+        const row = getParameterRowByKey(state.reorderMenu.key);
+        if (!row) {
+          closeReorderMenu();
+          return;
+        }
+        const selectedGroup = pill.getAttribute("data-group-pill") || "";
+        try {
+          await setParameterGroupForRow(row, selectedGroup);
+          closeReorderMenu();
+        } catch (error) {
+          setGlobalStatus(error.message, "error");
+        }
+      });
+
       document.getElementById("reorderMenu").addEventListener("mousedown", (event) => {
         cancelReorderMenuClose();
         event.stopPropagation();
@@ -3785,13 +4453,35 @@
       });
 
       parameterRows.addEventListener("mousedown", (event) => {
+        const groupHandle = event.target.closest("[data-group-drag-handle]");
+        if (groupHandle) {
+          if (state.searchQuery.trim()) {
+            setGlobalStatus("Clear search to reorder groups.");
+            return;
+          }
+
+          if (event.button !== 0) {
+            return;
+          }
+
+          const groupRow = groupHandle.closest("tr.group-header-row");
+          const groupLabel = groupRow ? (groupRow.getAttribute("data-group-header") || "") : "";
+          if (!groupLabel) {
+            return;
+          }
+
+          closeReorderMenu();
+          startGroupDrag(groupLabel, event);
+          return;
+        }
+
         const handle = event.target.closest("[data-reorder-handle]");
         if (!handle) {
           return;
         }
 
         if (state.searchQuery.trim()) {
-          setGlobalStatus("Clear search to reorder parameters.");
+          setGlobalStatus("Reorder disabled while search is active.");
           return;
         }
 
@@ -3813,18 +4503,15 @@
           return;
         }
 
-        if (state.searchQuery.trim()) {
-          event.preventDefault();
-          setGlobalStatus("Clear search to reorder parameters.");
-          return;
-        }
-
         const row = handle.closest("tr[data-parameter-key]");
         if (!row) {
           return;
         }
 
         event.preventDefault();
+        if (state.searchQuery.trim()) {
+          setGlobalStatus("Reorder disabled while search is active. Group assignment still available.");
+        }
         cancelReorderMenuClose();
         openReorderMenu(row, event.clientX, event.clientY);
       });
@@ -4108,6 +4795,11 @@
 
       document.addEventListener("mousemove", (event) => {
         if (!state.activeRowDrag) {
+          if (!state.activeGroupDrag) {
+            return;
+          }
+          reorderDraggedGroup(event.clientY);
+          event.preventDefault();
           return;
         }
 
@@ -4116,19 +4808,21 @@
       });
 
       document.addEventListener("mouseup", () => {
-        if (!state.activeRowDrag) {
-          return;
+        if (state.activeRowDrag) {
+          finishRowDrag();
         }
-
-        finishRowDrag();
+        if (state.activeGroupDrag) {
+          finishGroupDrag();
+        }
       });
 
       window.addEventListener("blur", () => {
-        if (!state.activeRowDrag) {
-          return;
+        if (state.activeRowDrag) {
+          finishRowDrag();
         }
-
-        finishRowDrag();
+        if (state.activeGroupDrag) {
+          finishGroupDrag();
+        }
       });
 
       document.addEventListener("mousedown", (event) => {
