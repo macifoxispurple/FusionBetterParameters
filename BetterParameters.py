@@ -1988,7 +1988,8 @@ def _find_extracted_addin_dir(extract_root):
 def _extract_release_archive(zip_path, extract_root):
     with zipfile.ZipFile(zip_path, 'r') as archive:
         for member in archive.infolist():
-            normalized_name = str(member.filename or '').replace('\\', '/').strip('/')
+            raw_name = str(member.filename or '')
+            normalized_name = raw_name.replace('\\', '/').strip('/')
             if not normalized_name:
                 continue
 
@@ -1997,11 +1998,24 @@ def _extract_release_archive(zip_path, extract_root):
                 continue
 
             destination = os.path.join(extract_root, *parts)
-            if member.is_dir():
+            is_directory = bool(
+                member.is_dir()
+                or raw_name.endswith('/')
+                or raw_name.endswith('\\')
+                or str(member.filename or '').replace('\\', '/').endswith('/')
+            )
+            if is_directory:
+                if os.path.exists(destination) and not os.path.isdir(destination):
+                    os.remove(destination)
                 os.makedirs(destination, exist_ok=True)
                 continue
 
-            os.makedirs(os.path.dirname(destination), exist_ok=True)
+            parent_dir = os.path.dirname(destination)
+            if os.path.exists(parent_dir) and not os.path.isdir(parent_dir):
+                os.remove(parent_dir)
+            os.makedirs(parent_dir, exist_ok=True)
+            if os.path.isdir(destination):
+                shutil.rmtree(destination, ignore_errors=True)
             with archive.open(member, 'r') as source_handle, open(destination, 'wb') as target_handle:
                 shutil.copyfileobj(source_handle, target_handle)
 
