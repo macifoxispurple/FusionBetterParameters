@@ -1,7 +1,9 @@
 import json
 import importlib
 import importlib.util
+import hashlib
 import os
+import platform
 import re
 import shutil
 import sys
@@ -40,6 +42,7 @@ PALETTE_NAME = "Better Parameters"
 PALETTE_FILE = "palette.html"
 COMMAND_RESOURCES = "./Resources/BetterParameters"
 SETTINGS_FILE = "settings.json"
+DOCUMENT_ORDER_DIRNAME = "document_orders"
 DEFAULT_PALETTE_WIDTH = 520
 DEFAULT_PALETTE_HEIGHT = 640
 EXPRESSION_TOKEN_PATTERN = re.compile('[A-Za-z_"\\$\\u00B0\\u00B5][A-Za-z0-9_"\\$\\u00B0\\u00B5]*')
@@ -348,6 +351,12 @@ def _handle_palette_action(action, data):
         _send_to_palette("renderState", payload)
         return payload
 
+    if action == "saveParameterOrder":
+        _save_parameter_order(data)
+        payload = _current_state_payload()
+        _send_to_palette("renderState", payload)
+        return payload
+
     if action == "createParameter":
         _create_parameter(data)
         payload = _current_state_payload()
@@ -454,6 +463,8 @@ def _collect_user_parameters():
         return []
 
     units_manager = design.unitsManager
+    order_state = _read_document_order_state()
+    saved_records = _resolve_document_order_records(design, order_state.get("parameters") or {})
     results = []
     params = design.userParameters
     for index in range(params.count):
@@ -461,17 +472,31 @@ def _collect_user_parameters():
         if not param:
             continue
 
+        parameter_key = _parameter_entity_token(param)
+        saved_record = saved_records.get(parameter_key) or {}
+        sort_order = saved_record.get("order")
+        if not isinstance(sort_order, int):
+            sort_order = params.count + index
+
         results.append(
             {
+                "key": parameter_key,
                 "name": param.name,
                 "expression": param.expression,
                 "unit": param.unit,
                 "comment": param.comment or "",
                 "isFavorite": param.isFavorite,
                 "valuePreview": _format_parameter_value(param, units_manager),
+                "_sortOrder": sort_order,
+                "_sourceIndex": index,
             }
         )
 
+    results.sort(key=lambda item: (item.get("_sortOrder", params.count), item.get("_sourceIndex", 0), item.get("name", "").casefold()))
+    _persist_document_order_snapshot(results, order_state)
+    for item in results:
+        item.pop("_sortOrder", None)
+        item.pop("_sourceIndex", None)
     return results
 
 
@@ -493,6 +518,192 @@ def _collect_all_parameter_names():
 
 def _settings_path():
     return Path(__file__).resolve().with_name(SETTINGS_FILE)
+
+
+def _document_order_root():
+    path = _app_support_root() / DOCUMENT_ORDER_DIRNAME
+    path.mkdir(parents=True, exist_ok=True)
+    _migrate_legacy_document_order_dir(path)
+    return path
+
+
+def _app_support_root():
+    windows_root = os.getenv("APPDATA")
+    if windows_root:
+        return Path(windows_root) / "BetterParameters"
+
+    system_name = platform.system().lower()
+    home = Path.home()
+    if system_name == "darwin":
+        return home / "Library" / "Application Support" / "BetterParameters"
+
+    xdg_root = os.getenv("XDG_CONFIG_HOME")
+    if xdg_root:
+        return Path(xdg_root) / "BetterParameters"
+
+    return home / ".config" / "BetterParameters"
+
+
+def _legacy_document_order_root():
+    return Path(ADDIN_DIR) / DOCUMENT_ORDER_DIRNAME
+
+
+def _migrate_legacy_document_order_dir(target_root):
+    legacy_root = _legacy_document_order_root()
+    if legacy_root == target_root or not legacy_root.exists() or not legacy_root.is_dir():
+        return
+
+    for legacy_file in legacy_root.glob("*.json"):
+        target_file = target_root / legacy_file.name
+        if target_file.exists():
+            continue
+        try:
+            shutil.copy2(legacy_file, target_file)
+        except Exception:
+            continue
+
+
+def _document_order_storage_key(document_id, document_name):
+    basis = (document_id or "").strip() or (document_name or "").strip() or "unsaved-document"
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:24]
+
+
+def _document_order_path(document_id=None, document_name=None):
+    if document_id is None or document_name is None:
+        info = _active_document_info()
+        document_id = info.get("id", "")
+        document_name = info.get("name", "")
+    return _document_order_root() / f"{_document_order_storage_key(document_id, document_name)}.json"
+
+
+def _read_document_order_state():
+    info = _active_document_info()
+    path = _document_order_path(info.get("id", ""), info.get("name", ""))
+    state = {
+        "documentId": info.get("id", ""),
+        "documentName": info.get("name", ""),
+        "parameters": {},
+    }
+    if not path.exists():
+        return state
+
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return state
+
+    if not isinstance(loaded, dict):
+        return state
+
+    records = {}
+    loaded_parameters = loaded.get("parameters")
+    if isinstance(loaded_parameters, dict):
+        for token, record in loaded_parameters.items():
+            if not isinstance(token, str) or not token:
+                continue
+            if not isinstance(record, dict):
+                continue
+            order_value = record.get("order")
+            if not isinstance(order_value, int):
+                continue
+            records[token] = {
+                "order": order_value,
+                "name": str(record.get("name") or ""),
+            }
+
+    state["documentId"] = str(loaded.get("documentId") or state["documentId"])
+    state["documentName"] = str(loaded.get("documentName") or state["documentName"])
+    state["parameters"] = records
+    return state
+
+
+def _write_document_order_state(state):
+    info = _active_document_info()
+    document_id = state.get("documentId") if isinstance(state, dict) else ""
+    document_name = state.get("documentName") if isinstance(state, dict) else ""
+    document_id = str(document_id or info.get("id", ""))
+    document_name = str(document_name or info.get("name", ""))
+    path = _document_order_path(document_id, document_name)
+    payload = {
+        "documentId": document_id,
+        "documentName": document_name,
+        "parameters": state.get("parameters", {}) if isinstance(state, dict) else {},
+    }
+    temp_path = path.with_suffix(".tmp")
+    temp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    temp_path.replace(path)
+
+
+def _find_user_parameter_by_token(design, token):
+    if not design or not token:
+        return None
+
+    try:
+        found = design.findEntityByToken(token)
+    except Exception:
+        return None
+
+    parameter = adsk.fusion.UserParameter.cast(found)
+    if parameter:
+        return parameter
+
+    if isinstance(found, (list, tuple)):
+        for item in found:
+            parameter = adsk.fusion.UserParameter.cast(item)
+            if parameter:
+                return parameter
+
+    return None
+
+
+def _parameter_entity_token(param):
+    if not param:
+        return ""
+    try:
+        return param.entityToken or param.name or ""
+    except Exception:
+        return getattr(param, "name", "") or ""
+
+
+def _resolve_document_order_records(design, records):
+    resolved = {}
+    for token, record in (records or {}).items():
+        if not isinstance(record, dict):
+            continue
+
+        parameter = _find_user_parameter_by_token(design, token)
+        current_token = _parameter_entity_token(parameter) if parameter else token
+        order_value = record.get("order")
+        if not isinstance(order_value, int):
+            continue
+
+        resolved[current_token] = {
+            "order": order_value,
+            "name": parameter.name if parameter and getattr(parameter, "name", "") else str(record.get("name") or ""),
+        }
+    return resolved
+
+
+def _persist_document_order_snapshot(parameters, previous_state=None):
+    info = _active_document_info()
+    records = {}
+    for index, parameter in enumerate(parameters or []):
+        key = str(parameter.get("key") or "")
+        if not key:
+            continue
+        records[key] = {
+            "order": index,
+            "name": str(parameter.get("name") or ""),
+        }
+
+    next_state = {
+        "documentId": info.get("id", ""),
+        "documentName": info.get("name", ""),
+        "parameters": records,
+    }
+    if previous_state == next_state:
+        return
+    _write_document_order_state(next_state)
 
 
 def _load_settings():
@@ -725,6 +936,45 @@ def _set_parameter_favorite(data):
         raise ValueError(f'User parameter "{name}" was not found.')
 
     param.isFavorite = is_favorite
+
+
+def _save_parameter_order(data):
+    design = _require_design()
+    keys = data.get("keys")
+    if not isinstance(keys, list):
+        raise ValueError('"keys" must be an array.')
+
+    ordered_keys = []
+    seen = set()
+    for key in keys:
+        key_text = str(key or "").strip()
+        if not key_text or key_text in seen:
+            continue
+        ordered_keys.append(key_text)
+        seen.add(key_text)
+
+    current_parameters = []
+    params = design.userParameters
+    for index in range(params.count):
+        param = params.item(index)
+        if not param:
+            continue
+        current_parameters.append(
+            {
+                "key": _parameter_entity_token(param),
+                "name": param.name,
+            }
+        )
+
+    current_by_key = {item["key"]: item for item in current_parameters if item.get("key")}
+    merged = []
+    for key in ordered_keys:
+        item = current_by_key.pop(key, None)
+        if item:
+            merged.append(item)
+
+    merged.extend(current_parameters_item for current_parameters_item in current_parameters if current_parameters_item.get("key") in current_by_key)
+    _persist_document_order_snapshot(merged, _read_document_order_state())
 
 
 def _create_parameter(data):
