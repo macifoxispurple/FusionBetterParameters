@@ -206,6 +206,13 @@
         grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
       }
 
+      .create-top-row {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: minmax(0, 1.15fr) minmax(220px, 0.85fr);
+        align-items: start;
+      }
+
       label {
         display: grid;
         gap: 6px;
@@ -941,6 +948,10 @@
           align-items: flex-start;
         }
 
+        .create-top-row {
+          grid-template-columns: 1fr;
+        }
+
         th:nth-child(4),
         td:nth-child(4) {
           display: none;
@@ -976,7 +987,7 @@
             </div>
           </div>
           <form id="createForm">
-            <div class="grid">
+            <div class="create-top-row">
               <label>
                 Name
                 <input id="newName" name="name" required />
@@ -1097,6 +1108,7 @@
           label: "Angle",
           units: [
             { value: "deg", label: "Degree (deg)" },
+            { value: "grad", label: "Gradian (grad)" },
             { value: "rad", label: "Radian (rad)" }
           ]
         },
@@ -1261,6 +1273,7 @@
         },
         createUnit: "",
         isUnitMenuOpen: false,
+        unitMenuScrollTop: 0,
         expressionAutocomplete: {
           sections: [],
           flatItems: [],
@@ -1530,6 +1543,7 @@
 
       function renderUnitPicker() {
         const menu = document.getElementById("unitPickerMenu");
+        const preserveScroll = state.isUnitMenuOpen ? state.unitMenuScrollTop : 0;
         const pieces = [];
 
         for (const unit of TOP_LEVEL_UNITS) {
@@ -1556,6 +1570,11 @@
         }
 
         menu.innerHTML = pieces.join("");
+        if (state.isUnitMenuOpen) {
+          window.requestAnimationFrame(() => {
+            menu.scrollTop = preserveScroll;
+          });
+        }
       }
 
       function positionUnitMenu() {
@@ -1586,7 +1605,11 @@
         if (isOpen) {
           overlayRoot.appendChild(menu);
           positionUnitMenu();
+          window.requestAnimationFrame(() => {
+            menu.scrollTop = state.unitMenuScrollTop || 0;
+          });
         } else {
+          state.unitMenuScrollTop = menu.scrollTop || 0;
           document.querySelector(".unit-picker").appendChild(menu);
         }
       }
@@ -2909,6 +2932,7 @@
 
       document.getElementById("unitPickerMenu").addEventListener("click", async (event) => {
         event.stopPropagation();
+        state.unitMenuScrollTop = document.getElementById("unitPickerMenu").scrollTop || 0;
 
         const unitButton = event.target.closest("[data-unit-value]");
         if (unitButton) {
@@ -2938,6 +2962,7 @@
           [categoryKey]: !(state.settings.unitCategoryState?.[categoryKey] !== false)
         };
 
+        state.unitMenuScrollTop = document.getElementById("unitPickerMenu").scrollTop || 0;
         state.settings.unitCategoryState = nextCategoryState;
         renderUnitPicker();
         positionUnitMenu();
@@ -2948,6 +2973,10 @@
         } catch (error) {
           setGlobalStatus(error.message, "error");
         }
+      });
+
+      document.getElementById("unitPickerMenu").addEventListener("scroll", (event) => {
+        state.unitMenuScrollTop = event.currentTarget.scrollTop || 0;
       });
 
       document.getElementById("unitPickerButton").addEventListener("click", (event) => {
