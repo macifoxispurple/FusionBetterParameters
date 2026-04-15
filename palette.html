@@ -1753,6 +1753,7 @@
 
       let nameValidationTimer = null;
       let tooltipHideTimer = null;
+      let pillFlashTimer = null;
       document.getElementById("newName").addEventListener("input", (event) => {
         const value = event.currentTarget.value;
         const localError = validateParameterNameLocally(value);
@@ -2203,6 +2204,8 @@
       function renderUpdatePill() {
         clearTimeout(tooltipHideTimer);
         tooltipHideTimer = null;
+        clearTimeout(pillFlashTimer);
+        pillFlashTimer = null;
 
         const pill = document.getElementById("updatePill");
         const info = state.updateInfo;
@@ -2264,16 +2267,32 @@
       }
 
       async function handleCheckForUpdates() {
+        clearTimeout(pillFlashTimer);
+        pillFlashTimer = null;
+
         const pill = document.getElementById("updatePill");
         pill.className = "update-pill";
         pill.innerHTML = `<span class="pill-label">Checking\u2026</span>`;
         pill.onclick = null;
         const btn = document.getElementById("checkUpdatesButton");
         if (btn) { btn.disabled = true; btn.textContent = "Checking\u2026"; }
+        let flashing = false;
         try {
           const response = await sendToFusion("checkForUpdates");
           if (response.ok !== false) {
             applyStateFromFusion(response);
+            if (!state.updateInfo.hasUpdate && state.updateInfo.updateState !== "staged") {
+              flashing = true;
+              pill.className = "update-pill";
+              pill.innerHTML = `<span class="pill-label">No updates available</span>`;
+              pill.onclick = null;
+              if (btn) { btn.textContent = "No updates available"; }
+              pillFlashTimer = setTimeout(() => {
+                pillFlashTimer = null;
+                renderUpdatePill();
+                if (btn) { btn.disabled = false; btn.textContent = "Check for Updates"; }
+              }, 2000);
+            }
           } else {
             renderUpdatePill();
             renderUpdateCard();
@@ -2282,7 +2301,7 @@
           renderUpdatePill();
           renderUpdateCard();
         } finally {
-          if (btn) { btn.disabled = false; btn.textContent = "Check for Updates"; }
+          if (!flashing && btn) { btn.disabled = false; btn.textContent = "Check for Updates"; }
         }
       }
 
