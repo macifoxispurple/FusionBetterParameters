@@ -96,6 +96,7 @@ DEFAULT_SETTINGS = {
     "customUnits": [],
     "showRevertButtons": True,
     "autoFitColumns": False,
+    "pinnedUnits": [],
     "autoCheckUpdates": True,
     "updateCheck": {},
 }
@@ -822,6 +823,24 @@ def _load_settings():
         if isinstance(loaded.get("autoFitColumns"), bool):
             settings["autoFitColumns"] = loaded["autoFitColumns"]
 
+        if isinstance(loaded.get("pinnedUnits"), list):
+            deduped_pinned = []
+            seen_pinned = set()
+            for candidate in loaded["pinnedUnits"]:
+                if not isinstance(candidate, str):
+                    continue
+                token = candidate.strip()
+                if not token:
+                    continue
+                folded = token.casefold()
+                if folded in seen_pinned:
+                    continue
+                deduped_pinned.append(token)
+                seen_pinned.add(folded)
+                if len(deduped_pinned) >= 40:
+                    break
+            settings["pinnedUnits"] = deduped_pinned
+
         if isinstance(loaded.get("autoCheckUpdates"), bool):
             settings["autoCheckUpdates"] = loaded["autoCheckUpdates"]
 
@@ -934,6 +953,26 @@ def _save_settings(data):
         if not isinstance(auto_fit_columns, bool):
             raise ValueError('"autoFitColumns" must be a boolean.')
         settings["autoFitColumns"] = auto_fit_columns
+
+    if "pinnedUnits" in data:
+        if not isinstance(data["pinnedUnits"], list):
+            raise ValueError('"pinnedUnits" must be an array.')
+        deduped_pinned = []
+        seen_pinned = set()
+        for candidate in data["pinnedUnits"]:
+            if not isinstance(candidate, str):
+                continue
+            token = candidate.strip()
+            if not token:
+                continue
+            folded = token.casefold()
+            if folded in seen_pinned:
+                continue
+            deduped_pinned.append(token)
+            seen_pinned.add(folded)
+            if len(deduped_pinned) >= 40:
+                break
+        settings["pinnedUnits"] = deduped_pinned
 
     if "autoCheckUpdates" in data:
         auto_check = data.get("autoCheckUpdates")

@@ -788,6 +788,78 @@
         background: var(--ghost);
       }
 
+      .unit-option-row {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+      }
+
+      .unit-option-row > .unit-option {
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 0;
+      }
+
+      .unit-pin-button,
+      .unit-remove-button {
+        flex: 0 0 auto;
+        width: 26px;
+        height: 26px;
+        padding: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 0.82rem;
+        line-height: 1;
+        opacity: 0;
+        transition: opacity 80ms ease, background 80ms ease, color 80ms ease;
+      }
+
+      .unit-option-row:hover .unit-pin-button,
+      .unit-option-row:hover .unit-remove-button {
+        opacity: 1;
+      }
+
+      .unit-pin-button.is-pinned {
+        opacity: 1;
+        color: var(--accent);
+      }
+
+      .unit-pin-button:hover {
+        background: var(--ghost);
+        color: var(--accent);
+      }
+
+      .unit-remove-button:hover {
+        background: var(--ghost);
+        color: var(--error);
+      }
+
+      .unit-pinned-header {
+        padding: 8px 10px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        pointer-events: none;
+      }
+
+      .custom-unit-feedback {
+        min-height: 18px;
+        font-size: 0.82rem;
+        padding: 1px 4px 4px;
+      }
+
+      .custom-unit-feedback.is-error {
+        color: var(--error);
+      }
+
+      .custom-unit-feedback.is-success {
+        color: var(--accent-strong);
+      }
+
       .unit-category {
         border-top: 1px solid rgba(216, 207, 194, 0.22);
         margin-top: 8px;
@@ -1425,8 +1497,10 @@
           unitCategoryState: { ...DEFAULT_UNIT_CATEGORY_STATE },
           customUnits: [...DEFAULT_CUSTOM_UNITS],
           showRevertButtons: DEFAULT_SHOW_REVERT_BUTTONS,
-          autoFitColumns: false
+          autoFitColumns: false,
+          pinnedUnits: []
         },
+        customUnitFeedback: { message: "", kind: "" },
         documentDefaults: {
           unit: "mm"
         },
@@ -1761,17 +1835,88 @@
         toggle.setAttribute("aria-pressed", String(isOn));
       }
 
-      function renderUnitPicker() {
+      function getAllKnownUnitValues() {
+        const values = [];
+        const seen = new Set();
+        for (const unit of TOP_LEVEL_UNITS) {
+          if (unit.value && !seen.has(unit.value.toLowerCase())) {
+            values.push(unit.value);
+            seen.add(unit.value.toLowerCase());
+          }
+        }
+        for (const category of UNIT_CATEGORIES) {
+          for (const unit of category.units) {
+            if (!seen.has(unit.value.toLowerCase())) {
+              values.push(unit.value);
+              seen.add(unit.value.toLowerCase());
+            }
+          }
+        }
+        for (const unit of (state.settings.customUnits || [])) {
+          if (!seen.has(unit.toLowerCase())) {
+            values.push(unit);
+            seen.add(unit.toLowerCase());
+          }
+        }
+        return values;
+      }
+
+      function renderUnitOptionRow(value, label, options = {}) {
+        const { isCustom = false } = options;
+        const selectedClass = value === state.createUnit ? " is-selected" : "";
+        const pinnedUnits = state.settings.pinnedUnits || [];
+        const isPinned = pinnedUnits.includes(value);
+        const pinClass = isPinned ? " is-pinned" : "";
+        const pinIcon = isPinned ? "\u2605" : "\u2606";
+        const pinTitle = isPinned ? "Unpin" : "Pin to top";
+        const showPin = value !== "";
+        return `<div class="unit-option-row">
+          <button class="unit-option${selectedClass}" type="button" data-unit-value="${escapeHtml(value)}">${escapeHtml(label)}</button>
+          ${showPin ? `<button class="unit-pin-button${pinClass}" type="button" data-unit-pin="${escapeHtml(value)}" title="${escapeHtml(pinTitle)}">${pinIcon}</button>` : ""}
+          ${isCustom ? `<button class="unit-remove-button" type="button" data-unit-remove="${escapeHtml(value)}" title="Remove ${escapeHtml(label)}">&#x2715;</button>` : ""}
+        </div>`;
+      }
+
+      function findUnitRowForAnchor(menu, unitValue) {
+        const els = Array.from(menu.querySelectorAll("[data-unit-value]"))
+          .filter((el) => el.getAttribute("data-unit-value") === unitValue);
+        const el = els.find((e) => !e.closest('[data-category-key="__pinned__"]')) || els[els.length - 1] || null;
+        return el ? (el.closest(".unit-option-row") || el) : null;
+      }
+
+      function renderUnitPicker(anchorValue = null) {
         const menu = document.getElementById("unitPickerMenu");
         const preserveScroll = state.isUnitMenuOpen ? state.unitMenuScrollTop : 0;
+
+        let anchorOffsetBefore = null;
+        if (anchorValue !== null && state.isUnitMenuOpen) {
+          const row = findUnitRowForAnchor(menu, anchorValue);
+          if (row) anchorOffsetBefore = row.offsetTop;
+        }
+
         const pieces = [];
+        const feedback = state.customUnitFeedback || {};
 
         pieces.push(`
           <div class="unit-custom-row">
             <input id="customUnitInput" type="text" placeholder="Custom unit (e.g. mph, oz, ft*lb)" />
             <button class="primary" type="button" data-custom-unit-apply="true">Use</button>
           </div>
+          <div id="customUnitFeedback" class="custom-unit-feedback${feedback.message ? (feedback.kind === "error" ? " is-error" : " is-success") : ""}">${feedback.message ? escapeHtml(feedback.message) : ""}</div>
         `);
+
+        const pinnedUnits = state.settings.pinnedUnits || [];
+        if (pinnedUnits.length) {
+          const customUnits = state.settings.customUnits || [];
+          pieces.push(`
+            <section class="unit-category" data-category-key="__pinned__">
+              <div class="unit-pinned-header">Pinned</div>
+              <div class="unit-category-options">
+                ${pinnedUnits.map((v) => renderUnitOptionRow(v, getUnitDisplayLabel(v), { isCustom: customUnits.includes(v) })).join("")}
+              </div>
+            </section>
+          `);
+        }
 
         const customUnits = state.settings.customUnits || [];
         if (customUnits.length) {
@@ -1779,33 +1924,25 @@
             <section class="unit-category" data-category-key="Custom">
               <button class="unit-category-header" type="button" disabled>Custom Units</button>
               <div class="unit-category-options">
-                ${customUnits.map((unitValue) => {
-                  const selectedClass = unitValue === state.createUnit ? " is-selected" : "";
-                  return `<button class="unit-option${selectedClass}" type="button" data-unit-value="${escapeHtml(unitValue)}">${escapeHtml(unitValue)}</button>`;
-                }).join("")}
+                ${customUnits.map((v) => renderUnitOptionRow(v, v, { isCustom: true })).join("")}
               </div>
             </section>
           `);
         }
 
         for (const unit of TOP_LEVEL_UNITS) {
-          const selectedClass = unit.value === state.createUnit ? " is-selected" : "";
-          pieces.push(`<button class="unit-option${selectedClass}" type="button" data-unit-value="${escapeHtml(unit.value)}">${escapeHtml(unit.label)}</button>`);
+          pieces.push(renderUnitOptionRow(unit.value, unit.label));
         }
 
         for (const category of UNIT_CATEGORIES) {
           const expanded = state.settings.unitCategoryState?.[category.key] !== false;
           const headerClass = expanded ? "" : " is-collapsed";
           const optionsHidden = expanded ? "" : " hidden";
-
           pieces.push(`
             <section class="unit-category" data-category-key="${escapeHtml(category.key)}">
               <button class="unit-category-header${headerClass}" type="button" data-category-toggle="${escapeHtml(category.key)}">${escapeHtml(category.label)}</button>
               <div class="unit-category-options"${optionsHidden}>
-                ${category.units.map((unit) => {
-                  const selectedClass = unit.value === state.createUnit ? " is-selected" : "";
-                  return `<button class="unit-option${selectedClass}" type="button" data-unit-value="${escapeHtml(unit.value)}">${escapeHtml(unit.label)}</button>`;
-                }).join("")}
+                ${category.units.map((unit) => renderUnitOptionRow(unit.value, unit.label)).join("")}
               </div>
             </section>
           `);
@@ -1813,9 +1950,19 @@
 
         menu.innerHTML = pieces.join("");
         if (state.isUnitMenuOpen) {
-          window.requestAnimationFrame(() => {
-            menu.scrollTop = preserveScroll;
-          });
+          if (anchorValue !== null && anchorOffsetBefore !== null) {
+            const row = findUnitRowForAnchor(menu, anchorValue);
+            const anchorOffsetAfter = row ? row.offsetTop : null;
+            const newScroll = anchorOffsetAfter !== null
+              ? Math.max(0, preserveScroll + (anchorOffsetAfter - anchorOffsetBefore))
+              : preserveScroll;
+            menu.scrollTop = newScroll;
+            state.unitMenuScrollTop = newScroll;
+          } else {
+            window.requestAnimationFrame(() => {
+              menu.scrollTop = preserveScroll;
+            });
+          }
         }
       }
 
@@ -1845,6 +1992,8 @@
         button.setAttribute("aria-expanded", String(isOpen));
 
         if (isOpen) {
+          state.customUnitFeedback = { message: "", kind: "" };
+          renderUnitPicker();
           overlayRoot.appendChild(menu);
           positionUnitMenu();
           window.requestAnimationFrame(() => {
@@ -2193,6 +2342,7 @@
             ...(settings.unitCategoryState || {})
           },
           customUnits: Array.isArray(settings.customUnits) ? settings.customUnits.slice() : (state.settings.customUnits || []).slice(),
+          pinnedUnits: Array.isArray(settings.pinnedUnits) ? settings.pinnedUnits.slice() : (state.settings.pinnedUnits || []).slice(),
           showRevertButtons: typeof settings.showRevertButtons === "boolean"
             ? settings.showRevertButtons
             : (state.settings.showRevertButtons !== false)
@@ -3545,26 +3695,94 @@
         event.stopPropagation();
         state.unitMenuScrollTop = document.getElementById("unitPickerMenu").scrollTop || 0;
 
+        // Pin / unpin
+        const pinButton = event.target.closest("[data-unit-pin]");
+        if (pinButton) {
+          const unitValue = pinButton.getAttribute("data-unit-pin");
+          const prevPinned = state.settings.pinnedUnits || [];
+          const isPinned = prevPinned.includes(unitValue);
+          const nextPinned = isPinned
+            ? prevPinned.filter((v) => v !== unitValue)
+            : [...prevPinned, unitValue];
+          state.settings.pinnedUnits = nextPinned;
+          renderUnitPicker(unitValue);
+          try {
+            await saveSettingsPartial({ pinnedUnits: nextPinned });
+          } catch (error) {
+            state.settings.pinnedUnits = prevPinned;
+            renderUnitPicker(unitValue);
+            setGlobalStatus(error.message, "error");
+          }
+          return;
+        }
+
+        // Remove custom unit
+        const removeButton = event.target.closest("[data-unit-remove]");
+        if (removeButton) {
+          const unitValue = removeButton.getAttribute("data-unit-remove");
+          const prevCustom = state.settings.customUnits || [];
+          const prevPinned = state.settings.pinnedUnits || [];
+          const nextCustom = prevCustom.filter((v) => v !== unitValue);
+          const nextPinned = prevPinned.filter((v) => v !== unitValue);
+          state.settings.customUnits = nextCustom;
+          state.settings.pinnedUnits = nextPinned;
+          if (state.createUnit === unitValue) {
+            applySelectedUnit(getDefaultCreateUnit());
+          }
+          renderUnitPicker();
+          try {
+            await saveSettingsPartial({ customUnits: nextCustom, pinnedUnits: nextPinned });
+          } catch (error) {
+            state.settings.customUnits = prevCustom;
+            state.settings.pinnedUnits = prevPinned;
+            renderUnitPicker();
+            setGlobalStatus(error.message, "error");
+          }
+          return;
+        }
+
+        // Add custom unit
         const customApplyButton = event.target.closest("[data-custom-unit-apply]");
         if (customApplyButton) {
           const customInput = document.getElementById("customUnitInput");
           const enteredUnit = (customInput?.value || "").trim();
+
+          const setFeedback = (message, kind = "error") => {
+            state.customUnitFeedback = { message, kind };
+            renderUnitPicker();
+            document.getElementById("customUnitInput")?.focus();
+          };
+
           if (!enteredUnit) {
-            setGlobalStatus("Type a custom unit first.", "error");
+            setFeedback("Type a unit first.");
+            return;
+          }
+
+          const allKnown = getAllKnownUnitValues();
+          const duplicate = allKnown.find((v) => v.toLowerCase() === enteredUnit.toLowerCase());
+          if (duplicate) {
+            setFeedback(`\u201c${duplicate}\u201d is already in the list.`);
             return;
           }
 
           try {
             const validation = await sendToFusion("validateUnit", { unit: enteredUnit });
             if (!validation.ok) {
-              throw new Error(validation.message || "Invalid unit.");
+              setFeedback(validation.message || "Invalid unit.");
+              return;
             }
 
             const normalizedUnit = validation.unit || enteredUnit;
-            applySelectedUnit(normalizedUnit, { persistLastUnit: true });
+            const normalizedDuplicate = allKnown.find((v) => v.toLowerCase() === normalizedUnit.toLowerCase());
+            if (normalizedDuplicate) {
+              setFeedback(`\u201c${normalizedDuplicate}\u201d is already in the list.`);
+              return;
+            }
 
+            state.customUnitFeedback = { message: "", kind: "" };
+            applySelectedUnit(normalizedUnit, { persistLastUnit: true });
             const nextCustomUnits = [normalizedUnit, ...(state.settings.customUnits || [])]
-              .filter((value, index, array) => array.findIndex((v) => v.toLowerCase() === value.toLowerCase()) === index)
+              .filter((v, i, arr) => arr.findIndex((u) => u.toLowerCase() === v.toLowerCase()) === i)
               .slice(0, 40);
             state.settings.customUnits = nextCustomUnits;
             renderUnitPicker();
@@ -3576,11 +3794,12 @@
             }
             await saveSettingsPartial(settingsPayload);
           } catch (error) {
-            setGlobalStatus(error.message, "error");
+            setFeedback(error.message);
           }
           return;
         }
 
+        // Select unit
         const unitButton = event.target.closest("[data-unit-value]");
         if (unitButton) {
           const unitValue = unitButton.getAttribute("data-unit-value");
@@ -3598,6 +3817,7 @@
           return;
         }
 
+        // Toggle category
         const categoryButton = event.target.closest("[data-category-toggle]");
         if (!categoryButton) {
           return;
@@ -3619,6 +3839,14 @@
           setUnitMenuOpen(true);
         } catch (error) {
           setGlobalStatus(error.message, "error");
+        }
+      });
+
+      document.getElementById("unitPickerMenu").addEventListener("input", (event) => {
+        if (event.target.id === "customUnitInput" && state.customUnitFeedback && state.customUnitFeedback.message) {
+          state.customUnitFeedback = { message: "", kind: "" };
+          const el = document.getElementById("customUnitFeedback");
+          if (el) { el.textContent = ""; el.className = "custom-unit-feedback"; }
         }
       });
 
