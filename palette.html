@@ -1480,6 +1480,22 @@
             </div>
           </div>
         </section>
+
+        <section class="card section stack">
+          <div class="section-header">
+            <div>
+              <h2>Metadata Debug</h2>
+              <p>Inspect JSON and Fusion attribute metadata sources, then force sync either direction for testing.</p>
+            </div>
+            <div class="actions">
+              <button id="debugRefreshButton" class="ghost" type="button">Refresh Debug</button>
+              <button id="debugJsonToFusionButton" class="ghost" type="button">JSON -> Fusion</button>
+              <button id="debugFusionToJsonButton" class="ghost" type="button">Fusion -> JSON</button>
+            </div>
+          </div>
+          <div id="debugSummary" class="section-meta"></div>
+          <pre id="debugOutput" class="release-notes-body">Debug data not loaded yet.</pre>
+        </section>
       </div>
       <div id="overlayRoot" class="overlay-root"></div>
       <div id="functionHelper" class="function-helper" hidden></div>
@@ -1925,6 +1941,69 @@
         status.textContent = message || "";
         status.className = kind ? `status ${kind}` : "status";
         status.classList.add("global-status");
+      }
+
+      function formatMetadataTimestamp(ms) {
+        const value = Number(ms || 0);
+        if (!Number.isFinite(value) || value <= 0) {
+          return "-";
+        }
+        try {
+          return new Date(value).toISOString();
+        } catch (_error) {
+          return String(value);
+        }
+      }
+
+      function renderMetadataDebug(debugData, syncResult = null) {
+        const summary = document.getElementById("debugSummary");
+        const output = document.getElementById("debugOutput");
+        const data = debugData || {};
+        const rows = Array.isArray(data.rows) ? data.rows : [];
+        const refreshedAt = new Date().toISOString();
+        const documentName = (data.document && data.document.name) ? data.document.name : "(untitled)";
+        const recordCount = Number(data.recordCount || 0);
+        const fusionNewer = rows.filter((row) => row.latestSource === "fusion").length;
+        const jsonNewer = rows.filter((row) => row.latestSource === "json").length;
+        const equal = rows.filter((row) => row.latestSource === "equal").length;
+
+        let syncText = "";
+        if (syncResult && typeof syncResult === "object") {
+          const direction = String(syncResult.direction || "sync");
+          const updatedCount = Number(syncResult.updatedCount || 0);
+          const skippedCount = Number(syncResult.skippedCount || 0);
+          const failedCount = Number(syncResult.failedCount || 0);
+          syncText = ` Last sync: ${direction} (updated ${updatedCount}, skipped ${skippedCount}, failed ${failedCount}).`;
+          const failedDetails = Array.isArray(syncResult.failedDetails) ? syncResult.failedDetails : [];
+          if (failedDetails.length > 0) {
+            const firstFailure = failedDetails[0] || {};
+            const firstName = String(firstFailure.name || "-");
+            const firstErrors = Array.isArray(firstFailure.errors) ? firstFailure.errors.join("; ") : "";
+            const ownerTypes = Array.isArray(firstFailure.documentOwnerTypes) ? firstFailure.documentOwnerTypes.join(",") : "";
+            const reason = [firstErrors, ownerTypes ? `owners=${ownerTypes}` : ""].filter(Boolean).join(" | ");
+            if (reason) {
+              syncText += ` First failure: ${firstName} -> ${reason}.`;
+            }
+          }
+        }
+        summary.textContent = `Doc: ${documentName}. JSON records: ${recordCount}. Fusion newer: ${fusionNewer}. JSON newer: ${jsonNewer}. Equal: ${equal}.${syncText} Refreshed: ${refreshedAt}.`;
+
+        if (!rows.length) {
+          output.textContent = "No user parameters found.";
+          return;
+        }
+
+        const lines = [];
+        lines.push(`refreshedAt | ${refreshedAt}`);
+        lines.push("--- | ---");
+        lines.push("name | latest | fusionGroup | fusionChangedAt | fusionParamGroup | fusionParamChangedAt | fusionDocGroup | fusionDocChangedAt | jsonGroup | jsonChangedAt");
+        lines.push("--- | --- | --- | --- | --- | --- | --- | --- | --- | ---");
+        rows.forEach((row) => {
+          lines.push(
+            `${row.name || "-"} | ${row.latestSource || "-"} | ${row.fusionGroup || "-"} | ${formatMetadataTimestamp(row.fusionMetadataChangedAt)} | ${row.fusionParameterGroup || "-"} | ${formatMetadataTimestamp(row.fusionParameterMetadataChangedAt)} | ${row.fusionDocumentGroup || "-"} | ${formatMetadataTimestamp(row.fusionDocumentMetadataChangedAt)} | ${row.jsonGroup || "-"} | ${formatMetadataTimestamp(row.jsonMetadataChangedAt)}`
+          );
+        });
+        output.textContent = lines.join("\n");
       }
 
       function setParameterSummary(parameters) {
@@ -3935,8 +4014,49 @@
         }
       }
 
+      async function refreshMetadataDebug() {
+        try {
+          const response = await sendToFusion("getMetadataDebugSnapshot");
+          if (!response.ok) {
+            throw new Error(response.message || "Debug snapshot failed.");
+          }
+          renderMetadataDebug(response.debugMetadata || {});
+        } catch (error) {
+          setGlobalStatus(error.message, "error");
+        }
+      }
+
+      async function runMetadataSync(action, successMessage) {
+        try {
+          const response = await sendToFusion(action);
+          if (!response.ok) {
+            throw new Error(response.message || "Metadata sync failed.");
+          }
+          applyStateFromFusion(response);
+          renderMetadataDebug(response.debugMetadata || {}, response.syncResult || null);
+          setGlobalStatus(successMessage, "success");
+        } catch (error) {
+          setGlobalStatus(error.message, "error");
+        }
+      }
+
       document.getElementById("refreshButton").addEventListener("click", () => {
         refreshParameters();
+      });
+
+      document.getElementById("debugRefreshButton").addEventListener("click", async () => {
+        setGlobalStatus("Loading metadata debug snapshot...");
+        await refreshMetadataDebug();
+      });
+
+      document.getElementById("debugJsonToFusionButton").addEventListener("click", async () => {
+        setGlobalStatus("Syncing JSON metadata to Fusion attributes...");
+        await runMetadataSync("syncMetadataJsonToFusion", "Metadata synced: JSON -> Fusion.");
+      });
+
+      document.getElementById("debugFusionToJsonButton").addEventListener("click", async () => {
+        setGlobalStatus("Syncing Fusion metadata to JSON...");
+        await runMetadataSync("syncMetadataFusionToJson", "Metadata synced: Fusion -> JSON.");
       });
 
       document.getElementById("themeToggle").addEventListener("click", async () => {
@@ -5292,6 +5412,7 @@
           if (response.ok) {
             applyStateFromFusion(response);
             setGlobalStatus(`Loaded ${response.parameters.length} parameter(s).`, "success");
+            await refreshMetadataDebug();
 
             window.setTimeout(async () => {
               try {
