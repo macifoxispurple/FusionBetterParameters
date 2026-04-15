@@ -520,15 +520,22 @@ def _collect_user_parameters():
         attr_metadata_changed_at = _parameter_metadata_changed_at(param)
         saved_group_name = _normalize_group_name(saved_record.get("group") or "")
         saved_metadata_changed_at = _metadata_changed_at_value(saved_record.get(METADATA_CHANGED_AT_RECORD_KEY))
+        backfill_attributes_from_saved = False
         if attr_metadata_changed_at > saved_metadata_changed_at:
             group_name = attr_group_name
             metadata_changed_at = attr_metadata_changed_at
         elif saved_metadata_changed_at > attr_metadata_changed_at:
             group_name = saved_group_name
             metadata_changed_at = saved_metadata_changed_at
+            backfill_attributes_from_saved = True
         else:
             group_name = attr_group_name or saved_group_name
             metadata_changed_at = max(attr_metadata_changed_at, saved_metadata_changed_at)
+            if saved_group_name and not attr_group_name:
+                backfill_attributes_from_saved = True
+
+        if backfill_attributes_from_saved:
+            _write_parameter_group_name(param, group_name, metadata_changed_at if metadata_changed_at > 0 else _now_metadata_timestamp_ms())
 
         results.append(
             {
