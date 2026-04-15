@@ -95,6 +95,7 @@ DEFAULT_SETTINGS = {
     },
     "customUnits": [],
     "showRevertButtons": True,
+    "autoFitColumns": False,
     "autoCheckUpdates": True,
     "updateCheck": {},
 }
@@ -818,6 +819,9 @@ def _load_settings():
         if isinstance(loaded.get("showRevertButtons"), bool):
             settings["showRevertButtons"] = loaded["showRevertButtons"]
 
+        if isinstance(loaded.get("autoFitColumns"), bool):
+            settings["autoFitColumns"] = loaded["autoFitColumns"]
+
         if isinstance(loaded.get("autoCheckUpdates"), bool):
             settings["autoCheckUpdates"] = loaded["autoCheckUpdates"]
 
@@ -924,6 +928,12 @@ def _save_settings(data):
         if not isinstance(show_revert_buttons, bool):
             raise ValueError('"showRevertButtons" must be a boolean.')
         settings["showRevertButtons"] = show_revert_buttons
+
+    if "autoFitColumns" in data:
+        auto_fit_columns = data.get("autoFitColumns")
+        if not isinstance(auto_fit_columns, bool):
+            raise ValueError('"autoFitColumns" must be a boolean.')
+        settings["autoFitColumns"] = auto_fit_columns
 
     if "autoCheckUpdates" in data:
         auto_check = data.get("autoCheckUpdates")

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" style="background:#1b2631">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -1418,13 +1418,14 @@
         parameters: [],
         parameterNames: [],
         settings: {
-          theme: "light",
+          theme: (function () { try { var t = localStorage.getItem("bp_theme"); return t === "dark" || t === "light" ? t : "light"; } catch (_) { return "light"; } }()),
           rememberUnit: false,
           lastUnit: "",
           parameterTableColumns: { ...DEFAULT_TABLE_COLUMNS },
           unitCategoryState: { ...DEFAULT_UNIT_CATEGORY_STATE },
           customUnits: [...DEFAULT_CUSTOM_UNITS],
-          showRevertButtons: DEFAULT_SHOW_REVERT_BUTTONS
+          showRevertButtons: DEFAULT_SHOW_REVERT_BUTTONS,
+          autoFitColumns: false
         },
         documentDefaults: {
           unit: "mm"
@@ -1617,6 +1618,12 @@
         const button = document.getElementById("toggleRevertButtonsButton");
         const isOn = state.settings.showRevertButtons !== false;
         button.textContent = `Show Revert: ${isOn ? "On" : "Off"}`;
+      }
+
+      function renderAutoFitToggle() {
+        const button = document.getElementById("autoFitColumnsButton");
+        const isOn = state.settings.autoFitColumns === true;
+        button.textContent = `Auto Fit: ${isOn ? "On" : "Off"}`;
       }
 
       function setGlobalStatus(message, kind = "") {
@@ -2195,6 +2202,7 @@
         renderToggle("rememberUnitToggle", !!state.settings.rememberUnit);
         renderToggle("autoUpdateToggle", state.settings.autoCheckUpdates !== false);
         renderRevertToggle();
+        renderAutoFitToggle();
         renderUnitPicker();
         applyColumnWidths();
       }
@@ -3679,6 +3687,12 @@
         }
         paletteResizeTimer = window.setTimeout(() => {
           savePaletteSize();
+          if (state.settings.autoFitColumns === true) {
+            const nextColumns = buildAutoFitColumnWidths();
+            state.settings.parameterTableColumns = nextColumns;
+            applyColumnWidths();
+            saveSettingsPartial({ parameterTableColumns: nextColumns }).catch(() => {});
+          }
         }, 160);
       });
 
@@ -3795,13 +3809,24 @@
       });
 
       document.getElementById("autoFitColumnsButton").addEventListener("click", async () => {
-        const nextColumns = buildAutoFitColumnWidths();
-        state.settings.parameterTableColumns = nextColumns;
-        applyColumnWidths();
+        const previousValue = state.settings.autoFitColumns === true;
+        const nextValue = !previousValue;
+        state.settings.autoFitColumns = nextValue;
+        renderAutoFitToggle();
+
+        const partialSettings = { autoFitColumns: nextValue };
+        if (nextValue) {
+          const nextColumns = buildAutoFitColumnWidths();
+          state.settings.parameterTableColumns = nextColumns;
+          applyColumnWidths();
+          partialSettings.parameterTableColumns = nextColumns;
+        }
 
         try {
-          await saveSettingsPartial({ parameterTableColumns: nextColumns }, "Column widths auto-fit to content.");
+          await saveSettingsPartial(partialSettings, nextValue ? "Auto Fit on resize enabled." : "Auto Fit on resize disabled.");
         } catch (error) {
+          state.settings.autoFitColumns = previousValue;
+          renderAutoFitToggle();
           setGlobalStatus(error.message, "error");
         }
       });
