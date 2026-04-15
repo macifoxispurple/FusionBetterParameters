@@ -420,6 +420,7 @@ def _build_update_info_payload():
         "latestVersion": latest_version,
         "hasUpdate": has_update,
         "latestUrl": cached.get("latest_url") or LATEST_RELEASE_PAGE_URL,
+        "latestNotes": cached.get("latest_notes", ""),
         "autoCheckUpdates": auto_check,
         "updateState": update_state.get("state", "idle"),
         "targetVersion": update_state.get("target_version", ""),

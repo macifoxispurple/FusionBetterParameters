@@ -85,6 +85,7 @@
         align-items: center;
         justify-content: space-between;
         gap: 12px;
+        z-index: 1;
       }
 
       h1,
@@ -356,7 +357,65 @@
       }
 
       .toggle-label {
-        min-width: 120px;
+        min-width: 0;
+        white-space: nowrap;
+      }
+
+      .theme-toggle::after {
+        display: none;
+      }
+
+      .theme-knob {
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--panel-strong);
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+        transition: transform 120ms ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--accent);
+      }
+
+      .theme-toggle.is-on .theme-knob {
+        transform: translateX(22px);
+      }
+
+      .theme-icon {
+        position: absolute;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: opacity 100ms ease;
+      }
+
+      .theme-icon-dark {
+        opacity: 0;
+      }
+
+      .theme-toggle.is-on .theme-icon-light {
+        opacity: 0;
+      }
+
+      .theme-toggle.is-on .theme-icon-dark {
+        opacity: 1;
+      }
+
+      .section-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .section-header .ghost {
+        flex-shrink: 0;
+        padding: 7px 14px;
+        font-size: 0.9rem;
       }
 
       .unit-picker {
@@ -543,6 +602,24 @@
         background: var(--ghost);
         color: var(--muted);
         white-space: nowrap;
+        position: relative;
+        transition: background 120ms ease, color 120ms ease;
+      }
+      .update-pill.is-current {
+        cursor: pointer;
+      }
+      .update-pill.is-current:hover {
+        background: var(--pill-bg);
+        color: var(--pill-ink);
+      }
+      .pill-action {
+        display: none;
+      }
+      .update-pill.is-current:hover .pill-label {
+        display: none;
+      }
+      .update-pill.is-current:hover .pill-action {
+        display: inline;
       }
       .update-pill.has-update {
         background: var(--pill-bg);
@@ -552,6 +629,63 @@
       .update-pill.is-staged {
         background: var(--ghost);
         color: var(--muted);
+      }
+      .update-notes-tooltip {
+        display: none;
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        background: var(--panel-strong);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 10px 14px;
+        font-size: 0.84rem;
+        line-height: 1.55;
+        color: var(--ink);
+        max-width: 340px;
+        width: max-content;
+        max-height: 220px;
+        overflow-y: auto;
+        box-shadow: var(--shadow);
+        z-index: 100;
+        white-space: pre-wrap;
+        text-align: left;
+      }
+      .update-notes-tooltip.is-visible {
+        display: block;
+      }
+
+      .update-card-status {
+        color: var(--muted);
+      }
+
+      .update-card-status.has-update {
+        color: var(--accent-strong);
+        font-weight: 600;
+      }
+
+      .update-card-status.is-good {
+        color: var(--accent-strong);
+      }
+
+      .release-notes-body {
+        margin: 0;
+        padding: 14px 16px;
+        background: var(--ghost);
+        border-radius: 12px;
+        font: 0.87rem/1.65 "Segoe UI", "Helvetica Neue", sans-serif;
+        color: var(--ink);
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 260px;
+        overflow-y: auto;
+      }
+
+      .update-notes-heading {
+        margin: 0;
+        font-size: 0.92rem;
+        font-weight: 650;
+        color: var(--ink);
       }
 
       @media (max-width: 720px) {
@@ -576,15 +710,7 @@
           </div>
           <div class="actions">
             <div id="updatePill" class="update-pill" style="display:none" role="status"></div>
-            <div class="toggle-row">
-              <span class="toggle-label">Auto-update</span>
-              <button id="autoUpdateToggle" class="toggle" type="button" aria-pressed="true" aria-label="Toggle automatic update checks"></button>
-            </div>
-            <div class="toggle-row">
-              <span class="toggle-label">Dark Theme</span>
-              <button id="themeToggle" class="toggle" type="button" aria-pressed="false" aria-label="Toggle dark theme"></button>
-            </div>
-            <button id="refreshButton" class="ghost" type="button">Refresh</button>
+            <button id="themeToggle" class="toggle theme-toggle" type="button" aria-pressed="false" aria-label="Toggle dark theme"><span class="theme-knob"><span class="theme-icon theme-icon-light"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><line x1="8" y1="1" x2="8" y2="3"/><line x1="8" y1="13" x2="8" y2="15"/><line x1="1" y1="8" x2="3" y2="8"/><line x1="13" y1="8" x2="15" y2="8"/><line x1="3.05" y1="3.05" x2="4.46" y2="4.46"/><line x1="11.54" y1="11.54" x2="12.95" y2="12.95"/><line x1="3.05" y1="12.95" x2="4.46" y2="11.54"/><line x1="11.54" y1="4.46" x2="12.95" y2="3.05"/></svg></span><span class="theme-icon theme-icon-dark"><svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M14 10.5a6 6 0 0 1-7.93-7.93A6 6 0 1 0 14 10.5z"/></svg></span></span></button>
           </div>
         </section>
 
@@ -634,9 +760,12 @@
         </section>
 
         <section class="card section stack">
-          <div>
-            <h2>User Parameters</h2>
-            <p>Update the expression or comment for any existing user parameter and click Save.</p>
+          <div class="section-header">
+            <div>
+              <h2>User Parameters</h2>
+              <p>Update the expression or comment for any existing user parameter and click Save.</p>
+            </div>
+            <button id="refreshButton" class="ghost" type="button">Refresh</button>
           </div>
           <div id="status" class="status" aria-live="polite"></div>
           <div class="table-wrap">
@@ -656,6 +785,27 @@
                 </tr>
               </tbody>
             </table>
+          </div>
+        </section>
+
+        <section class="card section stack">
+          <div class="section-header">
+            <div>
+              <h2>Updates</h2>
+              <p id="updateCardDesc"></p>
+            </div>
+            <button id="checkUpdatesButton" class="ghost" type="button">Check for Updates</button>
+          </div>
+          <div class="toggle-row">
+            <span class="toggle-label">Check for Updates Automatically</span>
+            <button id="autoUpdateToggle" class="toggle" type="button" aria-pressed="true" aria-label="Toggle automatic update checks"></button>
+          </div>
+          <div id="updateReleaseNotes" class="stack" style="display:none">
+            <p id="updateNotesHeading" class="update-notes-heading"></p>
+            <pre id="updateReleaseNotesBody" class="release-notes-body"></pre>
+            <div class="actions">
+              <button id="updateCardInstallButton" class="primary" type="button">Update Now</button>
+            </div>
           </div>
         </section>
       </div>
@@ -865,6 +1015,7 @@
           latestVersion: "",
           hasUpdate: false,
           latestUrl: "",
+          latestNotes: "",
           autoCheckUpdates: true,
           updateState: "idle",
           targetVersion: "",
@@ -1140,6 +1291,7 @@
         if (payload.updateInfo) {
           state.updateInfo = { ...state.updateInfo, ...payload.updateInfo };
           renderUpdatePill();
+          renderUpdateCard();
         }
 
         syncDefaultUnit();
@@ -1600,6 +1752,7 @@
       });
 
       let nameValidationTimer = null;
+      let tooltipHideTimer = null;
       document.getElementById("newName").addEventListener("input", (event) => {
         const value = event.currentTarget.value;
         const localError = validateParameterNameLocally(value);
@@ -2048,35 +2201,98 @@
       });
 
       function renderUpdatePill() {
+        clearTimeout(tooltipHideTimer);
+        tooltipHideTimer = null;
+
         const pill = document.getElementById("updatePill");
         const info = state.updateInfo;
+
+        pill.onclick = null;
+
         if (!info || !info.currentVersion) {
           pill.style.display = "none";
           return;
         }
+
         pill.style.display = "";
+
         if (info.updateState === "staged") {
           pill.className = "update-pill is-staged";
-          pill.textContent = `v${info.currentVersion} — Restart to apply v${info.targetVersion}`;
-          pill.onclick = null;
+          pill.innerHTML = `<span class="pill-label">Restart to apply v${info.targetVersion}</span>`;
           return;
         }
+
         if (info.hasUpdate) {
           pill.className = "update-pill has-update";
-          pill.textContent = `v${info.currentVersion} — Update available: v${info.latestVersion}`;
+          const notes = (info.latestNotes || "").trim();
+
+          const label = document.createElement("span");
+          label.className = "pill-label";
+          label.textContent = `Update Now: v${info.currentVersion} \u2192 v${info.latestVersion}`;
+          pill.innerHTML = "";
+          pill.appendChild(label);
+
+          if (notes) {
+            const tip = document.createElement("div");
+            tip.className = "update-notes-tooltip";
+            tip.textContent = notes;
+            pill.appendChild(tip);
+
+            const showTip = () => {
+              clearTimeout(tooltipHideTimer);
+              tooltipHideTimer = null;
+              tip.classList.add("is-visible");
+            };
+            const schedulehide = () => {
+              clearTimeout(tooltipHideTimer);
+              tooltipHideTimer = setTimeout(() => tip.classList.remove("is-visible"), 350);
+            };
+
+            pill.addEventListener("mouseenter", showTip);
+            pill.addEventListener("mouseleave", schedulehide);
+            tip.addEventListener("mouseenter", showTip);
+            tip.addEventListener("mouseleave", schedulehide);
+          }
+
           pill.onclick = () => handleInstallUpdate();
           return;
         }
+
+        pill.className = "update-pill is-current";
+        pill.innerHTML = `<span class="pill-label">v${info.currentVersion}</span><span class="pill-action">Check for Updates</span>`;
+        pill.onclick = () => handleCheckForUpdates();
+      }
+
+      async function handleCheckForUpdates() {
+        const pill = document.getElementById("updatePill");
         pill.className = "update-pill";
-        pill.textContent = `v${info.currentVersion}`;
+        pill.innerHTML = `<span class="pill-label">Checking\u2026</span>`;
         pill.onclick = null;
+        const btn = document.getElementById("checkUpdatesButton");
+        if (btn) { btn.disabled = true; btn.textContent = "Checking\u2026"; }
+        try {
+          const response = await sendToFusion("checkForUpdates");
+          if (response.ok !== false) {
+            applyStateFromFusion(response);
+          } else {
+            renderUpdatePill();
+            renderUpdateCard();
+          }
+        } catch (_error) {
+          renderUpdatePill();
+          renderUpdateCard();
+        } finally {
+          if (btn) { btn.disabled = false; btn.textContent = "Check for Updates"; }
+        }
       }
 
       async function handleInstallUpdate() {
         const pill = document.getElementById("updatePill");
         pill.className = "update-pill is-staged";
-        pill.textContent = "Downloading update…";
+        pill.innerHTML = `<span class="pill-label">Downloading update\u2026</span>`;
         pill.onclick = null;
+        const btn = document.getElementById("updateCardInstallButton");
+        if (btn) { btn.disabled = true; btn.textContent = "Downloading\u2026"; }
         try {
           const response = await sendToFusion("downloadAndStageUpdate");
           if (response.ok !== false) {
@@ -2085,8 +2301,58 @@
         } catch (error) {
           setStatus(error.message, "error");
           renderUpdatePill();
+          renderUpdateCard();
+        } finally {
+          if (btn) { btn.disabled = false; btn.textContent = "Update Now"; }
         }
       }
+
+      function renderUpdateCard() {
+        const info = state.updateInfo;
+        const desc = document.getElementById("updateCardDesc");
+        const releaseNotes = document.getElementById("updateReleaseNotes");
+        const notesHeading = document.getElementById("updateNotesHeading");
+        const notesBody = document.getElementById("updateReleaseNotesBody");
+
+        if (!info || !desc) return;
+
+        renderToggle("autoUpdateToggle", info.autoCheckUpdates !== false);
+
+        if (info.updateState === "staged") {
+          desc.innerHTML = `Running <strong>v${escapeHtml(info.currentVersion)}</strong>.`;
+          if (releaseNotes) releaseNotes.style.display = "none";
+          const statusEl = document.getElementById("updateCardStatus");
+          if (statusEl) {
+            statusEl.textContent = `v${info.targetVersion} is staged \u2014 restart Fusion to apply it.`;
+            statusEl.className = "update-card-status is-good";
+            statusEl.style.display = "";
+          }
+          return;
+        }
+
+        if (info.hasUpdate) {
+          desc.innerHTML = `Running <strong>v${escapeHtml(info.currentVersion)}</strong> \u2014 <span class="update-card-status has-update">v${escapeHtml(info.latestVersion)} is available.</span>`;
+          const notes = (info.latestNotes || "").trim();
+          if (notes && releaseNotes) {
+            releaseNotes.style.display = "";
+            if (notesHeading) notesHeading.textContent = `What\u2019s new in v${info.latestVersion}`;
+            if (notesBody) notesBody.textContent = notes;
+          } else if (releaseNotes) {
+            releaseNotes.style.display = "none";
+          }
+          return;
+        }
+
+        if (info.latestVersion) {
+          desc.innerHTML = `Running <strong>v${escapeHtml(info.currentVersion)}</strong> \u2014 <span class="update-card-status is-good">you\u2019re up to date.</span>`;
+        } else {
+          desc.innerHTML = `Running <strong>v${escapeHtml(info.currentVersion || "\u2026")}</strong>.`;
+        }
+        if (releaseNotes) releaseNotes.style.display = "none";
+      }
+
+      document.getElementById("checkUpdatesButton").addEventListener("click", () => handleCheckForUpdates());
+      document.getElementById("updateCardInstallButton").addEventListener("click", () => handleInstallUpdate());
 
       window.fusionJavaScriptHandler = {
         handle(action, payload) {
@@ -2128,7 +2394,11 @@
                   const updateResponse = await sendToFusion("checkForUpdates");
                   if (updateResponse.ok !== false) {
                     applyStateFromFusion(updateResponse);
+                  } else {
+                    renderUpdateCard();
                   }
+                } else {
+                  renderUpdateCard();
                 }
               } catch (_error) {
               }
