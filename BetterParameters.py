@@ -424,6 +424,7 @@ def _build_update_info_payload():
         "autoCheckUpdates": auto_check,
         "updateState": update_state.get("state", "idle"),
         "targetVersion": update_state.get("target_version", ""),
+        "installedVersion": update_state.get("installed_version", ""),
         "error": cached.get("error", ""),
     }
 
