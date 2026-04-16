@@ -619,6 +619,35 @@
         position: relative;
       }
 
+      #parameterRows .field-shell {
+        display: grid;
+        align-items: center;
+      }
+
+      #parameterRows .expression-field-error {
+        position: static;
+        min-height: 0;
+        padding: 0;
+        line-height: 1.1;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        overflow: hidden;
+        pointer-events: none;
+        opacity: 0;
+        transform: translateY(-2px);
+        transition: opacity 90ms ease, transform 90ms ease, max-height 90ms ease, margin-top 90ms ease;
+        max-height: 0;
+        margin-top: 0;
+      }
+
+      #parameterRows .expression-field-error.has-message {
+        opacity: 1;
+        transform: translateY(0);
+        max-height: 120px;
+        margin-top: 2px;
+      }
+
       form {
         display: grid;
         gap: 10px;
@@ -836,18 +865,29 @@
       }
 
       .save-button.is-dirty {
-        background: var(--accent);
-        color: var(--accent-text);
-        cursor: pointer;
-        border-color: var(--accent);
         visibility: visible;
         opacity: 1;
+      }
+
+      .save-button.is-ready {
+        background: var(--success);
+        color: var(--accent-text);
+        cursor: pointer;
+        border-color: var(--success);
         pointer-events: auto;
       }
 
-      .save-button.is-dirty:hover {
-        background: var(--accent-hover);
-        border-color: var(--accent-hover);
+      .save-button.is-ready:hover {
+        background: color-mix(in srgb, var(--success) 86%, var(--panel));
+        border-color: color-mix(in srgb, var(--success) 86%, var(--line));
+      }
+
+      .save-button.is-error {
+        background: color-mix(in srgb, var(--error) 88%, var(--panel));
+        color: var(--accent-text);
+        cursor: not-allowed;
+        border-color: var(--error);
+        pointer-events: none;
       }
 
       .row-actions {
@@ -2206,10 +2246,10 @@
       })();
     </script>
   </head>
-  <body>
+  <body class="hide-text-tuner-sidebar">
     <div class="page">
-      <div id="tunerSidebar" class="tuner-sidebar">
-        <section id="textTunerCard" class="card text-tuner-card">
+      <div id="tunerSidebar" class="tuner-sidebar" hidden>
+        <section id="textTunerCard" class="card text-tuner-card" hidden>
           <div class="tuner-header">
             <span class="tuner-header-title">Text Tuner</span>
             <div class="tuner-header-actions">
@@ -2845,6 +2885,9 @@
         },
         textTunerState: {},
         textTunerStateLoaded: false,
+        textTunerUiInitialized: false,
+        hasLoadedFusionSettings: false,
+        suppressNextNarrowAutoFit: false,
         selectedRow: null,
         lastNarrowLayoutMode: null,
         viewportModeAutoFitPending: false
@@ -3015,13 +3058,23 @@
           });
         }
 
+        const commentsVisible = userShowsComments && !autoHideComments;
+        const adjustedMainPx = { ...columnPx };
+        if (!commentsVisible && containerWidth > visibleMainPx) {
+          const slackPx = containerWidth - visibleMainPx;
+          const fillPriority = ["comment", "expression", "actions", "preview", "name"];
+          const fillKey = fillPriority.find((key) => visibleMainKeys.includes(key));
+          if (fillKey) {
+            adjustedMainPx[fillKey] = (adjustedMainPx[fillKey] || 0) + slackPx;
+          }
+        }
+
         COLUMN_KEYS.forEach((key, i) => {
-          if (headers[i]) headers[i].style.width = `${columnPx[key]}px`;
+          if (headers[i]) headers[i].style.width = `${adjustedMainPx[key]}px`;
         });
 
         if (table) {
-          const effectiveSumPx = visibleMainPx;
-          const commentsVisible = userShowsComments && !autoHideComments;
+          const effectiveSumPx = visibleMainKeys.reduce((sum, key) => sum + (adjustedMainPx[key] || 0), 0);
           const commentsWidth = commentsVisible
             ? (containerWidth > effectiveSumPx ? containerWidth - effectiveSumPx : 120)
             : 0;
@@ -3030,6 +3083,15 @@
           }
           table.style.width = `${Math.max(effectiveSumPx + commentsWidth, containerWidth)}px`;
         }
+      }
+
+      function getHiddenColumnKeySet() {
+        const hidden = new Set();
+        if (document.body.classList.contains("auto-hide-parameter")) hidden.add("name");
+        if (document.body.classList.contains("auto-hide-unit")) hidden.add("preview");
+        if (document.body.classList.contains("auto-hide-value")) hidden.add("actions");
+        if (document.body.classList.contains("auto-hide-comments") || document.body.classList.contains("hide-comment")) hidden.add("comment");
+        return hidden;
       }
 
       function renderAutoOpenToggle() {
@@ -3069,11 +3131,20 @@
         button.textContent = `Text Tuner: ${isOn ? "On" : "Off"}`;
       }
 
+      function shouldShowTextTunerSidebar() {
+        return TEMP_TEXT_TUNER_ENABLED
+          && state.hasLoadedFusionSettings
+          && (state.settings.showTextTunerSidebar !== false);
+      }
+
       function applyTextTunerSidebarVisibility() {
         const sidebar = document.getElementById("tunerSidebar");
         const card = document.getElementById("textTunerCard");
-        const showSidebar = TEMP_TEXT_TUNER_ENABLED && (state.settings.showTextTunerSidebar !== false);
+        const showSidebar = shouldShowTextTunerSidebar();
         document.body.classList.toggle("hide-text-tuner-sidebar", !showSidebar);
+        if (showSidebar) {
+          ensureTextTunerUiInitialized();
+        }
         if (sidebar) {
           sidebar.hidden = !showSidebar;
         }
@@ -4441,7 +4512,7 @@
         if (persistLocal) {
           try { localStorage.setItem("bp_theme", normalizedTheme); } catch (_) {}
         }
-        if (TEMP_TEXT_TUNER_ENABLED) {
+        if (TEMP_TEXT_TUNER_ENABLED && state.textTunerUiInitialized) {
           buildTextTunerColorInputs();
           syncTextTunerUiFromCss();
           renderTextTunerDebug(collectTextTunerValuesFromCss());
@@ -4816,7 +4887,10 @@
         syncTextTunerUiFromCss();
       }
 
-      function initializeTextTunerCard() {
+      function ensureTextTunerUiInitialized() {
+        if (state.textTunerUiInitialized) {
+          return;
+        }
         const card = document.getElementById("textTunerCard");
         if (!card) {
           return;
@@ -4829,7 +4903,6 @@
           return;
         }
 
-        card.hidden = false;
         buildTextTunerColorInputs();
         bindTextTunerLiveInputs();
         syncTextTunerUiFromCss();
@@ -4872,6 +4945,23 @@
             }
           });
         }
+
+        state.textTunerUiInitialized = true;
+      }
+
+      function initializeTextTunerCard() {
+        const card = document.getElementById("textTunerCard");
+        const sidebar = document.getElementById("tunerSidebar");
+        if (!card || !sidebar) {
+          return;
+        }
+        if (!TEMP_TEXT_TUNER_ENABLED) {
+          card.hidden = true;
+          sidebar.hidden = true;
+          return;
+        }
+        card.hidden = true;
+        sidebar.hidden = true;
       }
 
       function syncDefaultUnit(force = false) {
@@ -4979,6 +5069,7 @@
         }
 
         if (payload.settings) {
+          state.hasLoadedFusionSettings = true;
           applySettings(payload.settings);
         }
 
@@ -4998,7 +5089,9 @@
           setParameterSummary(payload.parameters);
           const tableWrap = document.querySelector(".table-wrap");
           const wrapWidth = tableWrap ? tableWrap.offsetWidth : 0;
-          if (wrapWidth > 0 && wrapWidth < NARROW_NAME_EXPRESSION_ONLY_PX) {
+          const skipNarrowAutoFit = state.suppressNextNarrowAutoFit === true;
+          state.suppressNextNarrowAutoFit = false;
+          if (!skipNarrowAutoFit && state.settings.autoFitColumns === true && wrapWidth > 0 && wrapWidth < NARROW_NAME_EXPRESSION_ONLY_PX) {
             requestAnimationFrame(() => {
               const nextColumns = buildAutoFitColumnWidths();
               const currentColumns = state.settings.parameterTableColumns || {};
@@ -5564,8 +5657,10 @@
         if (errorNode) {
           errorNode.textContent = message || "";
           errorNode.classList.toggle("is-valid", kind === "success");
+          errorNode.classList.toggle("has-message", !!message);
         }
         input.setAttribute("aria-invalid", (message && kind === "error") ? "true" : "false");
+        updateRowSaveState(input.closest("tr"));
       }
 
       function getExpressionInputTimerKey(input) {
@@ -5663,9 +5758,13 @@
         const expressionDirty = expressionInput.value !== (expressionInput.getAttribute("data-saved-expression") || "");
         const commentDirty = commentInput.value !== (commentInput.getAttribute("data-saved-comment") || "");
         const isDirty = expressionDirty || commentDirty;
+        const expressionHasError = expressionInput.getAttribute("aria-invalid") === "true";
+        const canSave = isDirty && !expressionHasError;
         row.classList.toggle("is-dirty", isDirty);
-        saveButton.disabled = !isDirty;
+        saveButton.disabled = !canSave;
         saveButton.classList.toggle("is-dirty", isDirty);
+        saveButton.classList.toggle("is-ready", isDirty && !expressionHasError);
+        saveButton.classList.toggle("is-error", isDirty && expressionHasError);
         if (revertButton) {
           const previousExpression = revertButton.getAttribute("data-previous-expression") || "";
           const canRevert = !!previousExpression && !isDirty;
@@ -6878,7 +6977,8 @@
         const deltaX = event.clientX - startX;
         const minPx = COLUMN_MIN_PX[colKey] || 40;
         const cols = state.settings.parameterTableColumns;
-        const othersPx = COLUMN_KEYS.filter(k => k !== colKey)
+        const hiddenKeys = getHiddenColumnKeySet();
+        const othersPx = COLUMN_KEYS.filter(k => k !== colKey && !hiddenKeys.has(k))
           .reduce((s, k) => s + Math.round(cols[k] || DEFAULT_TABLE_COLUMNS[k]), 0);
         const containerWidth = document.querySelector(".table-wrap")?.offsetWidth || window.innerWidth;
         const maxPx = Math.max(minPx, containerWidth - othersPx);
@@ -6893,6 +6993,7 @@
 
         state.activeColumnResize.resizer.classList.remove("is-active");
         state.activeColumnResize = null;
+        state.suppressNextNarrowAutoFit = true;
 
         try {
           await saveSettingsPartial({ parameterTableColumns: state.settings.parameterTableColumns });

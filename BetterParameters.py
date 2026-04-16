@@ -96,6 +96,8 @@ DEFAULT_SETTINGS = {
         "width": DEFAULT_PALETTE_WIDTH,
         "height": DEFAULT_PALETTE_HEIGHT,
     },
+    "palettePosition": {},
+    "paletteDockingState": "floating",
     "parameterTableColumns": {
         "name": 140,
         "expression": 180,
@@ -127,6 +129,7 @@ DEFAULT_SETTINGS = {
     "updateCheck": {},
     "autoOpenOnStart": False,
 }
+ALLOWED_PALETTE_DOCKING_STATE_NAMES = {"floating", "left", "right", "top", "bottom"}
 TARGET_PANEL_IDS = [
     PANEL_ID,
     "SolidModifyPanel",
@@ -180,6 +183,7 @@ def stop(_context):
     try:
         palette = _palette()
         if palette:
+            _save_palette_geometry(palette)
             palette.deleteMe()
     except Exception:
         _message_box(f"Add-in stop failed:\n{traceback.format_exc()}")
@@ -284,6 +288,7 @@ class PaletteClosedHandler(adsk.core.UserInterfaceGeneralEventHandler):
         try:
             palette = _palette()
             if palette:
+                _save_palette_geometry(palette)
                 palette.deleteMe()
         except Exception:
             _message_box(f"Palette cleanup failed:\n{traceback.format_exc()}")
@@ -304,8 +309,9 @@ def _ensure_palette():
         DEFAULT_PALETTE_WIDTH,
         DEFAULT_PALETTE_HEIGHT,
     )
-    palette.dockingState = adsk.core.PaletteDockingStates.PaletteDockStateFloating
+    _apply_saved_palette_docking_state(palette)
     _apply_saved_palette_size(palette)
+    _apply_saved_palette_position(palette)
 
     on_incoming = PaletteIncomingHandler()
     palette.incomingFromHTML.add(on_incoming)
@@ -1054,6 +1060,7 @@ def _persist_document_order_snapshot(parameters, previous_state=None):
 def _load_settings():
     settings = dict(DEFAULT_SETTINGS)
     settings["paletteSize"] = dict(DEFAULT_SETTINGS["paletteSize"])
+    settings["palettePosition"] = {}
     settings["parameterTableColumns"] = dict(DEFAULT_SETTINGS["parameterTableColumns"])
     settings["unitCategoryState"] = dict(DEFAULT_SETTINGS["unitCategoryState"])
     settings["customUnits"] = []
@@ -1084,6 +1091,16 @@ def _load_settings():
                 settings["paletteSize"]["width"] = width
             if isinstance(height, int) and height >= 240:
                 settings["paletteSize"]["height"] = height
+        if isinstance(loaded.get("palettePosition"), dict):
+            x = loaded["palettePosition"].get("x")
+            y = loaded["palettePosition"].get("y")
+            if isinstance(x, int) and isinstance(y, int):
+                settings["palettePosition"] = {"x": x, "y": y}
+        palette_docking_state = loaded.get("paletteDockingState")
+        if isinstance(palette_docking_state, str):
+            normalized_docking_state = palette_docking_state.strip().lower()
+            if normalized_docking_state in ALLOWED_PALETTE_DOCKING_STATE_NAMES:
+                settings["paletteDockingState"] = normalized_docking_state
         if isinstance(loaded.get("parameterTableColumns"), dict):
             for key, default_value in DEFAULT_SETTINGS["parameterTableColumns"].items():
                 incoming_value = loaded["parameterTableColumns"].get(key)
@@ -1195,6 +1212,29 @@ def _save_settings(data):
             if not isinstance(height, int) or height < 240:
                 raise ValueError('"paletteSize.height" must be an integer greater than or equal to 240.')
             settings["paletteSize"]["height"] = height
+
+    palette_position = data.get("palettePosition")
+    if palette_position is not None:
+        if not isinstance(palette_position, dict):
+            raise ValueError('"palettePosition" must be an object.')
+
+        x = palette_position.get("x")
+        y = palette_position.get("y")
+        if x is not None and not isinstance(x, int):
+            raise ValueError('"palettePosition.x" must be an integer.')
+        if y is not None and not isinstance(y, int):
+            raise ValueError('"palettePosition.y" must be an integer.')
+        if isinstance(x, int) and isinstance(y, int):
+            settings["palettePosition"] = {"x": x, "y": y}
+
+    palette_docking_state = data.get("paletteDockingState")
+    if palette_docking_state is not None:
+        if not isinstance(palette_docking_state, str):
+            raise ValueError('"paletteDockingState" must be a string.')
+        normalized_docking_state = palette_docking_state.strip().lower()
+        if normalized_docking_state not in ALLOWED_PALETTE_DOCKING_STATE_NAMES:
+            raise ValueError('"paletteDockingState" must be one of: floating, left, right, top, bottom.')
+        settings["paletteDockingState"] = normalized_docking_state
 
     table_columns = data.get("parameterTableColumns")
     if table_columns is not None:
@@ -1378,6 +1418,63 @@ def _active_document_info():
     return {"id": document_id, "name": document_name}
 
 
+def _palette_docking_state_name_map():
+    docking_states = getattr(adsk.core, "PaletteDockingStates", None)
+    if docking_states is None:
+        return {}
+
+    mapping = {}
+    candidates = [
+        ("floating", "PaletteDockStateFloating"),
+        ("left", "PaletteDockStateLeft"),
+        ("right", "PaletteDockStateRight"),
+        ("top", "PaletteDockStateTop"),
+        ("bottom", "PaletteDockStateBottom"),
+    ]
+    for name, attr_name in candidates:
+        value = getattr(docking_states, attr_name, None)
+        if value is not None:
+            mapping[name] = value
+    return mapping
+
+
+def _palette_docking_state_to_name(docking_state):
+    mapping = _palette_docking_state_name_map()
+    for name, value in mapping.items():
+        if docking_state == value:
+            return name
+    return "floating"
+
+
+def _is_palette_floating(palette):
+    mapping = _palette_docking_state_name_map()
+    floating_state = mapping.get("floating")
+    if floating_state is None:
+        return True
+    try:
+        return palette.dockingState == floating_state
+    except Exception:
+        return True
+
+
+def _apply_saved_palette_docking_state(palette):
+    settings = _load_settings()
+    requested = str(settings.get("paletteDockingState") or "floating").strip().lower()
+    if requested not in ALLOWED_PALETTE_DOCKING_STATE_NAMES:
+        requested = "floating"
+
+    mapping = _palette_docking_state_name_map()
+    target_state = mapping.get(requested) or mapping.get("floating")
+    if target_state is None:
+        return
+
+    try:
+        palette.dockingState = target_state
+    except Exception:
+        if app:
+            app.log(f"Better Parameters palette docking restore failed:\n{traceback.format_exc()}")
+
+
 def _apply_saved_palette_size(palette):
     settings = _load_settings()
     width = settings["paletteSize"]["width"]
@@ -1388,6 +1485,66 @@ def _apply_saved_palette_size(palette):
     except Exception:
         if app:
             app.log(f"Better Parameters palette size restore failed:\n{traceback.format_exc()}")
+
+
+def _apply_saved_palette_position(palette):
+    if not _is_palette_floating(palette):
+        return
+
+    settings = _load_settings()
+    position = settings.get("palettePosition") or {}
+    x = position.get("x")
+    y = position.get("y")
+    if not isinstance(x, int) or not isinstance(y, int):
+        return
+
+    try:
+        palette.left = x
+        palette.top = y
+    except Exception:
+        if app:
+            app.log(f"Better Parameters palette position restore failed:\n{traceback.format_exc()}")
+
+
+def _save_palette_geometry(palette):
+    payload = {"paletteSize": {}, "palettePosition": {}}
+
+    try:
+        payload["paletteDockingState"] = _palette_docking_state_to_name(palette.dockingState)
+    except Exception:
+        payload["paletteDockingState"] = "floating"
+
+    try:
+        width = int(palette.width)
+        if width >= 320:
+            payload["paletteSize"]["width"] = width
+    except Exception:
+        pass
+
+    try:
+        height = int(palette.height)
+        if height >= 240:
+            payload["paletteSize"]["height"] = height
+    except Exception:
+        pass
+
+    if _is_palette_floating(palette):
+        try:
+            payload["palettePosition"]["x"] = int(palette.left)
+            payload["palettePosition"]["y"] = int(palette.top)
+        except Exception:
+            payload["palettePosition"] = {}
+    else:
+        payload["palettePosition"] = {}
+
+    if not payload["paletteSize"]:
+        payload.pop("paletteSize")
+    if not payload["palettePosition"]:
+        payload.pop("palettePosition")
+    if not payload:
+        return
+
+    _save_settings(payload)
 
 
 def _update_parameter(data):
