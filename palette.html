@@ -995,6 +995,10 @@
         white-space: nowrap;
       }
 
+      .narrow-summary {
+        display: none;
+      }
+
       .reorder-handle {
         width: var(--glyph-drag);
         min-width: var(--glyph-drag);
@@ -1116,6 +1120,198 @@
       body.auto-hide-value td.value-cell,
       body.auto-hide-value th.value-col {
         display: none;
+      }
+
+      body.narrow-stack .table-wrap table {
+        table-layout: fixed;
+        width: 100% !important;
+      }
+
+      body.narrow-stack .table-wrap thead {
+        display: none;
+      }
+
+      body.narrow-stack .column-resizer {
+        display: none;
+      }
+
+      body.narrow-stack #parameterRows {
+        display: block;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row {
+        display: block;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line-subtle);
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row td {
+        display: none;
+        background: transparent !important;
+        border-bottom: 0;
+        padding: 0;
+        height: auto;
+        min-height: 0;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row.is-odd,
+      body.narrow-stack #parameterRows tr.parameter-row.is-even {
+        background: color-mix(in srgb, var(--panel) 86%, var(--panel-raised));
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row.is-even {
+        background: color-mix(in srgb, var(--panel-raised) 93%, var(--line-subtle));
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row:hover {
+        background: var(--panel-hover);
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row.is-selected {
+        background: var(--selected-row-bg);
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row.is-selected:hover {
+        background: var(--selected-row-hover);
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row td.name-cell {
+        display: block;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row td.name-cell {
+        order: 1;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row .name-cell-main {
+        display: none;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary {
+        display: grid;
+        gap: 6px;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-head {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+        align-items: center;
+        gap: 6px;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 600;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-badges {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row .narrow-badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 1px 6px;
+        font-size: 10px;
+        line-height: 1.2;
+        border: 1px solid var(--line);
+        background: var(--panel-raised);
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-meta {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-value {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-unit {
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-icon-btn {
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-toggle {
+        font-size: 12px;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row .narrow-comment-btn {
+        width: auto;
+        min-width: 64px;
+        padding: 0 7px;
+        font-size: 11px;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row .narrow-comment-btn.has-comment {
+        border-color: var(--accent);
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row .narrow-comment-btn.is-open {
+        background: var(--btn-hover);
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row td:nth-child(4),
+      body.narrow-stack #parameterRows tr.parameter-row td.comments-cell {
+        display: none;
+        margin-top: 6px;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row.is-narrow-expanded td:nth-child(4),
+      body.narrow-stack #parameterRows tr.parameter-row.is-narrow-expanded td.comments-cell {
+        display: block !important;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row td.comments-cell .comment-input {
+        display: none;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row.is-narrow-comment-open td.comments-cell .comment-input {
+        display: block;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row td.comments-cell .comment-shell {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 6px;
+        align-items: start;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row td.comments-cell .row-actions {
+        justify-items: end;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row .row-actions {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row .parameter-kind {
+        opacity: 0.9;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row .reorder-handle,
+      body.narrow-stack #parameterRows tr.parameter-row .reorder-handle-placeholder {
+        display: none !important;
       }
 
       #parameterRows tr {
@@ -2644,7 +2840,7 @@
         comment: 220,
         actions: 120
       };
-      const NARROW_NAME_EXPRESSION_ONLY_PX = 400;
+      const NARROW_NAME_EXPRESSION_ONLY_PX = 520;
 
       const COLUMN_KEYS = ["name", "expression", "preview", "comment", "actions"];
       const UNGROUPED_GROUP_LABEL = "Ungrouped";
@@ -2888,6 +3084,8 @@
         textTunerUiInitialized: false,
         hasLoadedFusionSettings: false,
         suppressNextNarrowAutoFit: false,
+        expandedRows: {},
+        commentOpenRows: {},
         selectedRow: null,
         lastNarrowLayoutMode: null,
         viewportModeAutoFitPending: false
@@ -3014,6 +3212,7 @@
         const wrap = table ? table.parentElement : null;
         const containerWidth = wrap ? wrap.offsetWidth : 600;
         const isNarrowMode = containerWidth < NARROW_NAME_EXPRESSION_ONLY_PX;
+        document.body.classList.toggle("narrow-stack", isNarrowMode);
         const userShowsComments = !document.body.classList.contains("hide-comment");
         const columnPx = {};
         COLUMN_KEYS.forEach((key) => {
@@ -3034,10 +3233,10 @@
           });
         }
 
-        const autoHideParameter = isNarrowMode || !visibleMainKeys.includes("name");
-        const autoHideUnit = isNarrowMode || !visibleMainKeys.includes("preview");
-        const autoHideValue = isNarrowMode || !visibleMainKeys.includes("actions");
-        const autoHideComments = isNarrowMode || (userShowsComments && ((visibleMainPx + 120) > containerWidth));
+        const autoHideParameter = !isNarrowMode && !visibleMainKeys.includes("name");
+        const autoHideUnit = !isNarrowMode && !visibleMainKeys.includes("preview");
+        const autoHideValue = !isNarrowMode && !visibleMainKeys.includes("actions");
+        const autoHideComments = !isNarrowMode && (userShowsComments && ((visibleMainPx + 120) > containerWidth));
         document.body.classList.toggle("auto-hide-comments", autoHideComments);
         document.body.classList.toggle("auto-hide-unit", autoHideUnit);
         document.body.classList.toggle("auto-hide-parameter", autoHideParameter);
@@ -3045,7 +3244,7 @@
 
         const modeChanged = state.lastNarrowLayoutMode !== isNarrowMode;
         state.lastNarrowLayoutMode = isNarrowMode;
-        if (modeChanged && !state.viewportModeAutoFitPending) {
+        if (modeChanged && !isNarrowMode && !state.viewportModeAutoFitPending) {
           state.viewportModeAutoFitPending = true;
           requestAnimationFrame(() => {
             state.viewportModeAutoFitPending = false;
@@ -3074,6 +3273,12 @@
         });
 
         if (table) {
+          if (isNarrowMode) {
+            table.style.width = `${containerWidth}px`;
+            if (headers[5]) headers[5].style.width = "";
+            return;
+          }
+
           const effectiveSumPx = visibleMainKeys.reduce((sum, key) => sum + (adjustedMainPx[key] || 0), 0);
           const commentsWidth = commentsVisible
             ? (containerWidth > effectiveSumPx ? containerWidth - effectiveSumPx : 120)
@@ -3824,6 +4029,11 @@
               : `Drag to reorder ${safeName}. Right-click for group + reorder options.`;
             const showRevert = state.settings.showRevertButtons !== false;
             const compactPreviousValue = previousValue.replace(/\s+/g, " ").trim();
+            const rowStateKey = String(param.key || param.name || "");
+            const isNarrowExpanded = !!state.expandedRows[rowStateKey];
+            const isNarrowCommentOpen = !!state.commentOpenRows[rowStateKey];
+            const hasComment = !!String(param.comment || "").trim();
+            const hasRevert = !!previousExpression;
             const revertTitle = previousExpression
               ? `Revert to: ${escapeHtml(previousExpression)}${compactPreviousValue ? ` (${escapeHtml(compactPreviousValue)})` : ""}`
               : (
@@ -3836,15 +4046,38 @@
               : "";
             const stripeClass = renderRowCounter % 2 === 0 ? " is-even" : " is-odd";
             const hiddenClass = groupCollapsed ? " is-hidden-by-group" : "";
+            const narrowExpandedClass = isNarrowExpanded ? " is-narrow-expanded" : "";
+            const narrowCommentClass = isNarrowCommentOpen ? " is-narrow-comment-open" : "";
+            const narrowToggleGlyph = isNarrowExpanded ? "\u25be" : "\u25b8";
+            const narrowCommentTitle = isNarrowCommentOpen ? "Hide comment editor" : "Show comment editor";
 
             pieces.push(`
-              <tr class="parameter-row${stripeClass}${hiddenClass}" data-index="0" data-group-index="${index}" data-group-name="${safeGroupLabel}" data-parameter-key="${safeKey}" data-parameter-name="${safeName}" data-row-uid="row-${renderRowCounter}"${isFavoritesGroup ? ' data-favorites-row="true"' : ""}>
+              <tr class="parameter-row${stripeClass}${hiddenClass}${narrowExpandedClass}${narrowCommentClass}" data-index="0" data-group-index="${index}" data-group-name="${safeGroupLabel}" data-parameter-key="${safeKey}" data-parameter-name="${safeName}" data-row-uid="row-${renderRowCounter}"${isFavoritesGroup ? ' data-favorites-row="true"' : ""}>
                 <td class="name-cell">
                   <div class="name-cell-main">
                     ${isFavoritesGroup ? `<span class="reorder-handle-placeholder" aria-hidden="true"></span>` : `<button class="reorder-handle" type="button" data-reorder-handle="true" tabindex="-1" aria-label="${reorderTitle}" title="${reorderTitle}"${isSearchActive ? " disabled" : ""}></button>`}
                     <div class="name-stack">
                       <button class="${favoriteClass}" type="button" data-favorite-toggle="true" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}"><span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span></button>
                       <span class="parameter-kind">User Parameter</span>
+                    </div>
+                  </div>
+                  <div class="narrow-summary">
+                    <div class="narrow-summary-head">
+                      <button class="${favoriteClass}" type="button" data-favorite-toggle="true" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}"><span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span></button>
+                      <strong class="narrow-summary-name">${safeName}</strong>
+                      <div class="narrow-summary-badges">
+                        <span class="narrow-badge" data-narrow-badge="revert"${showRevert && hasRevert ? "" : " hidden"}>Revert</span>
+                      </div>
+                      <button class="ghost narrow-summary-icon-btn" type="button" data-narrow-reorder="true" title="More / reorder">&#8942;</button>
+                      <button class="ghost narrow-summary-icon-btn narrow-summary-toggle" type="button" data-narrow-toggle="true" aria-expanded="${isNarrowExpanded ? "true" : "false"}" title="Expand row">${narrowToggleGlyph}</button>
+                    </div>
+                    <div class="narrow-summary-meta">
+                      <span class="narrow-summary-value" data-narrow-summary-value>${safePreview}</span>
+                      <span class="narrow-summary-unit" data-narrow-summary-unit>${unitLabel}</span>
+                    </div>
+                    <div class="narrow-summary-meta">
+                      <span class="parameter-kind">User Parameter</span>
+                      <button class="ghost narrow-summary-icon-btn narrow-comment-btn${isNarrowCommentOpen ? " is-open" : ""}${hasComment ? " has-comment" : ""}" type="button" data-narrow-comment-toggle="true" aria-expanded="${isNarrowCommentOpen ? "true" : "false"}" title="${narrowCommentTitle}">Comment</button>
                     </div>
                   </div>
                 </td>
@@ -3919,6 +4152,81 @@
         const selectedRowElement = rows.find((row) => rowMatchesSelection(row, state.selectedRow));
         if (selectedRowElement) {
           selectedRowElement.classList.add("is-selected");
+        }
+      }
+
+      function narrowRowStateKeyFromRow(row) {
+        if (!row) {
+          return "";
+        }
+        return String(row.getAttribute("data-parameter-key") || "");
+      }
+
+      function setNarrowRowExpanded(row, expanded) {
+        const key = narrowRowStateKeyFromRow(row);
+        if (!key) {
+          return;
+        }
+        state.expandedRows[key] = !!expanded;
+        row.classList.toggle("is-narrow-expanded", !!expanded);
+        const toggle = row.querySelector("[data-narrow-toggle]");
+        if (toggle) {
+          toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+          toggle.textContent = expanded ? "\u25be" : "\u25b8";
+        }
+      }
+
+      function setNarrowRowCommentOpen(row, open) {
+        const key = narrowRowStateKeyFromRow(row);
+        if (!key) {
+          return;
+        }
+        state.commentOpenRows[key] = !!open;
+        row.classList.toggle("is-narrow-comment-open", !!open);
+        const toggle = row.querySelector("[data-narrow-comment-toggle]");
+        if (toggle) {
+          toggle.setAttribute("aria-expanded", open ? "true" : "false");
+          toggle.title = open ? "Hide comment editor" : "Show comment editor";
+        }
+      }
+
+      function updateNarrowRowSummary(row) {
+        if (!row) {
+          return;
+        }
+
+        const commentInput = row.querySelector(".comment-input");
+        const revertButton = row.querySelector(".revert-button");
+        const previewCell = row.querySelector(".preview-cell");
+        const unitCell = row.querySelector(".unit-cell .unit-text");
+
+        const revertBadge = row.querySelector('[data-narrow-badge="revert"]');
+        const summaryValue = row.querySelector("[data-narrow-summary-value]");
+        const summaryUnit = row.querySelector("[data-narrow-summary-unit]");
+        const commentToggle = row.querySelector("[data-narrow-comment-toggle]");
+
+        const hasComment = !!(commentInput && String(commentInput.value || "").trim());
+        const hasRevert = !!(revertButton && (revertButton.getAttribute("data-previous-expression") || "").trim());
+
+        if (revertBadge) revertBadge.hidden = !(state.settings.showRevertButtons !== false && hasRevert);
+        if (commentToggle) {
+          const isOpen = row.classList.contains("is-narrow-comment-open");
+          commentToggle.classList.toggle("has-comment", hasComment);
+          commentToggle.classList.toggle("is-open", isOpen);
+          commentToggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+          commentToggle.title = isOpen ? "Hide comment editor" : "Show comment editor";
+        }
+
+        if (summaryValue && previewCell) {
+          const previewDraft = previewCell.querySelector(".preview-new")?.textContent
+            || previewCell.querySelector(".preview-current")?.textContent
+            || previewCell.getAttribute("data-saved-preview")
+            || "";
+          summaryValue.textContent = String(previewDraft || "").trim();
+        }
+
+        if (summaryUnit && unitCell) {
+          summaryUnit.textContent = unitCell.textContent || "";
         }
       }
 
@@ -5091,7 +5399,7 @@
           const wrapWidth = tableWrap ? tableWrap.offsetWidth : 0;
           const skipNarrowAutoFit = state.suppressNextNarrowAutoFit === true;
           state.suppressNextNarrowAutoFit = false;
-          if (!skipNarrowAutoFit && state.settings.autoFitColumns === true && wrapWidth > 0 && wrapWidth < NARROW_NAME_EXPRESSION_ONLY_PX) {
+          if (!skipNarrowAutoFit && state.settings.autoFitColumns === true && wrapWidth > 0 && wrapWidth < NARROW_NAME_EXPRESSION_ONLY_PX && !document.body.classList.contains("narrow-stack")) {
             requestAnimationFrame(() => {
               const nextColumns = buildAutoFitColumnWidths();
               const currentColumns = state.settings.parameterTableColumns || {};
@@ -5772,6 +6080,7 @@
           revertButton.classList.toggle("is-ready", canRevert);
         }
         renderRowPreview(row);
+        updateNarrowRowSummary(row);
       }
 
       function restoreRowPreview(input) {
@@ -6600,6 +6909,11 @@
           return;
         }
 
+        if (document.body.classList.contains("narrow-stack")) {
+          setGlobalStatus("Drag reorder is disabled in condensed view. Use row menu (\u22ee) to reorder.");
+          return;
+        }
+
         if (state.searchQuery.trim()) {
           setGlobalStatus("Reorder disabled while search is active.");
           return;
@@ -6620,6 +6934,9 @@
       parameterRows.addEventListener("contextmenu", (event) => {
         const handle = event.target.closest("[data-reorder-handle]");
         if (!handle) {
+          return;
+        }
+        if (document.body.classList.contains("narrow-stack")) {
           return;
         }
 
@@ -6950,6 +7267,9 @@
         if (!resizer) {
           return;
         }
+        if (document.body.classList.contains("narrow-stack")) {
+          return;
+        }
 
         const colKey = resizer.dataset.col;
         const colIndex = COLUMN_KEYS.indexOf(colKey);
@@ -7158,6 +7478,53 @@
       });
 
       document.getElementById("parameterRows").addEventListener("click", async (event) => {
+        const narrowToggle = event.target.closest("[data-narrow-toggle]");
+        if (narrowToggle) {
+          const row = narrowToggle.closest("tr.parameter-row[data-parameter-key]");
+          if (!row) {
+            return;
+          }
+          const nextExpanded = !row.classList.contains("is-narrow-expanded");
+          setNarrowRowExpanded(row, nextExpanded);
+          if (!nextExpanded) {
+            setNarrowRowCommentOpen(row, false);
+          }
+          return;
+        }
+
+        const narrowCommentToggle = event.target.closest("[data-narrow-comment-toggle]");
+        if (narrowCommentToggle) {
+          const row = narrowCommentToggle.closest("tr.parameter-row[data-parameter-key]");
+          if (!row) {
+            return;
+          }
+          if (!row.classList.contains("is-narrow-expanded")) {
+            setNarrowRowExpanded(row, true);
+          }
+          const nextOpen = !row.classList.contains("is-narrow-comment-open");
+          setNarrowRowCommentOpen(row, nextOpen);
+          if (nextOpen) {
+            const input = row.querySelector(".comment-input");
+            if (input) {
+              input.focus();
+            }
+          }
+          return;
+        }
+
+        const narrowReorder = event.target.closest("[data-narrow-reorder]");
+        if (narrowReorder) {
+          const row = narrowReorder.closest("tr.parameter-row[data-parameter-key]");
+          if (!row) {
+            return;
+          }
+          event.preventDefault();
+          cancelReorderMenuClose();
+          const rect = narrowReorder.getBoundingClientRect();
+          openReorderMenu(row, rect.left + (rect.width / 2), rect.bottom + 4);
+          return;
+        }
+
         const reorderHandle = event.target.closest("[data-reorder-handle]");
         if (reorderHandle) {
           return;
