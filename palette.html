@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" style="background:#1b2631">
+<html lang="en" style="background:#252525">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -7,40 +7,125 @@
     <style>
       :root {
         color-scheme: light;
-        --bg-top: #f8f5ef;
-        --bg-bottom: #efe8dc;
-        --flare: rgba(15, 118, 110, 0.14);
-        --panel: rgba(255, 252, 247, 0.96);
-        --panel-strong: #fffdf8;
-        --line: #d8cfc2;
-        --ink: #1f1b16;
-        --muted: #6b6258;
-        --accent: #0f766e;
-        --accent-strong: #115e59;
-        --error: #b91c1c;
-        --shadow: 0 18px 40px rgba(41, 34, 24, 0.12);
-        --ghost: #ece4d7;
-        --pill-bg: #e1f0ee;
-        --pill-ink: #115e59;
+        --ui-font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+        --ui-font-size: 13px;
+        --ui-font-weight: 400;
+        --ui-font-line-height: 1.2;
+        --ui-font-letter-spacing: 0;
+        --ui-font-text-transform: none;
+        --ui-text-color-light: #2b2b2b;
+        --ui-text-color-dark: #d9e1ed;
+        --ui-text-color: var(--ui-text-color-light);
+        --glyph-icon-btn: 14px;       /* gear, refresh, close panel — toolbar/panel SVG icon buttons */
+        --glyph-clear: 12px;          /* × — search field clear */
+        --glyph-search: 16px;         /* magnifier — search field */
+        --glyph-theme: 12px;          /* ☀ ☾ — theme toggle sun/moon */
+        --glyph-star: 12px;           /* ★ ☆ — favorite star */
+        --glyph-drag: 16px;           /* ⠿ — row drag handle dot pattern */
+        --glyph-chevron: 12px;        /* ▸ ▾ — group toggle, unit picker, create toggle, settings */
+        --row-collapse-arrow-size: 16px; /* group toggle button container */
+        --table-row-height: 30px;
+        --bg-light: #ebebeb;
+        --bg-dark: #313b4b;
+        --bg: var(--bg-light);
+        --panel-light: #f5f5f5;
+        --panel-dark: #374359;
+        --panel: var(--panel-light);
+        --panel-raised-light: #ffffff;
+        --panel-raised-dark: #425068;
+        --panel-raised: var(--panel-raised-light);
+        --panel-hover-light: #cce4f7;
+        --panel-hover-dark: #4a5c78;
+        --panel-hover: var(--panel-hover-light);
+        --selected-row-bg-light: #a7cfed;
+        --selected-row-bg-dark: #45688d;
+        --selected-row-bg: var(--selected-row-bg-light);
+        --selected-row-hover-light: #9bc8ea;
+        --selected-row-hover-dark: #436c93;
+        --selected-row-hover: var(--selected-row-hover-light);
+        --line-light: #c8c8c8;
+        --line-dark: #53627b;
+        --line: var(--line-light);
+        --line-subtle-light: #dcdcdc;
+        --line-subtle-dark: #4a5871;
+        --line-subtle: var(--line-subtle-light);
+        --group-row-bg-light: #f6f6f6;
+        --group-row-bg-dark: #39455b;
+        --group-row-bg: var(--group-row-bg-light);
+        --table-header-bg-light: #f4f4f4;
+        --table-header-bg-dark: #364258;
+        --table-header-bg: var(--table-header-bg-light);
+        --search-field-bg-light: #fdfdfd;
+        --search-field-bg-dark: #404e66;
+        --search-field-bg: var(--search-field-bg-light);
+        --ink-light: #2b2b2b;
+        --ink-dark: #d9e1ed;
+        --ink: var(--ink-light);
+        --muted-light: #666666;
+        --muted-dark: #b4bece;
+        --muted: var(--muted-light);
+        --accent-light: #0070c0;
+        --accent-dark: #2ca0ea;
+        --accent: var(--accent-light);
+        --accent-hover-light: #005ba0;
+        --accent-hover-dark: #43adef;
+        --accent-hover: var(--accent-hover-light);
+        --accent-text-light: #ffffff;
+        --accent-text-dark: #ffffff;
+        --accent-text: var(--accent-text-light);
+        --error-light: #cc2222;
+        --error-dark: #e85454;
+        --error: var(--error-light);
+        --success-light: #2e7d32;
+        --success-dark: #4caf50;
+        --success: var(--success-light);
+        --btn-bg-light: #e0e0e0;
+        --btn-bg-dark: #3f4d65;
+        --btn-bg: var(--btn-bg-light);
+        --btn-hover-light: #d0d0d0;
+        --btn-hover-dark: #4a5b77;
+        --btn-hover: var(--btn-hover-light);
+        --input-bg-light: #ffffff;
+        --input-bg-dark: #334055;
+        --input-bg: var(--input-bg-light);
+        --overlay-light: rgba(0,0,0,0.35);
+        --overlay-dark: rgba(0,0,0,0.55);
+        --overlay: var(--overlay-light);
+        --pill-bg-light: #d6eaf8;
+        --pill-bg-dark: #2a4a67;
+        --pill-bg: var(--pill-bg-light);
+        --pill-ink-light: #005ba0;
+        --pill-ink-dark: #a4d2f3;
+        --pill-ink: var(--pill-ink-light);
       }
 
       :root[data-theme="dark"] {
         color-scheme: dark;
-        --bg-top: #263748;
-        --bg-bottom: #1b2631;
-        --flare: rgba(111, 224, 212, 0.1);
-        --panel: rgba(39, 53, 67, 0.94);
-        --panel-strong: #314354;
-        --line: #46596b;
-        --ink: #eef5fb;
-        --muted: #b6c5d1;
-        --accent: #39b9ad;
-        --accent-strong: #74d8cf;
-        --error: #ff8d8d;
-        --shadow: 0 20px 46px rgba(8, 12, 18, 0.35);
-        --ghost: #3a4d5f;
-        --pill-bg: #203847;
-        --pill-ink: #8de7de;
+        --ui-text-color: var(--ui-text-color-dark);
+        --bg: var(--bg-dark);
+        --panel: var(--panel-dark);
+        --panel-raised: var(--panel-raised-dark);
+        --panel-hover: var(--panel-hover-dark);
+        --selected-row-bg: var(--selected-row-bg-dark);
+        --selected-row-hover: var(--selected-row-hover-dark);
+        --line: var(--line-dark);
+        --line-subtle: var(--line-subtle-dark);
+        --group-row-bg: var(--group-row-bg-dark);
+        --table-header-bg: var(--table-header-bg-dark);
+        --search-field-bg: var(--search-field-bg-dark);
+        --ink: var(--ink-dark);
+        --muted: var(--muted-dark);
+        --accent: var(--accent-dark);
+        --accent-hover: var(--accent-hover-dark);
+        --accent-text: var(--accent-text-dark);
+        --error: var(--error-dark);
+        --success: var(--success-dark);
+        --btn-bg: var(--btn-bg-dark);
+        --btn-hover: var(--btn-hover-dark);
+        --input-bg: var(--input-bg-dark);
+        --overlay: var(--overlay-dark);
+        --pill-bg: var(--pill-bg-dark);
+        --pill-ink: var(--pill-ink-dark);
       }
 
       * {
@@ -49,113 +134,444 @@
 
       body {
         margin: 0;
-        font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+        font-family: var(--ui-font-family);
+        font-size: var(--ui-font-size);
         color: var(--ink);
-        background:
-          radial-gradient(circle at top right, var(--flare), transparent 22rem),
-          linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+        background: var(--bg);
+      }
+
+      /* Global text unification: single style set for all UI text */
+      body,
+      body * {
+        font-family: var(--ui-font-family) !important;
+        font-size: var(--ui-font-size) !important;
+        font-weight: var(--ui-font-weight) !important;
+        line-height: var(--ui-font-line-height) !important;
+        letter-spacing: var(--ui-font-letter-spacing) !important;
+        text-transform: var(--ui-font-text-transform) !important;
+        color: var(--ui-text-color) !important;
+      }
+
+      body *::before,
+      body *::after {
+        font-family: var(--ui-font-family) !important;
+        font-size: var(--ui-font-size) !important;
+        font-weight: var(--ui-font-weight) !important;
+        line-height: var(--ui-font-line-height) !important;
+        letter-spacing: var(--ui-font-letter-spacing) !important;
+        text-transform: var(--ui-font-text-transform) !important;
+        color: var(--ui-text-color) !important;
+      }
+
+      body *::placeholder {
+        color: var(--ui-text-color) !important;
+        opacity: 1 !important;
+      }
+
+      /* Glyph sizing — one token per functional glyph */
+      .icon-btn svg,
+      .native-icon-btn svg {
+        width: var(--glyph-icon-btn) !important;
+        height: var(--glyph-icon-btn) !important;
+      }
+
+      .search-icon svg {
+        width: var(--glyph-search) !important;
+        height: var(--glyph-search) !important;
+      }
+
+      .search-clear svg {
+        width: var(--glyph-clear) !important;
+        height: var(--glyph-clear) !important;
+      }
+
+      .create-toggle .chevron {
+        width: var(--glyph-chevron) !important;
+        height: var(--glyph-chevron) !important;
+      }
+
+      .theme-icon svg {
+        width: var(--glyph-theme) !important;
+        height: var(--glyph-theme) !important;
+      }
+
+      .native-icon-btn,
+      .favorite-button {
+        font-size: var(--glyph-icon-btn) !important;
+        line-height: 1;
+      }
+
+      .search-clear {
+        font-size: var(--glyph-clear) !important;
+        line-height: 1;
+      }
+
+      #newParamButton {
+        font-size: var(--glyph-icon-btn) !important;
+        line-height: 1;
+      }
+
+      .star-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: var(--glyph-star);
+        height: var(--glyph-star);
+        font-size: var(--glyph-star) !important;
+        line-height: 1;
       }
 
       .page {
-        min-height: 100vh;
-        padding: 16px;
-        position: relative;
+        height: 100vh;
+        display: flex;
+        flex-direction: row;
+        align-items: stretch;
+        overflow: hidden;
+      }
+
+      .tuner-sidebar {
+        width: 280px;
+        flex-shrink: 0;
+        height: 100vh;
+        overflow-y: auto;
+        border-right: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      body.hide-text-tuner-sidebar .tuner-sidebar {
+        display: none;
+      }
+
+      .tuner-sidebar .text-tuner-card {
+        border-bottom: none;
       }
 
       .shell {
-        width: 100%;
-        max-width: min(1760px, calc(100vw - 32px));
-        margin: 0 auto;
-        display: grid;
-        gap: 14px;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-width: 0;
+        height: 100vh;
+        overflow-y: auto;
       }
 
       .card {
         background: var(--panel);
-        border: 1px solid rgba(216, 207, 194, 0.2);
-        border-radius: 18px;
-        box-shadow: var(--shadow);
-        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--line);
         position: relative;
       }
 
-      .hero {
-        padding: 18px 20px;
+      .toolbar {
+        padding: 0 8px;
+        height: 36px;
         display: flex;
-        flex-wrap: wrap;
         align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        z-index: 1;
+        gap: 4px;
+        background: var(--panel);
+        border-bottom: 1px solid var(--line);
+        flex-shrink: 0;
+        position: sticky;
+        top: 0;
+        z-index: 1200;
+      }
+
+      .toolbar-brand {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: var(--accent);
+        padding: 0 4px;
+        flex-shrink: 0;
+      }
+
+      .toolbar-doc {
+        font-size: 11px;
+        color: var(--muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 160px;
+        flex-shrink: 1;
+      }
+
+      .toolbar-spacer {
+        flex: 1;
+      }
+
+      .icon-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        padding: 0;
+        flex-shrink: 0;
       }
 
       h1,
       h2 {
         margin: 0;
-        font-weight: 650;
-        letter-spacing: -0.02em;
+        font-weight: 600;
       }
 
       h1 {
-        font-size: 1.35rem;
+        font-size: 13px;
       }
 
       h2 {
-        font-size: 1rem;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
       }
 
       p {
-        margin: 6px 0 0;
+        margin: 4px 0 0;
         color: var(--muted);
-        line-height: 1.45;
+        line-height: 1.4;
+        font-size: 12px;
       }
 
       .actions {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 12px;
+        gap: 4px;
       }
 
       button {
-        border: 0;
-        border-radius: 999px;
-        padding: 10px 14px;
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        padding: 3px 9px;
         font: inherit;
+        font-size: 12px;
         cursor: pointer;
-        transition: transform 120ms ease, background 120ms ease, opacity 120ms ease;
+        background: var(--btn-bg);
+        color: var(--ink);
+        transition: background 80ms ease;
+        white-space: nowrap;
       }
 
       button:hover {
-        transform: translateY(-1px);
+        background: var(--btn-hover);
       }
 
       .primary {
         background: var(--accent);
-        color: white;
+        color: var(--accent-text);
+        border-color: var(--accent);
       }
 
       .primary:hover {
-        background: var(--accent-strong);
+        background: var(--accent-hover);
+        border-color: var(--accent-hover);
       }
 
       .ghost {
-        background: var(--ghost);
+        background: var(--btn-bg);
         color: var(--ink);
+        border-color: var(--line);
       }
 
       .stack {
         display: grid;
-        gap: 14px;
+        gap: 10px;
       }
 
       .section {
-        padding: 16px 18px 18px;
+        padding: 10px 12px 12px;
+      }
+
+      .text-tuner-card {
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .text-tuner-card[hidden] {
+        display: none !important;
+      }
+
+      .tuner-header {
+        padding: 4px 6px 4px 10px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        border-bottom: 1px solid var(--line);
+        position: sticky;
+        top: 0;
+        background: var(--panel);
+        z-index: 1;
+        flex-shrink: 0;
+      }
+
+      .tuner-header-title {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        flex: 1;
+      }
+
+      .tuner-header-actions {
+        display: flex;
+        gap: 3px;
+        flex-shrink: 0;
+      }
+
+      .tuner-header-actions button {
+        font-size: 10px;
+        padding: 3px 7px;
+        white-space: nowrap;
+      }
+
+      .tuner-section {
+        border-bottom: 1px solid var(--line-subtle);
+      }
+
+      .tuner-section > summary {
+        list-style: none;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px 10px;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .tuner-section > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .tuner-section > summary::before {
+        content: "\25b8";
+        font-size: 9px;
+        flex-shrink: 0;
+      }
+
+      .tuner-section[open] > summary::before {
+        content: "\25be";
+      }
+
+      .tuner-kv {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 10px;
+      }
+
+      .tuner-kv:last-of-type {
+        padding-bottom: 6px;
+      }
+
+      .tuner-kv label {
+        width: 80px;
+        flex-shrink: 0;
+        font-size: 11px;
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: block;
+      }
+
+      .tuner-kv input {
+        flex: 1;
+        min-width: 0;
+        padding: 2px 5px;
+        font-size: 11px;
+      }
+
+      .tuner-color-row {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 2px 10px;
+      }
+
+      .tuner-color-row:last-child {
+        padding-bottom: 6px;
+      }
+
+      .tuner-color-label {
+        flex: 1;
+        min-width: 0;
+        font-size: 11px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .text-tuner-color-swatch {
+        width: 14px;
+        height: 14px;
+        flex-shrink: 0;
+        border: 1px solid var(--line);
+        border-radius: 2px;
+        background: transparent;
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+      }
+
+      .text-tuner-color-swatch.is-invalid {
+        background:
+          repeating-linear-gradient(
+            45deg,
+            rgba(220, 76, 76, 0.25) 0,
+            rgba(220, 76, 76, 0.25) 3px,
+            rgba(255, 255, 255, 0.18) 3px,
+            rgba(255, 255, 255, 0.18) 6px
+          );
+        border-color: var(--error);
+      }
+
+      .tuner-color-input {
+        width: 76px;
+        flex-shrink: 0;
+        padding: 2px 4px;
+        font-size: 10px;
+        font-family: monospace;
+      }
+
+      .tuner-kv input.is-modified,
+      .tuner-kv select.is-modified,
+      .tuner-color-input.is-modified {
+        border-color: var(--accent);
+      }
+
+      .tuner-debug-pre {
+        margin: 0;
+        padding: 6px 8px;
+        font-size: 10px;
+        overflow: auto;
+        max-height: 220px;
+        white-space: pre-wrap;
+        background: var(--input-bg);
+        border: none;
+        border-radius: 0;
+      }
+
+      .table-workspace {
+        order: 2;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .table-workspace #parameterSummary {
+        padding: 4px 8px;
+        border-bottom: 1px solid var(--line-subtle);
       }
 
       .status {
-        min-height: 24px;
-        font-size: 0.95rem;
+        min-height: 20px;
+        font-size: 12px;
         color: var(--muted);
       }
 
@@ -164,27 +580,34 @@
       }
 
       .status.success {
-        color: var(--accent-strong);
+        color: var(--success);
       }
 
       .global-status {
-        padding: 0 4px;
+        padding: 1px 10px;
+        border-bottom: 1px solid var(--line-subtle);
+        background: color-mix(in srgb, var(--panel) 94%, var(--bg));
+        flex-shrink: 0;
+        position: sticky;
+        top: 36px;
+        z-index: 1190;
+        font-size: 11px;
       }
 
       .section-meta {
-        min-height: 20px;
-        font-size: 0.92rem;
+        min-height: 18px;
+        font-size: 12px;
         color: var(--muted);
       }
 
       .field-error {
-        min-height: 18px;
-        font-size: 0.84rem;
+        min-height: 16px;
+        font-size: 11px;
         color: var(--error);
       }
 
       .field-error.is-valid {
-        color: var(--accent-strong);
+        color: var(--success);
       }
 
       input[aria-invalid="true"],
@@ -226,65 +649,71 @@
       textarea {
         width: 100%;
         border: 1px solid var(--line);
-        border-radius: 12px;
-        background: var(--panel-strong);
+        border-radius: 2px;
+        background: var(--input-bg);
         color: var(--ink);
-        padding: 10px 12px;
+        padding: 4px 7px;
         font: inherit;
+        font-size: 12px;
+      }
+
+      input:focus,
+      textarea:focus {
+        outline: 1px solid var(--accent);
+        border-color: var(--accent);
       }
 
       textarea {
-        min-height: 76px;
+        min-height: 60px;
         resize: vertical;
       }
 
       .comment-input {
-        min-height: 45px;
+        min-height: 28px;
         height: auto;
         resize: none;
         overflow: hidden;
+        padding: 3px 6px;
       }
 
       .table-wrap {
         overflow: auto;
-        padding-left: 22px;
-      }
-
-      .table-wrap table thead th:last-child,
-      .table-wrap table tbody td:last-child {
-        min-width: 64px;
-        width: 1%;
-        white-space: nowrap;
-        padding-left: 4px;
-        padding-right: 0;
-        text-align: right;
+        padding-left: 0;
       }
 
       table {
-        width: calc(100% - 22px);
         border-collapse: collapse;
         table-layout: fixed;
       }
 
       th,
       td {
-        padding: 11px 10px;
-        border-bottom: 1px solid rgba(216, 207, 194, 0.22);
+        padding: 4px 8px;
+        border-bottom: 1px solid var(--line-subtle);
         text-align: left;
         vertical-align: middle;
       }
 
+      #parameterRows tr.parameter-row td,
+      #parameterRows tr.group-header-row td {
+        height: var(--table-row-height);
+      }
+
       th {
-        font-size: 0.82rem;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
+        font-size: 11px;
+        text-transform: none;
+        letter-spacing: 0.01em;
         color: var(--muted);
         position: relative;
+        background: var(--table-header-bg);
+        padding-top: 6px;
+        padding-bottom: 6px;
       }
 
       .header-label {
         display: block;
-        padding-right: 10px;
+        padding-right: 8px;
+        font-weight: 400;
       }
 
       .column-resizer {
@@ -294,7 +723,6 @@
         width: 12px;
         height: calc(100% - 16px);
         cursor: col-resize;
-        border-radius: 999px;
         background: transparent;
       }
 
@@ -320,45 +748,46 @@
       }
 
       .mono {
-        font-family: "Consolas", "SFMono-Regular", monospace;
-        font-size: 0.92rem;
+        font-family: var(--ui-font-family);
+        font-size: 12px;
       }
 
       .pill {
         display: inline-block;
-        padding: 3px 9px;
-        border-radius: 999px;
+        padding: 1px 5px;
+        border-radius: 2px;
         background: var(--pill-bg);
         color: var(--pill-ink);
-        font-size: 0.8rem;
+        font-size: 11px;
         white-space: nowrap;
+        border: 1px solid var(--line);
       }
 
       .favorite-button {
-        width: 28px;
-        height: 28px;
+        width: 18px;
+        height: 18px;
         padding: 0;
-        border-radius: 999px;
-        border: 1px solid var(--line);
-        background: var(--ghost);
+        border-radius: 2px;
+        border: 1px solid transparent;
+        background: transparent;
         color: var(--muted);
-        font-size: 0.92rem;
+        font-size: var(--glyph-star);
         line-height: 1;
         flex: 0 0 auto;
       }
 
       .favorite-button:hover {
-        background: var(--pill-bg);
-        color: var(--pill-ink);
+        background: var(--btn-hover);
+        border-color: var(--line);
+        color: var(--accent);
       }
 
       .favorite-button.is-on {
-        background: var(--pill-bg);
-        color: var(--pill-ink);
+        color: var(--accent);
       }
 
       .favorite-button:disabled {
-        opacity: 0.7;
+        opacity: 0.5;
         cursor: wait;
       }
 
@@ -368,7 +797,7 @@
 
       .preview-value {
         display: grid;
-        gap: 2px;
+        gap: 1px;
         min-width: 0;
         align-items: start;
       }
@@ -377,67 +806,74 @@
       .preview-new {
         display: block;
         min-width: 0;
-        white-space: normal;
-        word-break: break-word;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .preview-new {
-        color: var(--accent-strong);
-        font-size: 0.84rem;
+        color: var(--accent);
+        font-size: 11px;
       }
 
       .save-button {
-        background: var(--ghost);
+        background: var(--btn-bg);
         color: var(--muted);
         cursor: not-allowed;
         display: inline-block;
         margin-left: auto;
-        align-self: flex-end;
-        width: 74px;
-        min-width: 74px;
-        max-width: 74px;
+        width: 48px;
+        min-width: 48px;
+        max-width: 48px;
         text-align: center;
         white-space: nowrap;
-      }
-
-      .save-button:hover {
-        transform: none;
+        border-color: transparent;
+        font-size: 11px;
+        padding: 2px 6px;
+        visibility: hidden;
+        opacity: 0;
+        pointer-events: none;
       }
 
       .save-button.is-dirty {
         background: var(--accent);
-        color: white;
+        color: var(--accent-text);
         cursor: pointer;
+        border-color: var(--accent);
+        visibility: visible;
+        opacity: 1;
+        pointer-events: auto;
       }
 
       .save-button.is-dirty:hover {
-        background: var(--accent-strong);
-        transform: translateY(-1px);
+        background: var(--accent-hover);
+        border-color: var(--accent-hover);
       }
 
       .row-actions {
         display: grid;
         justify-items: end;
-        gap: 6px;
-        width: 74px;
-        min-width: 74px;
-        max-width: 74px;
+        gap: 3px;
+        width: 48px;
+        min-width: 48px;
+        max-width: 48px;
         margin-left: auto;
       }
 
       .revert-button {
-        background: var(--ghost);
+        background: var(--btn-bg);
         color: var(--muted);
         cursor: not-allowed;
-        font-size: 0.75rem;
-        padding: 8px 10px;
-        width: 74px;
-        min-width: 74px;
-        max-width: 74px;
+        font-size: 10px;
+        padding: 2px 4px;
+        width: 48px;
+        min-width: 48px;
+        max-width: 48px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
         text-align: center;
+        border-color: var(--line);
       }
 
       .revert-button.is-ready {
@@ -446,39 +882,8 @@
       }
 
       .revert-button.is-ready:hover {
-        background: var(--pill-bg);
-        color: var(--pill-ink);
-        transform: translateY(-1px);
-      }
-
-      .favorites-shell {
-        display: grid;
-        gap: 10px;
-        padding: 12px 14px;
-        border: 1px solid rgba(216, 207, 194, 0.22);
-        border-radius: 14px;
-        background: rgba(255, 255, 255, 0.08);
-      }
-
-      .favorites-title {
-        margin: 0;
-        font-size: 0.82rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--muted);
-      }
-
-      .favorites-list {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-
-      .favorite-chip {
-        border: 1px solid var(--line);
-        background: var(--ghost);
+        background: var(--btn-hover);
         color: var(--ink);
-        padding: 7px 12px;
       }
 
       .name-cell {
@@ -487,77 +892,248 @@
         overflow: visible;
       }
 
+      .parameter-kind {
+        color: var(--muted);
+        font-size: 11px;
+        white-space: nowrap;
+        font-weight: 400;
+        min-width: 0;
+        flex: 1 1 auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: block;
+      }
+
+      .param-name-cell {
+        min-width: 0;
+      }
+
+      .param-name-text {
+        display: block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-weight: 600;
+        font-size: 12px;
+      }
+
+      .unit-cell {
+        white-space: nowrap;
+        color: var(--ink);
+        font-size: 12px;
+      }
+
+      .unit-text {
+        display: block;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
       .name-cell-main {
         display: flex;
         align-items: center;
+        gap: 5px;
         min-width: 0;
+        overflow: hidden;
       }
 
       .name-stack {
         min-width: 0;
         flex: 1 1 auto;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        overflow: hidden;
+      }
+
+      .name-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .reorder-handle {
-        width: 22px;
-        min-width: 22px;
-        height: 34px;
+        width: var(--glyph-drag);
+        min-width: var(--glyph-drag);
+        height: var(--glyph-drag);
         padding: 0;
-        border-radius: 10px;
+        border-radius: 2px;
         border: 1px solid transparent;
         background: transparent;
-        color: var(--muted);
+        color: var(--line);
         cursor: grab;
-        position: absolute;
-        left: -18px;
-        top: 50%;
-        transform: translateY(-50%);
+        position: relative;
         flex: 0 0 auto;
-        z-index: 1;
       }
 
       .reorder-handle::before {
         content: "";
         position: absolute;
-        inset: 7px 8px;
+        left: 50%;
+        top: 50%;
+        width: calc(var(--glyph-drag) * 0.9);
+        height: calc(var(--glyph-drag) * 0.84);
+        transform: translate(-50%, -50%);
         background:
-          radial-gradient(circle, currentColor 1.2px, transparent 1.3px) left top / 6px 6px repeat-y,
-          radial-gradient(circle, currentColor 1.2px, transparent 1.3px) right top / 6px 6px repeat-y;
-        opacity: 0.78;
+          linear-gradient(currentColor, currentColor) center 10% / 100% 2px no-repeat,
+          linear-gradient(currentColor, currentColor) center 50% / 100% 1px no-repeat,
+          linear-gradient(currentColor, currentColor) center 90% / 100% 2px no-repeat;
+        opacity: 0;
+        transition: opacity 80ms ease;
       }
 
       .reorder-handle:hover {
-        background: var(--ghost);
+        color: var(--muted);
         border-color: var(--line);
-        transform: translateY(-50%);
+        background: var(--btn-bg);
+      }
+
+      .reorder-handle:hover::before {
+        opacity: 0.95;
       }
 
       .reorder-handle:active {
         cursor: grabbing;
-        transform: translateY(-50%);
+      }
+
+      .reorder-handle-placeholder {
+        width: var(--glyph-drag);
+        min-width: var(--glyph-drag);
+        height: var(--glyph-drag);
+        flex: 0 0 auto;
       }
 
       .row-meta {
-        margin-top: 6px;
         display: flex;
         align-items: center;
+        gap: 4px;
+        flex-wrap: nowrap;
+      }
+
+      #parameterRows .expression-input {
+        min-height: 22px;
+        padding: 1px 5px;
+        border: 1px solid transparent;
+        background: transparent;
+        border-radius: 1px;
+      }
+
+      #parameterRows .comment-input {
+        min-height: 22px;
+        height: 22px;
+        max-height: 22px;
+        padding: 1px 5px;
+        border: 1px solid transparent;
+        background: transparent;
+        border-radius: 1px;
+        overflow: hidden;
+      }
+
+      .comments-col {
+        min-width: 220px;
+      }
+
+      .comments-cell {
+        min-width: 0;
+      }
+
+      .comment-shell {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
         gap: 6px;
-        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      #parameterRows tr.parameter-row td {
+        background: color-mix(in srgb, var(--panel) 86%, var(--panel-raised));
+      }
+
+      #parameterRows tr.parameter-row.is-even td {
+        background: color-mix(in srgb, var(--panel-raised) 93%, var(--line-subtle));
+      }
+
+      .hide-comment .comment-col {
+        display: none;
+      }
+
+      body.auto-hide-comments .comment-col {
+        display: none;
+      }
+
+      body.auto-hide-unit td.unit-cell,
+      body.auto-hide-unit th.preview-col {
+        display: none;
+      }
+
+      body.auto-hide-parameter td.name-cell,
+      body.auto-hide-parameter th.parameter-col {
+        display: none;
+      }
+
+      body.auto-hide-value td.value-cell,
+      body.auto-hide-value th.value-col {
+        display: none;
       }
 
       #parameterRows tr {
-        transition: background 120ms ease;
+        transition: background 80ms ease;
+      }
+
+      #parameterRows tr.parameter-row:hover td {
+        background: var(--panel-hover);
+      }
+
+      #parameterRows tr.parameter-row.is-even:hover td,
+      #parameterRows tr.parameter-row.is-odd:hover td {
+        background: var(--panel-hover);
+      }
+
+      #parameterRows tr.parameter-row.is-selected td {
+        background: var(--selected-row-bg);
+      }
+
+      #parameterRows tr.parameter-row.is-selected:hover td {
+        background: var(--selected-row-hover);
       }
 
       #parameterRows tr.is-row-dragging {
-        opacity: 0.72;
-        background: rgba(57, 185, 173, 0.08);
+        position: relative;
+        z-index: 10;
+        transform: scale(0.9);
+        opacity: 0.9;
+      }
+
+      #parameterRows tr.is-row-dragging td {
+        background: var(--selected-row-bg) !important;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.08);
+      }
+
+      .drag-indicator-row {
+        height: 2px;
+        pointer-events: none;
+      }
+
+      .drag-indicator-row td {
+        height: 2px;
+        padding: 0 !important;
+        border: none !important;
+        background: var(--accent);
+      }
+
+      #parameterRows tr.group-header-row.is-group-dragging {
+        position: relative;
+        z-index: 10;
+        transform: scale(0.88);
+        opacity: 0.9;
       }
 
       #parameterRows tr.group-header-row.is-group-dragging .group-header {
-        opacity: 0.76;
-        background: color-mix(in srgb, var(--accent) 15%, var(--ghost));
-        border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+        background: color-mix(in srgb, var(--accent) 12%, var(--panel-raised));
+        border-left-color: var(--accent);
+        box-shadow: 0 4px 14px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.08);
       }
 
       body.is-row-dragging,
@@ -574,14 +1150,14 @@
 
       .reorder-menu {
         position: absolute;
-        min-width: 200px;
-        padding: 10px;
-        border-radius: 14px;
-        border: 1px solid rgba(216, 207, 194, 0.22);
+        min-width: 190px;
+        padding: 6px;
+        border-radius: 3px;
+        border: 1px solid var(--line);
         background: var(--panel);
-        box-shadow: var(--shadow);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.18);
         display: grid;
-        gap: 8px;
+        gap: 4px;
         z-index: 20;
       }
 
@@ -591,30 +1167,38 @@
 
       .reorder-menu-actions {
         display: grid;
-        gap: 6px;
+        gap: 2px;
       }
 
       .reorder-menu button {
         width: 100%;
         justify-content: flex-start;
         text-align: left;
+        border-radius: 2px;
+        border-color: transparent;
+        background: transparent;
+      }
+
+      .reorder-menu button:hover {
+        background: var(--btn-hover);
+        border-color: transparent;
       }
 
       .reorder-menu-row {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
-        gap: 8px;
+        gap: 4px;
         align-items: center;
       }
 
       .reorder-menu-row input {
         min-width: 0;
-        padding: 8px 10px;
       }
 
       .empty {
-        padding: 18px 0 4px;
+        padding: 12px 0 4px;
         color: var(--muted);
+        font-size: 12px;
       }
 
       .search-shell {
@@ -623,9 +1207,61 @@
         align-items: center;
       }
 
+      .parameter-rail {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 6px;
+        align-items: center;
+        border-bottom: 1px solid var(--line);
+        padding: 4px 8px;
+        min-height: 30px;
+        background: color-mix(in srgb, var(--panel) 88%, var(--bg));
+      }
+
+      .rail-icons {
+        display: flex;
+        gap: 3px;
+        align-items: center;
+      }
+
+      .native-icon-btn {
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        border-radius: 2px;
+        border: 1px solid var(--line);
+        background: color-mix(in srgb, var(--panel-raised) 72%, transparent);
+        color: var(--muted);
+        font-size: var(--glyph-icon-btn);
+      }
+
+      .native-icon-btn.is-on {
+        color: var(--accent);
+        border-color: var(--accent);
+        background: color-mix(in srgb, var(--accent) 16%, transparent);
+      }
+
+      .native-search {
+        max-width: 700px;
+      }
+
+      .rail-actions {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+      }
+
+      .rail-actions .icon-btn {
+        width: 22px;
+        height: 22px;
+        border-radius: 2px;
+        border-color: var(--line);
+        background: color-mix(in srgb, var(--panel-raised) 72%, transparent);
+      }
+
       .search-icon {
         position: absolute;
-        left: 12px;
+        left: 7px;
         color: var(--muted);
         pointer-events: none;
         display: flex;
@@ -634,8 +1270,15 @@
       }
 
       .search-input {
-        padding-left: 36px;
-        padding-right: 36px;
+        height: 24px;
+        padding-left: 26px;
+        padding-right: 26px;
+        border-color: var(--line-subtle);
+        background: var(--search-field-bg);
+      }
+
+      .search-input::placeholder {
+        color: color-mix(in srgb, var(--muted) 80%, var(--ink));
       }
 
       .search-input::-webkit-search-cancel-button,
@@ -646,25 +1289,24 @@
 
       .search-clear {
         position: absolute;
-        right: 8px;
-        width: 22px;
-        height: 22px;
-        border-radius: 999px;
-        border: 0;
-        background: var(--muted);
-        color: var(--panel-strong);
+        right: 5px;
+        width: 18px;
+        height: 18px;
+        border-radius: 2px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--muted);
         padding: 0;
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        transition: background 120ms ease;
         flex-shrink: 0;
       }
 
       .search-clear:hover {
-        background: var(--ink);
-        transform: none;
+        background: var(--btn-hover);
+        color: var(--ink);
       }
 
       .search-clear[hidden] {
@@ -672,7 +1314,7 @@
       }
 
       .group-header-row td {
-        padding: 8px 0 6px 0;
+        padding: 0;
         border-bottom: 0;
         background: transparent;
       }
@@ -681,71 +1323,84 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 10px;
-        background: color-mix(in srgb, var(--ghost) 58%, transparent);
-        border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
-        border-radius: 12px;
-        padding: 6px 8px;
+        gap: 6px;
+        background: var(--group-row-bg);
+        border-top: 1px solid var(--line-subtle);
+        border-bottom: 1px solid var(--line-subtle);
+        border-left: 0;
+        padding: 1px 6px;
+        min-height: var(--table-row-height);
+        height: var(--table-row-height);
       }
 
       .group-header-left {
         display: flex;
         align-items: center;
-        gap: 8px;
-      }
-
-      .group-drag-handle {
-        width: 28px;
-        height: 28px;
-        padding: 0;
-        border-radius: 8px;
-        background: var(--panel-strong);
-        color: var(--muted);
-        border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-        position: relative;
-      }
-
-      .group-drag-handle::before {
-        content: "";
-        position: absolute;
-        inset: 7px 9px;
-        background:
-          radial-gradient(circle, currentColor 1.2px, transparent 1.3px) left top / 6px 6px repeat-y,
-          radial-gradient(circle, currentColor 1.2px, transparent 1.3px) right top / 6px 6px repeat-y;
-        opacity: 0.82;
+        gap: 7px;
       }
 
       .group-toggle {
-        width: 28px;
-        height: 28px;
+        width: var(--row-collapse-arrow-size);
+        height: var(--row-collapse-arrow-size);
         padding: 0;
-        border-radius: 8px;
-        background: var(--panel-strong);
-        color: var(--ink);
-        font-size: 0.85rem;
+        border-radius: 2px;
+        background: transparent;
+        border: 1px solid transparent;
+        color: var(--muted);
+        font-size: var(--glyph-chevron);
         line-height: 1;
       }
 
+      .group-toggle:hover {
+        background: var(--btn-hover);
+        border-color: var(--line);
+      }
+
+      .group-header.is-draggable {
+        cursor: grab;
+      }
+
+      .group-header.is-draggable:active {
+        cursor: grabbing;
+      }
+
       .group-name {
-        font-weight: 650;
-        letter-spacing: -0.01em;
+        font-weight: 600;
+        font-size: 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
       }
 
       .group-meta {
-        font-size: 0.83rem;
+        font-size: 11px;
         color: var(--muted);
+        font-weight: 400;
       }
 
       .group-header-actions {
         display: flex;
-        gap: 6px;
+        gap: 3px;
+        opacity: 0;
+        transition: opacity 80ms ease;
+      }
+
+      .group-header:hover .group-header-actions {
+        opacity: 1;
       }
 
       .group-action {
-        border-radius: 9px;
-        padding: 5px 9px;
-        font-size: 0.82rem;
-        background: var(--panel-strong);
+        border-radius: 2px;
+        padding: 1px 6px;
+        font-size: 10px;
+        background: transparent;
+        color: var(--muted);
+        border-color: transparent;
+      }
+
+      .group-action:hover {
+        background: var(--btn-hover);
+        border-color: var(--line);
         color: var(--ink);
       }
 
@@ -753,20 +1408,50 @@
         color: var(--error);
       }
 
+      .group-action.delete:hover {
+        background: color-mix(in srgb, var(--error) 10%, var(--btn-bg));
+        border-color: var(--error);
+        color: var(--error);
+      }
+
       .parameter-row.is-hidden-by-group {
         display: none;
       }
 
+      #parameterRows tr.parameter-row .row-actions {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 80ms ease;
+      }
+
+      #parameterRows tr.parameter-row:hover .row-actions,
+      #parameterRows tr.parameter-row.is-dirty .row-actions {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      #parameterRows tr.parameter-row .expression-input:hover,
+      #parameterRows tr.parameter-row .comment-input:hover {
+        border-color: color-mix(in srgb, var(--line) 65%, transparent);
+        background: color-mix(in srgb, var(--panel-raised) 80%, transparent);
+      }
+
+      #parameterRows tr.parameter-row .expression-input:focus,
+      #parameterRows tr.parameter-row .comment-input:focus {
+        border-color: var(--accent);
+        background: color-mix(in srgb, var(--panel-raised) 88%, var(--panel));
+      }
+
       .reorder-menu-section {
-        margin-top: 10px;
-        padding-top: 10px;
-        border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+        margin-top: 4px;
+        padding-top: 4px;
+        border-top: 1px solid var(--line);
         display: grid;
-        gap: 8px;
+        gap: 4px;
       }
 
       .reorder-menu-label {
-        font-size: 0.8rem;
+        font-size: 11px;
         color: var(--muted);
       }
 
@@ -777,54 +1462,58 @@
       .group-pill-list {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
+        gap: 3px;
       }
 
       .group-pill {
-        border-radius: 999px;
-        padding: 6px 10px;
-        font-size: 0.82rem;
-        background: var(--panel-strong);
+        border-radius: 2px;
+        padding: 2px 7px;
+        font-size: 11px;
+        background: var(--btn-bg);
         color: var(--ink);
-        border: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+        border: 1px solid var(--line);
+      }
+
+      .group-pill:hover {
+        background: var(--btn-hover);
       }
 
       .group-pill.is-active {
         background: var(--pill-bg);
         color: var(--pill-ink);
-        border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+        border-color: var(--accent);
       }
 
       .toggle-row {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 8px;
         color: var(--ink);
-        font-size: 0.92rem;
+        font-size: 12px;
       }
 
       .toggle {
         position: relative;
-        width: 50px;
-        height: 28px;
-        border-radius: 999px;
-        background: var(--ghost);
+        width: 36px;
+        height: 20px;
+        border-radius: 10px;
+        background: var(--btn-bg);
         border: 1px solid var(--line);
         cursor: pointer;
-        transition: background 120ms ease;
+        transition: background 80ms ease;
+        flex-shrink: 0;
       }
 
       .toggle::after {
         content: "";
         position: absolute;
-        top: 3px;
-        left: 3px;
-        width: 20px;
-        height: 20px;
+        top: 2px;
+        left: 2px;
+        width: 14px;
+        height: 14px;
         border-radius: 50%;
-        background: var(--panel-strong);
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-        transition: transform 120ms ease;
+        background: var(--muted);
+        transition: transform 80ms ease;
       }
 
       .toggle.is-on {
@@ -833,12 +1522,14 @@
       }
 
       .toggle.is-on::after {
-        transform: translateX(22px);
+        background: var(--accent-text);
+        transform: translateX(16px);
       }
 
       .toggle-label {
         min-width: 0;
         white-space: nowrap;
+        font-size: 12px;
       }
 
       .theme-toggle::after {
@@ -847,22 +1538,22 @@
 
       .theme-knob {
         position: absolute;
-        top: 3px;
-        left: 3px;
-        width: 20px;
-        height: 20px;
+        top: 2px;
+        left: 2px;
+        width: 14px;
+        height: 14px;
         border-radius: 50%;
-        background: var(--panel-strong);
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-        transition: transform 120ms ease;
+        background: var(--muted);
+        transition: transform 80ms ease;
         display: flex;
         align-items: center;
         justify-content: center;
-        color: var(--accent);
+        color: var(--panel);
       }
 
       .theme-toggle.is-on .theme-knob {
-        transform: translateX(22px);
+        background: var(--accent-text);
+        transform: translateX(16px);
       }
 
       .theme-icon {
@@ -870,7 +1561,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: opacity 100ms ease;
+        transition: opacity 80ms ease;
       }
 
       .theme-icon-dark {
@@ -887,9 +1578,9 @@
 
       .section-header {
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         justify-content: space-between;
-        gap: 12px;
+        gap: 8px;
       }
 
       .section-header .actions {
@@ -898,8 +1589,57 @@
 
       .section-header .ghost {
         flex-shrink: 0;
-        padding: 7px 14px;
-        font-size: 0.9rem;
+      }
+
+      .create-section {
+        order: 3;
+        flex-shrink: 0;
+      }
+
+      .create-toggle {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 10px;
+        height: 30px;
+        background: none;
+        border: none;
+        border-radius: 0;
+        color: var(--ink);
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .create-toggle:hover {
+        background: var(--btn-hover);
+      }
+
+      .create-toggle .chevron {
+        transition: transform 180ms ease;
+        flex-shrink: 0;
+        color: var(--muted);
+      }
+
+      .create-toggle[aria-expanded="true"] .chevron {
+        transform: rotate(90deg);
+      }
+
+      .create-body {
+        overflow: hidden;
+        max-height: 0;
+        transition: max-height 220ms ease;
+      }
+
+      .create-body.is-open {
+        max-height: 600px;
+      }
+
+      .create-body-inner {
+        border-top: 1px solid var(--line-subtle);
       }
 
       .unit-picker {
@@ -909,21 +1649,22 @@
       .unit-picker-button {
         width: 100%;
         border: 1px solid var(--line);
-        border-radius: 12px;
-        background: var(--panel-strong);
+        border-radius: 2px;
+        background: var(--input-bg);
         color: var(--ink);
-        padding: 10px 12px;
+        padding: 3px 7px;
         text-align: left;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 10px;
+        gap: 8px;
+        font-size: 12px;
       }
 
       .unit-picker-button::after {
-        content: "v";
+        content: "▾";
         color: var(--muted);
-        font-size: 0.9rem;
+        font-size: var(--glyph-chevron);
       }
 
       .unit-picker-menu {
@@ -931,14 +1672,14 @@
         z-index: 2000;
         top: 0;
         left: 0;
-        width: 280px;
-        max-height: 340px;
+        width: 240px;
+        max-height: 300px;
         overflow: auto;
         background: var(--panel);
         border: 1px solid var(--line);
-        border-radius: 14px;
-        box-shadow: var(--shadow);
-        padding: 8px;
+        border-radius: 3px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+        padding: 4px;
       }
 
       .unit-picker-menu[hidden] {
@@ -964,18 +1705,130 @@
         pointer-events: auto;
       }
 
+      body.settings-open {
+        overflow: hidden;
+      }
+
+      .settings-backdrop {
+        position: fixed;
+        inset: 0;
+        background: var(--overlay);
+        z-index: 1550;
+      }
+
+      .settings-backdrop[hidden] {
+        display: none !important;
+      }
+
+      .settings-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        width: min(420px, 92vw);
+        height: 100vh;
+        background: var(--panel);
+        border-left: 1px solid var(--line);
+        z-index: 1600;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .settings-panel[hidden] {
+        display: none !important;
+      }
+
+      .settings-panel-header {
+        height: 36px;
+        padding: 0 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        border-bottom: 1px solid var(--line);
+        flex-shrink: 0;
+      }
+
+      .settings-panel-title {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+      }
+
+      .settings-panel-body {
+        flex: 1;
+        overflow: auto;
+        padding: 10px 12px 12px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .settings-panel-section {
+        border: 1px solid var(--line);
+        background: var(--panel-raised);
+        padding: 8px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .settings-panel-section .section-header {
+        padding-bottom: 0;
+        border-bottom: 0;
+      }
+
+      .settings-collapsible {
+        border: 1px solid var(--line);
+        background: var(--panel-raised);
+      }
+
+      .settings-collapsible > summary {
+        list-style: none;
+        cursor: pointer;
+        user-select: none;
+        padding: 8px;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+      }
+
+      .settings-collapsible > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .settings-collapsible > summary::before {
+        content: "\25b8";
+        display: inline-block;
+        margin-right: 6px;
+        font-size: var(--glyph-chevron);
+      }
+
+      .settings-collapsible[open] > summary::before {
+        content: "\25be";
+      }
+
+      .settings-collapsible-body {
+        padding: 0 8px 8px;
+        display: grid;
+        gap: 8px;
+      }
+
       .unit-option {
         width: 100%;
-        border-radius: 10px;
-        padding: 9px 10px;
+        border-radius: 2px;
+        padding: 4px 7px;
         text-align: left;
         background: transparent;
         color: var(--ink);
+        font-size: 12px;
+        border-color: transparent;
       }
 
       .unit-option:hover,
       .unit-option.is-selected {
-        background: var(--ghost);
+        background: var(--btn-hover);
       }
 
       .unit-option-row {
@@ -993,17 +1846,18 @@
       .unit-pin-button,
       .unit-remove-button {
         flex: 0 0 auto;
-        width: 26px;
-        height: 26px;
+        width: 20px;
+        height: 20px;
         padding: 0;
-        border-radius: 8px;
+        border-radius: 2px;
         background: transparent;
         color: var(--muted);
         cursor: pointer;
-        font-size: 0.82rem;
+        font-size: 11px;
         line-height: 1;
         opacity: 0;
-        transition: opacity 80ms ease, background 80ms ease, color 80ms ease;
+        border-color: transparent;
+        transition: opacity 60ms ease, background 60ms ease;
       }
 
       .unit-option-row:hover .unit-pin-button,
@@ -1017,29 +1871,31 @@
       }
 
       .unit-pin-button:hover {
-        background: var(--ghost);
+        background: var(--btn-hover);
         color: var(--accent);
+        border-color: var(--line);
       }
 
       .unit-remove-button:hover {
-        background: var(--ghost);
+        background: var(--btn-hover);
         color: var(--error);
+        border-color: var(--line);
       }
 
       .unit-pinned-header {
-        padding: 8px 10px;
-        font-size: 0.78rem;
+        padding: 4px 7px;
+        font-size: 10px;
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.07em;
         color: var(--muted);
         pointer-events: none;
       }
 
       .custom-unit-feedback {
-        min-height: 18px;
-        font-size: 0.82rem;
-        padding: 1px 4px 4px;
+        min-height: 16px;
+        font-size: 11px;
+        padding: 1px 2px 2px;
       }
 
       .custom-unit-feedback.is-error {
@@ -1047,13 +1903,13 @@
       }
 
       .custom-unit-feedback.is-success {
-        color: var(--accent-strong);
+        color: var(--success);
       }
 
       .unit-category {
-        border-top: 1px solid rgba(216, 207, 194, 0.22);
-        margin-top: 8px;
-        padding-top: 8px;
+        border-top: 1px solid var(--line-subtle);
+        margin-top: 4px;
+        padding-top: 4px;
       }
 
       .unit-category:first-of-type {
@@ -1064,21 +1920,28 @@
 
       .unit-category-header {
         width: 100%;
-        padding: 8px 10px;
+        padding: 3px 7px;
         text-align: left;
         background: transparent;
         color: var(--ink);
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
+        gap: 8px;
         font-weight: 600;
+        font-size: 12px;
+        border-color: transparent;
+      }
+
+      .unit-category-header:hover {
+        background: var(--btn-hover);
       }
 
       .unit-category-header::after {
-        content: "v";
+        content: "▾";
         color: var(--muted);
-        transition: transform 120ms ease;
+        font-size: var(--glyph-chevron);
+        transition: transform 80ms ease;
       }
 
       .unit-category-header.is-collapsed::after {
@@ -1087,8 +1950,8 @@
 
       .unit-category-options {
         display: grid;
-        gap: 2px;
-        padding: 0 0 4px;
+        gap: 1px;
+        padding: 0 0 2px;
       }
 
       .unit-category-options[hidden] {
@@ -1098,20 +1961,19 @@
       .unit-custom-row {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
-        gap: 6px;
+        gap: 4px;
         align-items: center;
-        margin-bottom: 8px;
+        margin-bottom: 4px;
       }
 
       .unit-custom-row input {
         min-width: 0;
-        padding: 8px 10px;
       }
 
       .settings-inline {
         display: flex;
         flex-wrap: wrap;
-        gap: 16px;
+        gap: 12px;
         align-items: center;
       }
 
@@ -1119,14 +1981,14 @@
         position: absolute;
         top: 0;
         left: 0;
-        width: 280px;
+        width: 240px;
         z-index: 2100;
         border: 1px solid var(--line);
-        border-radius: 12px;
+        border-radius: 3px;
         background: var(--panel);
-        box-shadow: var(--shadow);
-        padding: 6px;
-        max-height: 220px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+        padding: 3px;
+        max-height: 200px;
         overflow: auto;
       }
 
@@ -1138,15 +2000,15 @@
         position: absolute;
         top: 0;
         left: 0;
-        width: 320px;
+        width: 280px;
         z-index: 2050;
         border: 1px solid var(--line);
-        border-radius: 12px;
+        border-radius: 3px;
         background: var(--panel);
-        box-shadow: var(--shadow);
-        padding: 10px 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+        padding: 8px 10px;
         display: grid;
-        gap: 8px;
+        gap: 5px;
       }
 
       .function-helper[hidden] {
@@ -1155,62 +2017,64 @@
 
       .function-helper-title {
         margin: 0;
-        font-size: 0.9rem;
-        font-weight: 650;
+        font-size: 12px;
+        font-weight: 600;
       }
 
       .function-signature {
         margin: 0;
         font-family: "Consolas", "SFMono-Regular", monospace;
-        font-size: 0.86rem;
+        font-size: 11px;
         color: var(--pill-ink);
-        line-height: 1.45;
+        line-height: 1.4;
       }
 
       .function-signature .active-arg {
         text-decoration: underline;
         text-decoration-thickness: 2px;
-        color: var(--accent-strong);
+        color: var(--accent);
       }
 
       .function-helper-text {
         margin: 0;
-        font-size: 0.84rem;
+        font-size: 11px;
         color: var(--muted);
         line-height: 1.4;
       }
 
       .function-helper-args {
         display: grid;
-        gap: 4px;
+        gap: 2px;
       }
 
       .function-helper-arg {
-        font-size: 0.8rem;
+        font-size: 11px;
         color: var(--muted);
       }
 
       .function-helper-arg.active {
-        color: var(--accent-strong);
+        color: var(--accent);
       }
 
       .expression-suggestion {
         width: 100%;
-        border-radius: 8px;
-        padding: 8px 10px;
+        border-radius: 2px;
+        padding: 4px 7px;
         text-align: left;
         background: transparent;
         color: var(--ink);
+        font-size: 12px;
+        border-color: transparent;
       }
 
       .expression-suggestion.is-highlighted,
       .expression-suggestion:hover {
-        background: var(--ghost);
+        background: var(--btn-hover);
       }
 
       .expression-suggestion-section {
-        padding: 5px 10px 2px;
-        font-size: 0.75rem;
+        padding: 4px 7px 2px;
+        font-size: 10px;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.07em;
@@ -1220,19 +2084,19 @@
 
       .expression-suggestion-section + .expression-suggestion-section,
       .expression-suggestion ~ .expression-suggestion-section {
-        border-top: 1px solid rgba(216, 207, 194, 0.22);
-        margin-top: 4px;
-        padding-top: 8px;
+        border-top: 1px solid var(--line-subtle);
+        margin-top: 2px;
+        padding-top: 4px;
       }
 
       .update-pill {
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        padding: 4px 10px;
-        border-radius: 999px;
+        padding: 3px 8px;
+        border-radius: 3px;
         font-size: 0.82rem;
-        background: var(--ghost);
+        background: var(--btn-bg);
         color: var(--muted);
         white-space: nowrap;
         position: relative;
@@ -1242,8 +2106,8 @@
         cursor: pointer;
       }
       .update-pill.is-current:hover {
-        background: var(--pill-bg);
-        color: var(--pill-ink);
+        background: var(--panel-hover);
+        color: var(--accent);
       }
       .pill-action {
         display: none;
@@ -1255,23 +2119,23 @@
         display: inline;
       }
       .update-pill.has-update {
-        background: var(--pill-bg);
-        color: var(--pill-ink);
+        background: var(--panel-hover);
+        color: var(--accent);
         cursor: pointer;
       }
       .update-pill.is-staged {
-        background: var(--ghost);
+        background: var(--btn-bg);
         color: var(--muted);
       }
       .update-notes-tooltip {
         display: none;
         position: absolute;
-        top: calc(100% + 8px);
+        top: calc(100% + 6px);
         right: 0;
-        background: var(--panel-strong);
+        background: var(--panel);
         border: 1px solid var(--line);
-        border-radius: 12px;
-        padding: 10px 14px;
+        border-radius: 3px;
+        padding: 8px 12px;
         font-size: 0.84rem;
         line-height: 1.55;
         color: var(--ink);
@@ -1279,7 +2143,6 @@
         width: max-content;
         max-height: 220px;
         overflow-y: auto;
-        box-shadow: var(--shadow);
         z-index: 100;
         white-space: pre-wrap;
         text-align: left;
@@ -1293,19 +2156,19 @@
       }
 
       .update-card-status.has-update {
-        color: var(--accent-strong);
+        color: var(--accent);
         font-weight: 600;
       }
 
       .update-card-status.is-good {
-        color: var(--accent-strong);
+        color: var(--accent);
       }
 
       .release-notes-body {
         margin: 0;
-        padding: 14px 16px;
-        background: var(--ghost);
-        border-radius: 12px;
+        padding: 8px 10px;
+        background: var(--btn-bg);
+        border-radius: 2px;
         font: 0.87rem/1.65 "Segoe UI", "Helvetica Neue", sans-serif;
         color: var(--ink);
         white-space: pre-wrap;
@@ -1317,21 +2180,17 @@
       .update-notes-heading {
         margin: 0;
         font-size: 0.92rem;
-        font-weight: 650;
+        font-weight: 600;
         color: var(--ink);
       }
 
       @media (max-width: 720px) {
-        .hero {
-          align-items: flex-start;
-        }
-
         .create-top-row {
           grid-template-columns: 1fr;
         }
 
-        th:nth-child(4),
-        td:nth-child(4) {
+        th:nth-child(6),
+        td:nth-child(6) {
           display: none;
         }
       }
@@ -1349,155 +2208,230 @@
   </head>
   <body>
     <div class="page">
-      <div class="shell">
-        <section class="card hero">
-          <div>
-            <h1>Better Parameters</h1>
-            <p>Browse and edit Fusion user parameters without blocking the main UI.</p>
+      <div id="tunerSidebar" class="tuner-sidebar">
+        <section id="textTunerCard" class="card text-tuner-card">
+          <div class="tuner-header">
+            <span class="tuner-header-title">Text Tuner</span>
+            <div class="tuner-header-actions">
+              <button id="textTunerApplyButton" class="primary" type="button">Apply</button>
+              <button id="textTunerResetButton" class="ghost" type="button">Reset</button>
+              <button id="textTunerCopyButton" class="ghost" type="button">Copy</button>
+            </div>
           </div>
-          <div class="actions">
-            <div id="updatePill" class="update-pill" style="display:none" role="status"></div>
-            <button id="themeToggle" class="toggle theme-toggle" type="button" aria-pressed="false" aria-label="Toggle dark theme"><span class="theme-knob"><span class="theme-icon theme-icon-light"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><line x1="8" y1="1" x2="8" y2="3"/><line x1="8" y1="13" x2="8" y2="15"/><line x1="1" y1="8" x2="3" y2="8"/><line x1="13" y1="8" x2="15" y2="8"/><line x1="3.05" y1="3.05" x2="4.46" y2="4.46"/><line x1="11.54" y1="11.54" x2="12.95" y2="12.95"/><line x1="3.05" y1="12.95" x2="4.46" y2="11.54"/><line x1="11.54" y1="4.46" x2="12.95" y2="3.05"/></svg></span><span class="theme-icon theme-icon-dark"><svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M14 10.5a6 6 0 0 1-7.93-7.93A6 6 0 1 0 14 10.5z"/></svg></span></span></button>
-          </div>
+          <details class="tuner-section" open>
+            <summary>Typography</summary>
+            <div class="tuner-kv"><label for="textTunerFontFamily">Family</label><select id="textTunerFontFamily"><option value='"Segoe UI", "Helvetica Neue", sans-serif'>Segoe UI</option><option value='"Helvetica Neue", Arial, sans-serif'>Helvetica Neue</option><option value="Inter, sans-serif">Inter</option><option value="Arial, sans-serif">Arial</option><option value="Roboto, sans-serif">Roboto</option><option value="Calibri, sans-serif">Calibri</option><option value="Verdana, sans-serif">Verdana</option><option value="Tahoma, sans-serif">Tahoma</option><option value='"SF Pro Text", sans-serif'>SF Pro Text</option></select></div>
+            <div class="tuner-kv"><label for="textTunerFontSize">Size</label><input id="textTunerFontSize" type="text" /></div>
+            <div class="tuner-kv"><label for="textTunerFontWeight">Weight</label><input id="textTunerFontWeight" type="text" /></div>
+            <div class="tuner-kv"><label for="textTunerLineHeight">Line Height</label><input id="textTunerLineHeight" type="text" /></div>
+            <div class="tuner-kv"><label for="textTunerLetterSpacing">Letter Spc</label><input id="textTunerLetterSpacing" type="text" /></div>
+            <div class="tuner-kv"><label for="textTunerTextTransform">Transform</label><input id="textTunerTextTransform" type="text" /></div>
+            <div class="tuner-kv"><label for="textTunerTextColorLight">Light Text</label><input id="textTunerTextColorLight" type="text" /></div>
+            <div class="tuner-kv"><label for="textTunerTextColorDark">Dark Text</label><input id="textTunerTextColorDark" type="text" /></div>
+          </details>
+          <details class="tuner-section" open>
+            <summary>Glyphs</summary>
+            <div class="tuner-kv"><label for="textTunerGlyphIconBtn">Icon Btn</label><input id="textTunerGlyphIconBtn" type="text" /></div>
+            <div class="tuner-kv"><label for="textTunerGlyphClear">Clear ×</label><input id="textTunerGlyphClear" type="text" /></div>
+            <div class="tuner-kv"><label for="textTunerGlyphSearch">Search</label><input id="textTunerGlyphSearch" type="text" /></div>
+            <div class="tuner-kv"><label for="textTunerGlyphTheme">Theme ☀☾</label><input id="textTunerGlyphTheme" type="text" /></div>
+            <div class="tuner-kv"><label for="textTunerGlyphStar">Star ★</label><input id="textTunerGlyphStar" type="text" /></div>
+            <div class="tuner-kv"><label for="textTunerGlyphDrag">Drag ⠿</label><input id="textTunerGlyphDrag" type="text" /></div>
+            <div class="tuner-kv"><label for="textTunerGlyphChevron">Chevron ▸</label><input id="textTunerGlyphChevron" type="text" /></div>
+          </details>
+          <details class="tuner-section" open>
+            <summary>Colors (<span id="textTunerColorModeLabel">Light</span>)</summary>
+            <div id="textTunerColorGrid"></div>
+          </details>
+          <details class="tuner-section">
+            <summary>Debug</summary>
+            <pre id="textTunerDebugOutput" class="tuner-debug-pre"></pre>
+          </details>
         </section>
+      </div>
+      <div class="shell">
+        <div class="toolbar">
+          <span class="toolbar-brand">BP</span>
+          <span id="docNameLabel" class="toolbar-doc"></span>
+          <span class="toolbar-spacer"></span>
+          <div id="updatePill" class="update-pill" style="display:none" role="status"></div>
+          <button id="settingsGearButton" class="ghost icon-btn" type="button" aria-label="Settings" aria-controls="settingsPanel" aria-expanded="false">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2"/><path d="M8 1v2m0 10v2M1 8h2m10 0h2M3.05 3.05l1.41 1.41m7.08 7.08 1.41 1.41M3.05 12.95l1.41-1.41m7.08-7.08 1.41-1.41"/></svg>
+          </button>
+        </div>
 
         <div id="globalStatus" class="status global-status" aria-live="polite"></div>
 
-        <section class="card section stack">
-          <div>
-            <h2>Create User Parameter</h2>
-            <p>Expressions follow Fusion's native parameter syntax, so references and units work the same way they do in the Parameters dialog.</p>
-          </div>
-          <div class="settings-inline">
-            <div class="toggle-row">
-              <span class="toggle-label">Remember Unit</span>
-              <button id="rememberUnitToggle" class="toggle" type="button" aria-pressed="false" aria-label="Toggle remember unit"></button>
+        <section class="card create-section">
+          <button id="createFormToggle" class="create-toggle" type="button" aria-expanded="false" aria-controls="createFormBody">
+            <svg class="chevron" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
+            <span>New Parameter</span>
+          </button>
+          <div id="createFormBody" class="create-body">
+            <div class="create-body-inner stack section">
+              <form id="createForm">
+                <div class="create-top-row">
+                  <label>
+                    Name
+                    <input id="newName" name="name" required />
+                    <div id="nameError" class="field-error" aria-live="polite"></div>
+                  </label>
+                  <label class="unit-picker">
+                    Units
+                    <input id="newUnit" name="unit" type="hidden" value="" />
+                    <button id="unitPickerButton" class="unit-picker-button" type="button" aria-haspopup="true" aria-expanded="false">
+                      <span id="unitPickerLabel">No Units</span>
+                    </button>
+                    <div id="unitPickerMenu" class="unit-picker-menu" hidden></div>
+                  </label>
+                </div>
+                <label>
+                  Expression
+                  <div class="field-shell">
+                    <input id="newExpression" name="expression" required placeholder="25 mm or Width / 2" autocomplete="off" />
+                    <div id="expressionSuggestions" class="expression-suggestions" hidden></div>
+                  </div>
+                  <div id="expressionError" class="field-error" aria-live="polite"></div>
+                </label>
+                <label>
+                  Comment
+                  <textarea id="newComment" name="comment" class="comment-input" placeholder="Optional description"></textarea>
+                </label>
+                <div class="actions">
+                  <button class="primary" type="submit">Create Parameter</button>
+                </div>
+              </form>
             </div>
           </div>
-          <form id="createForm">
-            <div class="create-top-row">
-              <label>
-                Name
-                <input id="newName" name="name" required />
-                <div id="nameError" class="field-error" aria-live="polite"></div>
-              </label>
-              <label class="unit-picker">
-                Units
-                <input id="newUnit" name="unit" type="hidden" value="" />
-                <button id="unitPickerButton" class="unit-picker-button" type="button" aria-haspopup="true" aria-expanded="false">
-                  <span id="unitPickerLabel">No Units</span>
-                </button>
-                <div id="unitPickerMenu" class="unit-picker-menu" hidden></div>
-              </label>
-            </div>
-            <label>
-              Expression
-              <div class="field-shell">
-                <input id="newExpression" name="expression" required placeholder="25 mm or Width / 2" autocomplete="off" />
-                <div id="expressionSuggestions" class="expression-suggestions" hidden></div>
-              </div>
-              <div id="expressionError" class="field-error" aria-live="polite"></div>
-            </label>
-            <label>
-              Comment
-              <textarea id="newComment" name="comment" class="comment-input" placeholder="Optional description"></textarea>
-            </label>
-            <div class="actions">
-              <button class="primary" type="submit">Create Parameter</button>
-            </div>
-          </form>
         </section>
 
-        <section class="card section stack">
-          <div class="section-header">
-            <div>
-              <h2>User Parameters</h2>
-              <p>Update the expression or comment for any existing user parameter and click Save.</p>
+        <section class="card table-workspace">
+          <div class="parameter-rail">
+            <div class="rail-icons" aria-hidden="true">
+              <button class="native-icon-btn is-on" type="button" tabindex="-1" title="User Parameters">&#402;x</button>
+              <button class="native-icon-btn" type="button" tabindex="-1" title="Model Parameters">&#402;</button>
+              <button class="native-icon-btn star-icon-control" type="button" tabindex="-1" title="Favorites"><span class="star-icon" aria-hidden="true">&#9733;</span></button>
             </div>
-            <div class="actions">
-              <button id="toggleRevertButtonsButton" class="ghost" type="button">Show Revert: On</button>
-              <button id="autoFitColumnsButton" class="ghost" type="button">Auto Fit</button>
-              <button id="refreshButton" class="ghost" type="button">Refresh</button>
+            <div class="search-shell native-search">
+              <span class="search-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="7"></circle>
+                  <line x1="16.65" y1="16.65" x2="21" y2="21"></line>
+                </svg>
+              </span>
+              <input id="parameterSearchInput" class="search-input" type="search" placeholder="Filter all parameters" autocomplete="off" aria-label="Search parameters" />
+              <button id="parameterSearchClear" class="search-clear" type="button" aria-label="Clear search" hidden>
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
             </div>
-          </div>
-          <div id="favoritesSection" class="favorites-shell" style="display:none">
-            <p class="favorites-title">Favorites</p>
-            <div id="favoritesList" class="favorites-list"></div>
-          </div>
-          <div class="search-shell">
-            <span class="search-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="7"></circle>
-                <line x1="16.65" y1="16.65" x2="21" y2="21"></line>
-              </svg>
-            </span>
-            <input id="parameterSearchInput" class="search-input" type="search" placeholder="Search parameters" autocomplete="off" aria-label="Search parameters" />
-            <button id="parameterSearchClear" class="search-clear" type="button" aria-label="Clear search" hidden>
-              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
+            <div class="rail-actions">
+              <button id="newParamButton" class="ghost icon-btn" type="button" title="New Parameter" aria-label="New Parameter">+</button>
+              <button id="refreshButton" class="ghost icon-btn" type="button" title="Refresh" aria-label="Refresh parameters">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.1-3.3"/><polyline points="13.5 2 13.5 5.5 10 5.5"/></svg>
+              </button>
+            </div>
           </div>
           <div id="parameterSummary" class="section-meta" aria-live="polite"></div>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th><span class="header-label">Name</span><div class="column-resizer" data-col="name"></div></th>
-                  <th><span class="header-label">Expression</span><div class="column-resizer" data-col="expression"></div></th>
-                  <th><span class="header-label">Preview</span><div class="column-resizer" data-col="preview"></div></th>
-                  <th><span class="header-label">Comment</span><div class="column-resizer" data-col="comment"></div></th>
-                  <th></th>
+                  <th class="parameter-col"><span class="header-label">Parameter</span><div class="column-resizer" data-col="name"></div></th>
+                  <th><span class="header-label">Name</span><div class="column-resizer" data-col="expression"></div></th>
+                  <th class="preview-col"><span class="header-label">Unit</span><div class="column-resizer" data-col="preview"></div></th>
+                  <th><span class="header-label">Expression</span><div class="column-resizer" data-col="comment"></div></th>
+                  <th class="value-col"><span class="header-label">Value</span><div class="column-resizer" data-col="actions"></div></th>
+                  <th class="comment-col comments-col"><span class="header-label">Comments</span></th>
                 </tr>
               </thead>
               <tbody id="parameterRows">
                 <tr>
-                  <td colspan="5" class="empty">Loading parameters...</td>
+                  <td colspan="6" class="empty">Loading parameters...</td>
                 </tr>
               </tbody>
             </table>
           </div>
         </section>
 
-        <section class="card section stack">
-          <div class="section-header">
-            <div>
-              <h2>Updates</h2>
-              <p id="updateCardDesc"></p>
-            </div>
-            <button id="checkUpdatesButton" class="ghost" type="button">Check for Updates</button>
-          </div>
-          <div class="toggle-row">
-            <span class="toggle-label">Check for Updates Automatically</span>
-            <button id="autoUpdateToggle" class="toggle" type="button" aria-pressed="true" aria-label="Toggle automatic update checks"></button>
-          </div>
-          <div id="updateReleaseNotes" class="stack" style="display:none">
-            <p id="updateNotesHeading" class="update-notes-heading"></p>
-            <pre id="updateReleaseNotesBody" class="release-notes-body"></pre>
-            <div class="actions">
-              <button id="updateCardInstallButton" class="primary" type="button">Update Now</button>
-            </div>
-          </div>
-        </section>
-
-        <section class="card section stack">
-          <div class="section-header">
-            <div>
-              <h2>Metadata Debug</h2>
-              <p>Inspect JSON and Fusion attribute metadata sources, then force sync either direction for testing.</p>
-            </div>
-            <div class="actions">
-              <button id="debugRefreshButton" class="ghost" type="button">Refresh Debug</button>
-              <button id="debugJsonToFusionButton" class="ghost" type="button">JSON -> Fusion</button>
-              <button id="debugFusionToJsonButton" class="ghost" type="button">Fusion -> JSON</button>
-              <button id="debugRepairButton" class="ghost" type="button">Repair Metadata</button>
-            </div>
-          </div>
-          <div id="debugSummary" class="section-meta"></div>
-          <pre id="debugOutput" class="release-notes-body">Debug data not loaded yet.</pre>
-        </section>
       </div>
+      <div id="settingsBackdrop" class="settings-backdrop" hidden></div>
+      <aside id="settingsPanel" class="settings-panel" hidden aria-hidden="true">
+        <div class="settings-panel-header">
+          <h2 class="settings-panel-title">Settings</h2>
+          <button id="settingsPanelCloseButton" class="ghost icon-btn" type="button" aria-label="Close settings">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+              <line x1="3" y1="3" x2="13" y2="13"></line>
+              <line x1="13" y1="3" x2="3" y2="13"></line>
+            </svg>
+          </button>
+        </div>
+        <div class="settings-panel-body">
+          <section class="settings-panel-section">
+            <div class="section-header">
+              <div>
+                <h2>Appearance</h2>
+              </div>
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-label">Theme</span>
+              <button id="themeToggle" class="toggle theme-toggle" type="button" aria-pressed="false" aria-label="Toggle dark theme"><span class="theme-knob"><span class="theme-icon theme-icon-light"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><line x1="8" y1="1" x2="8" y2="3"/><line x1="8" y1="13" x2="8" y2="15"/><line x1="1" y1="8" x2="3" y2="8"/><line x1="13" y1="8" x2="15" y2="8"/><line x1="3.05" y1="3.05" x2="4.46" y2="4.46"/><line x1="11.54" y1="11.54" x2="12.95" y2="12.95"/><line x1="3.05" y1="12.95" x2="4.46" y2="11.54"/><line x1="11.54" y1="4.46" x2="12.95" y2="3.05"/></svg></span><span class="theme-icon theme-icon-dark"><svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M14 10.5a6 6 0 0 1-7.93-7.93A6 6 0 1 0 14 10.5z"/></svg></span></span></button>
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-label">Remember Unit</span>
+              <button id="rememberUnitToggle" class="toggle" type="button" aria-pressed="false" aria-label="Toggle remember unit"></button>
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-label">Open on Startup</span>
+              <button id="autoOpenOnStartToggle" class="toggle" type="button" aria-pressed="false" aria-label="Toggle open on startup"></button>
+            </div>
+            <div class="actions">
+              <button id="commentColumnButton" class="ghost" type="button">Comment: Off</button>
+              <button id="textTunerSidebarButton" class="ghost" type="button">Text Tuner: On</button>
+              <button id="toggleRevertButtonsButton" class="ghost" type="button">Show Revert: On</button>
+              <button id="autoFitColumnsButton" class="ghost" type="button">Auto Fit</button>
+            </div>
+          </section>
+
+          <section class="settings-panel-section stack">
+            <div class="section-header">
+              <div>
+                <h2>Updates</h2>
+                <p id="updateCardDesc"></p>
+              </div>
+              <button id="checkUpdatesButton" class="ghost" type="button">Check for Updates</button>
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-label">Check for Updates Automatically</span>
+              <button id="autoUpdateToggle" class="toggle" type="button" aria-pressed="true" aria-label="Toggle automatic update checks"></button>
+            </div>
+            <div id="updateReleaseNotes" class="stack" style="display:none">
+              <p id="updateNotesHeading" class="update-notes-heading"></p>
+              <pre id="updateReleaseNotesBody" class="release-notes-body"></pre>
+              <div class="actions">
+                <button id="updateCardInstallButton" class="primary" type="button">Update Now</button>
+              </div>
+            </div>
+          </section>
+
+          <details class="settings-collapsible">
+            <summary>Metadata Debug</summary>
+            <div class="settings-collapsible-body">
+              <p>Inspect JSON and Fusion attribute metadata sources, then force sync either direction for testing.</p>
+              <div class="actions">
+                <button id="debugRefreshButton" class="ghost" type="button">Refresh Debug</button>
+                <button id="debugJsonToFusionButton" class="ghost" type="button">JSON -> Fusion</button>
+                <button id="debugFusionToJsonButton" class="ghost" type="button">Fusion -> JSON</button>
+                <button id="debugRepairButton" class="ghost" type="button">Repair Metadata</button>
+              </div>
+              <div id="debugSummary" class="section-meta"></div>
+              <pre id="debugOutput" class="release-notes-body">Debug data not loaded yet.</pre>
+            </div>
+          </details>
+        </div>
+      </aside>
       <div id="overlayRoot" class="overlay-root"></div>
       <div id="functionHelper" class="function-helper" hidden></div>
       <div id="reorderMenu" class="reorder-menu" hidden>
@@ -1660,17 +2594,21 @@
 
       const DEFAULT_CUSTOM_UNITS = [];
       const DEFAULT_SHOW_REVERT_BUTTONS = true;
+      const DEFAULT_SHOW_COMMENT_COLUMN = false;
+      const DEFAULT_SHOW_TEXT_TUNER_SIDEBAR = true;
 
       const DEFAULT_TABLE_COLUMNS = {
-        name: 21,
-        expression: 27,
-        preview: 16,
-        comment: 24,
-        actions: 8
+        name: 140,
+        expression: 180,
+        preview: 80,
+        comment: 220,
+        actions: 120
       };
+      const NARROW_NAME_EXPRESSION_ONLY_PX = 400;
 
       const COLUMN_KEYS = ["name", "expression", "preview", "comment", "actions"];
       const UNGROUPED_GROUP_LABEL = "Ungrouped";
+      const FAVORITES_GROUP_LABEL = "\u2605 Favorites";
 
       const EXPRESSION_FUNCTIONS = [
         "abs", "acos", "acosh", "and", "asin", "asinh", "atan", "atanh",
@@ -1715,6 +2653,117 @@
         tanh: { summary: "Returns hyperbolic tangent.", example: "tanh(1)", args: [{ name: "value", text: "Any numeric value." }] }
       };
 
+      const TEMP_TEXT_TUNER_ENABLED = true;
+      const TEXT_TUNER_LIVE_DEBOUNCE_MS = 140;
+      const TEXT_TUNER_PERSIST_DEBOUNCE_MS = 260;
+      const TEXT_TUNER_DEFAULTS = {
+        fontFamily: '"Segoe UI", "Helvetica Neue", sans-serif',
+        fontSize: "13px",
+        fontWeight: "400",
+        lineHeight: "1.2",
+        letterSpacing: "0",
+        textTransform: "none",
+        textColorLight: "#2b2b2b",
+        textColorDark: "#d9e1ed",
+        glyphIconBtn: "14px",
+        glyphClear: "12px",
+        glyphSearch: "16px",
+        glyphTheme: "12px",
+        glyphStar: "12px",
+        glyphDrag: "16px",
+        glyphChevron: "12px",
+        bgLight: "#ebebeb",
+        bgDark: "#313b4b",
+        panelLight: "#f5f5f5",
+        panelDark: "#374359",
+        panelRaisedLight: "#ffffff",
+        panelRaisedDark: "#425068",
+        panelHoverLight: "#cce4f7",
+        panelHoverDark: "#4a5c78",
+        selectedRowBgLight: "#a7cfed",
+        selectedRowBgDark: "#45688d",
+        selectedRowHoverLight: "#9bc8ea",
+        selectedRowHoverDark: "#436c93",
+        lineLight: "#c8c8c8",
+        lineDark: "#53627b",
+        lineSubtleLight: "#dcdcdc",
+        lineSubtleDark: "#4a5871",
+        groupRowBgLight: "#f6f6f6",
+        groupRowBgDark: "#39455b",
+        tableHeaderBgLight: "#f4f4f4",
+        tableHeaderBgDark: "#364258",
+        searchFieldBgLight: "#fdfdfd",
+        searchFieldBgDark: "#404e66",
+        inkLight: "#2b2b2b",
+        inkDark: "#d9e1ed",
+        mutedLight: "#666666",
+        mutedDark: "#b4bece",
+        accentLight: "#0070c0",
+        accentDark: "#2ca0ea",
+        accentHoverLight: "#005ba0",
+        accentHoverDark: "#43adef",
+        accentTextLight: "#ffffff",
+        accentTextDark: "#ffffff",
+        errorLight: "#cc2222",
+        errorDark: "#e85454",
+        successLight: "#2e7d32",
+        successDark: "#4caf50",
+        btnBgLight: "#e0e0e0",
+        btnBgDark: "#3f4d65",
+        btnHoverLight: "#d0d0d0",
+        btnHoverDark: "#4a5b77",
+        inputBgLight: "#ffffff",
+        inputBgDark: "#334055",
+        overlayLight: "rgba(0,0,0,0.35)",
+        overlayDark: "rgba(0,0,0,0.55)",
+        pillBgLight: "#d6eaf8",
+        pillBgDark: "#2a4a67",
+        pillInkLight: "#005ba0",
+        pillInkDark: "#a4d2f3"
+      };
+      const TEXT_TUNER_BINDINGS = [
+        { id: "textTunerFontFamily", key: "fontFamily", cssVar: "--ui-font-family" },
+        { id: "textTunerFontSize", key: "fontSize", cssVar: "--ui-font-size" },
+        { id: "textTunerFontWeight", key: "fontWeight", cssVar: "--ui-font-weight" },
+        { id: "textTunerLineHeight", key: "lineHeight", cssVar: "--ui-font-line-height" },
+        { id: "textTunerLetterSpacing", key: "letterSpacing", cssVar: "--ui-font-letter-spacing" },
+        { id: "textTunerTextTransform", key: "textTransform", cssVar: "--ui-font-text-transform" },
+        { id: "textTunerTextColorLight", key: "textColorLight", cssVar: "--ui-text-color-light" },
+        { id: "textTunerTextColorDark", key: "textColorDark", cssVar: "--ui-text-color-dark" },
+        { id: "textTunerGlyphIconBtn", key: "glyphIconBtn", cssVar: "--glyph-icon-btn" },
+        { id: "textTunerGlyphClear", key: "glyphClear", cssVar: "--glyph-clear" },
+        { id: "textTunerGlyphSearch", key: "glyphSearch", cssVar: "--glyph-search" },
+        { id: "textTunerGlyphTheme", key: "glyphTheme", cssVar: "--glyph-theme" },
+        { id: "textTunerGlyphStar", key: "glyphStar", cssVar: "--glyph-star" },
+        { id: "textTunerGlyphDrag", key: "glyphDrag", cssVar: "--glyph-drag" },
+        { id: "textTunerGlyphChevron", key: "glyphChevron", cssVar: "--glyph-chevron" }
+      ];
+      const TEXT_TUNER_COLOR_BINDINGS = [
+        { keyBase: "accent", label: "Accent", usage: "Primary actions and highlights", cssVarLight: "--accent-light", cssVarDark: "--accent-dark" },
+        { keyBase: "accentHover", label: "Accent Hover", usage: "Hovered primary actions", cssVarLight: "--accent-hover-light", cssVarDark: "--accent-hover-dark" },
+        { keyBase: "accentText", label: "Accent Text", usage: "Text on accent buttons", cssVarLight: "--accent-text-light", cssVarDark: "--accent-text-dark" },
+        { keyBase: "bg", label: "Background", usage: "Window/page background", cssVarLight: "--bg-light", cssVarDark: "--bg-dark" },
+        { keyBase: "btnBg", label: "Button Bg", usage: "Secondary button fill", cssVarLight: "--btn-bg-light", cssVarDark: "--btn-bg-dark" },
+        { keyBase: "btnHover", label: "Button Hover", usage: "Secondary button hover", cssVarLight: "--btn-hover-light", cssVarDark: "--btn-hover-dark" },
+        { keyBase: "error", label: "Error", usage: "Validation/error messages", cssVarLight: "--error-light", cssVarDark: "--error-dark" },
+        { keyBase: "groupRowBg", label: "Group Row Bg", usage: "Group header row background", cssVarLight: "--group-row-bg-light", cssVarDark: "--group-row-bg-dark" },
+        { keyBase: "ink", label: "Ink", usage: "Core UI foreground surfaces", cssVarLight: "--ink-light", cssVarDark: "--ink-dark" },
+        { keyBase: "inputBg", label: "Input Bg", usage: "Input and textarea backgrounds", cssVarLight: "--input-bg-light", cssVarDark: "--input-bg-dark" },
+        { keyBase: "line", label: "Line", usage: "Borders and separators", cssVarLight: "--line-light", cssVarDark: "--line-dark" },
+        { keyBase: "lineSubtle", label: "Line Subtle", usage: "Subtle row/grid separators", cssVarLight: "--line-subtle-light", cssVarDark: "--line-subtle-dark" },
+        { keyBase: "muted", label: "Muted", usage: "Secondary text/icons", cssVarLight: "--muted-light", cssVarDark: "--muted-dark" },
+        { keyBase: "overlay", label: "Overlay", usage: "Backdrop overlays", cssVarLight: "--overlay-light", cssVarDark: "--overlay-dark" },
+        { keyBase: "panel", label: "Panel", usage: "Card and toolbar surfaces", cssVarLight: "--panel-light", cssVarDark: "--panel-dark" },
+        { keyBase: "panelHover", label: "Panel Hover", usage: "Hovered table rows", cssVarLight: "--panel-hover-light", cssVarDark: "--panel-hover-dark" },
+        { keyBase: "panelRaised", label: "Panel Raised", usage: "Raised cells/controls", cssVarLight: "--panel-raised-light", cssVarDark: "--panel-raised-dark" },
+        { keyBase: "pillBg", label: "Pill Bg", usage: "Selected pill background", cssVarLight: "--pill-bg-light", cssVarDark: "--pill-bg-dark" },
+        { keyBase: "pillInk", label: "Pill Ink", usage: "Selected pill text", cssVarLight: "--pill-ink-light", cssVarDark: "--pill-ink-dark" },
+        { keyBase: "searchFieldBg", label: "Search Field Bg", usage: "Top rail search input", cssVarLight: "--search-field-bg-light", cssVarDark: "--search-field-bg-dark" },
+        { keyBase: "selectedRowBg", label: "Selected Row Bg", usage: "Active selected parameter row", cssVarLight: "--selected-row-bg-light", cssVarDark: "--selected-row-bg-dark" },
+        { keyBase: "selectedRowHover", label: "Selected Row Hover", usage: "Hovered active selected row", cssVarLight: "--selected-row-hover-light", cssVarDark: "--selected-row-hover-dark" },
+        { keyBase: "success", label: "Success", usage: "Success states/messages", cssVarLight: "--success-light", cssVarDark: "--success-dark" },
+        { keyBase: "tableHeaderBg", label: "Table Header Bg", usage: "Column header row background", cssVarLight: "--table-header-bg-light", cssVarDark: "--table-header-bg-dark" }
+      ];
 
       const state = {
         parameters: [],
@@ -1729,9 +2778,13 @@
           unitCategoryState: { ...DEFAULT_UNIT_CATEGORY_STATE },
           customUnits: [...DEFAULT_CUSTOM_UNITS],
           showRevertButtons: DEFAULT_SHOW_REVERT_BUTTONS,
+          showCommentColumn: DEFAULT_SHOW_COMMENT_COLUMN,
+          showTextTunerSidebar: DEFAULT_SHOW_TEXT_TUNER_SIDEBAR,
           autoFitColumns: true,
           pinnedUnits: []
         },
+        appliedTheme: (function () { try { var t = localStorage.getItem("bp_theme"); return t === "dark" || t === "light" ? t : "light"; } catch (_) { return "light"; } }()),
+        fusionThemeApplied: false,
         customUnitFeedback: { message: "", kind: "" },
         documentDefaults: {
           unit: "mm"
@@ -1771,6 +2824,7 @@
         },
         reorderMenu: {
           key: "",
+          rowUid: "",
           left: 0,
           top: 0,
           hideTimer: null,
@@ -1788,20 +2842,41 @@
           targetVersion: "",
           installedVersion: "",
           error: ""
-        }
+        },
+        textTunerState: {},
+        textTunerStateLoaded: false,
+        selectedRow: null,
+        lastNarrowLayoutMode: null,
+        viewportModeAutoFitPending: false
       };
       const EXPRESSION_STATUS_CLEAR_DELAY_MS = 5000;
       const expressionStatusClearTimers = new Map();
+      let textTunerLiveApplyTimer = null;
+      let textTunerPersistTimer = null;
 
-      function normalizeColumnWidths(columns) {
-        const merged = { ...DEFAULT_TABLE_COLUMNS, ...(columns || {}) };
-        const total = Object.values(merged).reduce((sum, value) => sum + Number(value || 0), 0) || 100;
-        const normalized = {};
-        for (const [key, value] of Object.entries(merged)) {
-          normalized[key] = Number(((Number(value || 0) / total) * 100).toFixed(2));
+      function migrateColumnWidths(stored) {
+        if (!stored || typeof stored !== "object") return { ...DEFAULT_TABLE_COLUMNS };
+        const vals = Object.values(stored).map(Number);
+        // Old storage was %-based (all values ≤ 100) — reset to px defaults
+        if (vals.length === 0 || vals.every(v => v <= 100)) return { ...DEFAULT_TABLE_COLUMNS };
+        const result = { ...DEFAULT_TABLE_COLUMNS };
+        for (const k of COLUMN_KEYS) {
+          if (typeof stored[k] === "number" && stored[k] > 0) result[k] = Math.round(stored[k]);
         }
-        return normalized;
+        return result;
       }
+
+      function areColumnWidthsSimilar(left, right, tolerancePx = 1) {
+        const a = left && typeof left === "object" ? left : {};
+        const b = right && typeof right === "object" ? right : {};
+        return COLUMN_KEYS.every((key) => {
+          const av = Math.round(Number(a[key] || DEFAULT_TABLE_COLUMNS[key]));
+          const bv = Math.round(Number(b[key] || DEFAULT_TABLE_COLUMNS[key]));
+          return Math.abs(av - bv) <= tolerancePx;
+        });
+      }
+
+      const COLUMN_MIN_PX = { name: 60, expression: 60, preview: 40, comment: 60, actions: 60 };
 
       function measureTextWidth(text, font) {
         const canvas = measureTextWidth.canvas || (measureTextWidth.canvas = document.createElement("canvas"));
@@ -1810,119 +2885,155 @@
         return context.measureText(text || "").width;
       }
 
-      function getActionsColumnPercent(tableWidth) {
-        const safeTableWidth = Math.max(tableWidth || 1, 1);
-        const saveButton = document.querySelector("#parameterRows .save-button");
-        const saveButtonWidth = Math.ceil(saveButton?.getBoundingClientRect().width || 74);
-        const actionsPx = Math.max(saveButtonWidth + 2, 70);
-        return Number(((actionsPx / safeTableWidth) * 100).toFixed(2));
-      }
-
-      function getColumnMinimumPercents(tableWidth) {
-        const safeTableWidth = Math.max(tableWidth || 1, 1);
-        return {
-          name: 10,
-          expression: 16,
-          preview: 12,
-          comment: 10,
-          actions: getActionsColumnPercent(safeTableWidth)
-        };
-      }
-
-      function clampActionsColumnWidth() {
-        const table = document.querySelector(".table-wrap table");
-        if (!table) {
-          return;
-        }
-
-        const tableWidth = Math.max(table.getBoundingClientRect().width, 1);
-        const mins = getColumnMinimumPercents(tableWidth);
-        const targetActions = mins.actions;
-        const cols = state.settings.parameterTableColumns || {};
-        const currentActions = Number(cols.actions || 0);
-        if (!Number.isFinite(currentActions) || Math.abs(currentActions - targetActions) < 0.01) {
-          return;
-        }
-
-        let next = { ...cols };
-        const delta = currentActions - targetActions;
-        next.actions = targetActions;
-        next.comment = Number(next.comment || 0) + delta;
-
-        if (next.comment < mins.comment) {
-          const needed = mins.comment - next.comment;
-          next.comment = mins.comment;
-          next.expression = Math.max(mins.expression, Number(next.expression || 0) - needed);
-        }
-
-        state.settings.parameterTableColumns = normalizeColumnWidths(next);
-      }
-
       function buildAutoFitColumnWidths() {
         const table = document.querySelector(".table-wrap table");
-        if (!table) {
-          return normalizeColumnWidths(DEFAULT_TABLE_COLUMNS);
-        }
+        const wrap = table ? table.parentElement : null;
+        if (!table || !wrap) return { ...DEFAULT_TABLE_COLUMNS };
 
-        const tableWidth = Math.max(table.getBoundingClientRect().width, 1);
-        const mins = getColumnMinimumPercents(tableWidth);
         const bodyRows = Array.from(document.querySelectorAll("#parameterRows tr[data-index]"));
-
-        const strongFont = '600 0.92rem "Segoe UI", "Helvetica Neue", sans-serif';
+        const strongFont = '600 0.9rem "Segoe UI", "Helvetica Neue", sans-serif';
         const monoFont = '0.92rem "Consolas", "SFMono-Regular", monospace';
-        const pillFont = '0.8rem "Segoe UI", "Helvetica Neue", sans-serif';
+        const uiFont = '0.86rem "Segoe UI", "Helvetica Neue", sans-serif';
 
-        const namePx = bodyRows.reduce((maxWidth, row) => {
-          const name = row.querySelector("strong")?.textContent || "";
-          const badgeTexts = Array.from(row.querySelectorAll(".row-meta .pill")).map((node) => node.textContent || "");
-          const nameWidth = measureTextWidth(name, strongFont);
-          const badgesWidth = badgeTexts.reduce((sum, text) => sum + measureTextWidth(text, pillFont) + 30, 0);
-          const controlWidth = 34;
-          return Math.max(maxWidth, Math.ceil(Math.max(nameWidth, badgesWidth + controlWidth) + 28));
+        const namePx = bodyRows.reduce((max, row) => {
+          const text = row.querySelector(".parameter-kind")?.textContent || "User Parameter";
+          const measured = Math.ceil(measureTextWidth(text, uiFont) + 46);
+          const clusterWidth = Math.ceil(row.querySelector(".name-cell-main")?.scrollWidth || 0) + 12;
+          return Math.max(max, measured, clusterWidth);
         }, 140);
 
-        const previewPx = bodyRows.reduce((maxWidth, row) => {
+        const expressionPx = bodyRows.reduce((max, row) => {
+          const name = row.querySelector(".param-name-text")?.textContent || "";
+          return Math.max(max, Math.ceil(measureTextWidth(name, strongFont) + 24));
+        }, 160);
+
+        const unitCells = Array.from(document.querySelectorAll("#parameterRows tr[data-parameter-key] td.unit-cell"));
+        const unitHeaderLabel = table.querySelector("thead th.preview-col .header-label");
+        const unitSampleCell = unitCells[0] || null;
+        const unitCellStyle = unitSampleCell ? getComputedStyle(unitSampleCell) : null;
+        const unitPadX = unitCellStyle
+          ? Math.ceil(parseFloat(unitCellStyle.paddingLeft || "0") + parseFloat(unitCellStyle.paddingRight || "0"))
+          : 16;
+        const unitFont = unitCellStyle && unitCellStyle.font ? unitCellStyle.font : uiFont;
+        const unitHeaderFont = unitHeaderLabel ? (getComputedStyle(unitHeaderLabel).font || uiFont) : uiFont;
+        const headerUnitText = (unitHeaderLabel?.textContent || "Unit").replace(/\s+/g, " ").trim();
+        const headerUnitPx = Math.ceil(measureTextWidth(headerUnitText, unitHeaderFont) + unitPadX + 12);
+        const previewPx = unitCells.reduce((max, cell) => {
+          const unit = (cell.textContent || "").replace(/\s+/g, " ").trim();
+          const measured = Math.ceil(measureTextWidth(unit, unitFont) + unitPadX + 4);
+          return Math.max(max, measured);
+        }, Math.max(48, headerUnitPx));
+
+        const actionsPx = bodyRows.reduce((max, row) => {
           const current = row.querySelector(".preview-current")?.textContent || row.querySelector(".preview-cell")?.getAttribute("data-saved-preview") || "";
-          return Math.max(maxWidth, Math.ceil(measureTextWidth(current, monoFont) + 26));
-        }, 120);
+          return Math.max(max, Math.ceil(measureTextWidth(current, monoFont) + 26));
+        }, 110);
 
-        const saveButton = document.querySelector("#parameterRows .save-button");
-        const saveButtonWidth = Math.ceil(saveButton?.getBoundingClientRect().width || 74);
-        const actionsPx = Math.max(saveButtonWidth + 2, 70);
+        const containerWidth = wrap.offsetWidth || 600;
+        if (containerWidth < NARROW_NAME_EXPRESSION_ONLY_PX) {
+          const snugNamePx = Math.max(
+            COLUMN_MIN_PX.expression,
+            Math.min(
+              expressionPx,
+              Math.max(COLUMN_MIN_PX.expression, containerWidth - COLUMN_MIN_PX.comment)
+            )
+          );
+          const fillExpressionPx = Math.max(COLUMN_MIN_PX.comment, containerWidth - snugNamePx);
+          return {
+            name: Math.max(COLUMN_MIN_PX.name, namePx),
+            expression: snugNamePx,
+            preview: Math.max(COLUMN_MIN_PX.preview, previewPx),
+            comment: fillExpressionPx,
+            actions: Math.max(COLUMN_MIN_PX.actions, actionsPx)
+          };
+        }
 
-        const fixedPx = namePx + previewPx + actionsPx;
-        const remainingPx = Math.max(tableWidth - fixedPx, 180);
-        const expressionPx = remainingPx * (2 / 3);
-        const commentPx = remainingPx * (1 / 3);
+        const showComments = !document.body.classList.contains("hide-comment");
+        const fixedPx = namePx + expressionPx + previewPx + actionsPx;
+        const remaining = Math.max(0, containerWidth - fixedPx);
+        const commentPx = showComments
+          ? Math.max(COLUMN_MIN_PX.comment, Math.round(remaining * 2 / 3))
+          : Math.max(COLUMN_MIN_PX.comment, remaining);
 
-        const raw = {
-          name: (namePx / tableWidth) * 100,
-          preview: (previewPx / tableWidth) * 100,
-          actions: (actionsPx / tableWidth) * 100,
-          expression: (expressionPx / tableWidth) * 100,
-          comment: (commentPx / tableWidth) * 100
+        return {
+          name: Math.max(COLUMN_MIN_PX.name, namePx),
+          expression: Math.max(COLUMN_MIN_PX.expression, expressionPx),
+          preview: Math.max(COLUMN_MIN_PX.preview, previewPx),
+          comment: commentPx,
+          actions: Math.max(COLUMN_MIN_PX.actions, actionsPx)
         };
-
-        const clamped = {
-          name: Math.max(raw.name, mins.name),
-          expression: Math.max(raw.expression, mins.expression),
-          preview: Math.max(raw.preview, mins.preview),
-          comment: Math.max(raw.comment, mins.comment),
-          actions: Math.max(raw.actions, mins.actions)
-        };
-
-        return normalizeColumnWidths(clamped);
       }
 
       function applyColumnWidths() {
-        clampActionsColumnWidth();
         const cols = state.settings.parameterTableColumns;
+        const table = document.querySelector(".table-wrap table");
         const headers = document.querySelectorAll(".table-wrap table thead th");
-        COLUMN_KEYS.forEach((key, i) => {
-          if (headers[i] && cols[key] !== undefined) {
-            headers[i].style.width = `${cols[key]}%`;
-          }
+        const wrap = table ? table.parentElement : null;
+        const containerWidth = wrap ? wrap.offsetWidth : 600;
+        const isNarrowMode = containerWidth < NARROW_NAME_EXPRESSION_ONLY_PX;
+        const userShowsComments = !document.body.classList.contains("hide-comment");
+        const columnPx = {};
+        COLUMN_KEYS.forEach((key) => {
+          columnPx[key] = Math.round(cols[key] || DEFAULT_TABLE_COLUMNS[key]);
         });
+        const requiredKeys = ["expression", "comment"]; // Keep Name + Expression visible.
+        const optionalKeysByPriority = ["actions", "name", "preview"]; // Value -> Parameter -> Unit
+        const visibleMainKeys = [...requiredKeys];
+        let visibleMainPx = requiredKeys.reduce((s, key) => s + (columnPx[key] || 0), 0);
+
+        if (!isNarrowMode) {
+          optionalKeysByPriority.forEach((key) => {
+            const nextPx = columnPx[key] || 0;
+            if ((visibleMainPx + nextPx) <= containerWidth) {
+              visibleMainKeys.push(key);
+              visibleMainPx += nextPx;
+            }
+          });
+        }
+
+        const autoHideParameter = isNarrowMode || !visibleMainKeys.includes("name");
+        const autoHideUnit = isNarrowMode || !visibleMainKeys.includes("preview");
+        const autoHideValue = isNarrowMode || !visibleMainKeys.includes("actions");
+        const autoHideComments = isNarrowMode || (userShowsComments && ((visibleMainPx + 120) > containerWidth));
+        document.body.classList.toggle("auto-hide-comments", autoHideComments);
+        document.body.classList.toggle("auto-hide-unit", autoHideUnit);
+        document.body.classList.toggle("auto-hide-parameter", autoHideParameter);
+        document.body.classList.toggle("auto-hide-value", autoHideValue);
+
+        const modeChanged = state.lastNarrowLayoutMode !== isNarrowMode;
+        state.lastNarrowLayoutMode = isNarrowMode;
+        if (modeChanged && !state.viewportModeAutoFitPending) {
+          state.viewportModeAutoFitPending = true;
+          requestAnimationFrame(() => {
+            state.viewportModeAutoFitPending = false;
+            const nextColumns = buildAutoFitColumnWidths();
+            state.settings.parameterTableColumns = nextColumns;
+            applyColumnWidths();
+            if (state.settings.autoFitColumns === true) {
+              saveSettingsPartial({ parameterTableColumns: nextColumns }).catch(() => {});
+            }
+          });
+        }
+
+        COLUMN_KEYS.forEach((key, i) => {
+          if (headers[i]) headers[i].style.width = `${columnPx[key]}px`;
+        });
+
+        if (table) {
+          const effectiveSumPx = visibleMainPx;
+          const commentsVisible = userShowsComments && !autoHideComments;
+          const commentsWidth = commentsVisible
+            ? (containerWidth > effectiveSumPx ? containerWidth - effectiveSumPx : 120)
+            : 0;
+          if (headers[5]) {
+            headers[5].style.width = commentsVisible && commentsWidth > 0 ? `${commentsWidth}px` : "";
+          }
+          table.style.width = `${Math.max(effectiveSumPx + commentsWidth, containerWidth)}px`;
+        }
+      }
+
+      function renderAutoOpenToggle() {
+        renderToggle("autoOpenOnStartToggle", state.settings.autoOpenOnStart === true);
       }
 
       function renderRevertToggle() {
@@ -1935,6 +3046,40 @@
         const button = document.getElementById("autoFitColumnsButton");
         const isOn = state.settings.autoFitColumns === true;
         button.textContent = `Auto Fit: ${isOn ? "On" : "Off"}`;
+      }
+
+      function renderCommentColumnToggle() {
+        const button = document.getElementById("commentColumnButton");
+        const isOn = state.settings.showCommentColumn === true;
+        button.textContent = `Comment: ${isOn ? "On" : "Off"}`;
+      }
+
+      function renderTextTunerSidebarToggle() {
+        const button = document.getElementById("textTunerSidebarButton");
+        if (!button) {
+          return;
+        }
+        if (!TEMP_TEXT_TUNER_ENABLED) {
+          button.disabled = true;
+          button.textContent = "Text Tuner: Off";
+          return;
+        }
+        button.disabled = false;
+        const isOn = state.settings.showTextTunerSidebar !== false;
+        button.textContent = `Text Tuner: ${isOn ? "On" : "Off"}`;
+      }
+
+      function applyTextTunerSidebarVisibility() {
+        const sidebar = document.getElementById("tunerSidebar");
+        const card = document.getElementById("textTunerCard");
+        const showSidebar = TEMP_TEXT_TUNER_ENABLED && (state.settings.showTextTunerSidebar !== false);
+        document.body.classList.toggle("hide-text-tuner-sidebar", !showSidebar);
+        if (sidebar) {
+          sidebar.hidden = !showSidebar;
+        }
+        if (card) {
+          card.hidden = !showSidebar;
+        }
       }
 
       function setGlobalStatus(message, kind = "") {
@@ -2163,9 +3308,13 @@
 
       function buildGroupedParameters(parameters) {
         const groups = new Map();
+        const favorites = [];
         const allCounts = getGroupCounts(state.parameters || []);
         const filteredCounts = getGroupCounts(parameters || []);
         for (const parameter of (parameters || [])) {
+          if (parameter && parameter.isFavorite) {
+            favorites.push(parameter);
+          }
           const label = displayGroupName(parameter.group);
           if (!groups.has(label)) {
             groups.set(label, []);
@@ -2196,12 +3345,25 @@
 
         const labels = orderedLabels.filter((label) => groups.has(label));
 
-        return labels.map((label) => ({
+        const result = labels.map((label) => ({
           label,
           parameters: groups.get(label) || [],
           allCount: allCounts.get(label) || 0,
-          filteredCount: filteredCounts.get(label) || 0
+          filteredCount: filteredCounts.get(label) || 0,
+          isFavoritesGroup: false
         }));
+
+        if (favorites.length) {
+          result.unshift({
+            label: FAVORITES_GROUP_LABEL,
+            parameters: favorites,
+            allCount: favorites.length,
+            filteredCount: favorites.length,
+            isFavoritesGroup: true
+          });
+        }
+
+        return result;
       }
 
       function renderSearchControls() {
@@ -2228,8 +3390,14 @@
           return;
         }
 
+        if (textarea.closest("#parameterRows")) {
+          textarea.style.height = "22px";
+          return;
+        }
+
+        const minHeight = 60;
         textarea.style.height = "auto";
-        textarea.style.height = `${Math.max(textarea.scrollHeight, 45)}px`;
+        textarea.style.height = `${Math.max(textarea.scrollHeight, minHeight)}px`;
       }
 
       function autoSizeCommentInputs(root = document) {
@@ -2259,27 +3427,6 @@
         }
       }
 
-      function renderFavoritesSection(parameters) {
-        const section = document.getElementById("favoritesSection");
-        const list = document.getElementById("favoritesList");
-        if (state.searchQuery.trim()) {
-          section.style.display = "none";
-          return;
-        }
-        const favorites = (parameters || []).filter((param) => !!param.isFavorite);
-
-        if (!favorites.length) {
-          section.style.display = "none";
-          list.innerHTML = "";
-          return;
-        }
-
-        section.style.display = "";
-        list.innerHTML = favorites.map((param) => (
-          `<button class="favorite-chip" type="button" data-favorite-name="${escapeHtml(param.name)}">${escapeHtml(param.name)}</button>`
-        )).join("");
-      }
-
       function setNameError(message) {
         const nameInput = document.getElementById("newName");
         const nameError = document.getElementById("nameError");
@@ -2304,6 +3451,26 @@
             "'": "&#39;"
           })[char];
         });
+      }
+
+      function renderLabelWithLeadingStarIcon(value) {
+        const raw = String(value || "");
+        if (!raw) {
+          return "";
+        }
+
+        const leadingWhitespaceMatch = raw.match(/^\s*/);
+        const leadingWhitespace = leadingWhitespaceMatch ? leadingWhitespaceMatch[0] : "";
+        const trimmedLeft = raw.slice(leadingWhitespace.length);
+        const firstChar = trimmedLeft.charAt(0);
+        const isStar = firstChar === "\u2605" || firstChar === "\u2606";
+        if (!isStar) {
+          return escapeHtml(raw);
+        }
+
+        const starEntity = firstChar === "\u2605" ? "&#9733;" : "&#9734;";
+        const remainder = trimmedLeft.slice(1).trimStart();
+        return `${escapeHtml(leadingWhitespace)}<span class="star-icon" aria-hidden="true">${starEntity}</span>${remainder ? ` ${escapeHtml(remainder)}` : ""}`;
       }
 
       function getUnitDisplayLabel(value) {
@@ -2521,18 +3688,17 @@
       function renderParameters(parameters) {
         state.parameters = parameters || [];
         const tbody = document.getElementById("parameterRows");
-        renderFavoritesSection(state.parameters);
         renderSearchControls();
 
         if (!state.parameters.length) {
-          tbody.innerHTML = `<tr><td colspan="5" class="empty">No user parameters were found in the active design.</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="6" class="empty">No user parameters were found in the active design.</td></tr>`;
           renderReorderMenuGroupOptions();
           return;
         }
 
         const filteredParameters = getFilteredParameters(state.parameters);
         if (!filteredParameters.length) {
-          tbody.innerHTML = `<tr><td colspan="5" class="empty">No parameters match your search.</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="6" class="empty">No parameters match your search.</td></tr>`;
           renderReorderMenuGroupOptions();
           return;
         }
@@ -2545,24 +3711,23 @@
           ensureGroupUiState(groupBlock.label);
           const groupCollapsed = isGroupCollapsed(groupBlock.label);
           const safeGroupLabel = escapeHtml(groupBlock.label);
+          const isFavoritesGroup = groupBlock.isFavoritesGroup === true;
+          const groupNameHtml = isFavoritesGroup
+            ? "Favorites"
+            : renderLabelWithLeadingStarIcon(groupBlock.label);
           const isUngrouped = groupBlock.label === UNGROUPED_GROUP_LABEL;
-          const countText = isSearchActive
-            ? `${groupBlock.filteredCount} of ${groupBlock.allCount}`
-            : `${groupBlock.allCount}`;
           const toggleGlyph = groupCollapsed ? "▸" : "▾";
           pieces.push(`
-            <tr class="group-header-row" data-group-header="${safeGroupLabel}">
-              <td colspan="5">
-                <div class="group-header">
+            <tr class="group-header-row" data-group-header="${safeGroupLabel}"${isFavoritesGroup ? ' data-favorites-group="true"' : ' data-group-draggable="true"'}>
+              <td colspan="6">
+                <div class="group-header${isFavoritesGroup ? "" : " is-draggable"}">
                   <div class="group-header-left">
-                    <button class="group-drag-handle" type="button" data-group-drag-handle="true" aria-label="Drag to reorder group ${safeGroupLabel}"></button>
                     <button class="group-toggle" type="button" data-group-toggle="${safeGroupLabel}" aria-expanded="${groupCollapsed ? "false" : "true"}">${toggleGlyph}</button>
-                    <span class="group-name">${safeGroupLabel}</span>
-                    <span class="group-meta">${escapeHtml(countText)} parameter${(groupBlock.allCount === 1 && !isSearchActive) || (groupBlock.filteredCount === 1 && isSearchActive) ? "" : "s"}</span>
+                    <span class="group-name">${groupNameHtml}</span>
                   </div>
                   <div class="group-header-actions">
-                    ${isUngrouped ? "" : `<button class="group-action" type="button" data-group-rename="${safeGroupLabel}">Rename</button>`}
-                    ${isUngrouped ? "" : `<button class="group-action delete" type="button" data-group-delete="${safeGroupLabel}">Delete</button>`}
+                    ${(isUngrouped || isFavoritesGroup) ? "" : `<button class="group-action" type="button" data-group-rename="${safeGroupLabel}">Rename</button>`}
+                    ${(isUngrouped || isFavoritesGroup) ? "" : `<button class="group-action delete" type="button" data-group-delete="${safeGroupLabel}">Delete</button>`}
                   </div>
                 </div>
               </td>
@@ -2579,10 +3744,10 @@
             const previousExpression = String(param.previousExpression || "");
             const previousValue = String(param.previousValue || "");
             const safePreviousExpression = escapeHtml(previousExpression);
-            const unitBadge = `<span class="pill">${escapeHtml(param.unit || "No Units")}</span>`;
+            const unitLabel = escapeHtml(param.unit || "No Units");
             const favoriteTitle = param.isFavorite ? "Remove from favorites" : "Add to favorites";
-            const favoriteIcon = param.isFavorite ? "★" : "☆";
             const favoriteClass = param.isFavorite ? "favorite-button is-on" : "favorite-button";
+            const favoriteIconEntity = param.isFavorite ? "&#9733;" : "&#9734;";
             const reorderTitle = isSearchActive
               ? "Clear search to reorder parameters."
               : `Drag to reorder ${safeName}. Right-click for group + reorder options.`;
@@ -2598,21 +3763,25 @@
             const revertButton = showRevert
               ? `<button class="revert-button" type="button" data-previous-expression="${safePreviousExpression}" title="${revertTitle}"${previousExpression ? "" : " disabled"}>Revert</button>`
               : "";
+            const stripeClass = renderRowCounter % 2 === 0 ? " is-even" : " is-odd";
             const hiddenClass = groupCollapsed ? " is-hidden-by-group" : "";
 
             pieces.push(`
-              <tr class="parameter-row${hiddenClass}" data-index="0" data-group-index="${index}" data-group-name="${safeGroupLabel}" data-parameter-key="${safeKey}" data-parameter-name="${safeName}">
+              <tr class="parameter-row${stripeClass}${hiddenClass}" data-index="0" data-group-index="${index}" data-group-name="${safeGroupLabel}" data-parameter-key="${safeKey}" data-parameter-name="${safeName}" data-row-uid="row-${renderRowCounter}"${isFavoritesGroup ? ' data-favorites-row="true"' : ""}>
                 <td class="name-cell">
                   <div class="name-cell-main">
-                    <button class="reorder-handle" type="button" data-reorder-handle="true" tabindex="-1" aria-label="${reorderTitle}" title="${reorderTitle}"${isSearchActive ? " disabled" : ""}></button>
+                    ${isFavoritesGroup ? `<span class="reorder-handle-placeholder" aria-hidden="true"></span>` : `<button class="reorder-handle" type="button" data-reorder-handle="true" tabindex="-1" aria-label="${reorderTitle}" title="${reorderTitle}"${isSearchActive ? " disabled" : ""}></button>`}
                     <div class="name-stack">
-                      <strong>${safeName}</strong>
-                      <div class="row-meta">
-                        <button class="${favoriteClass}" type="button" data-favorite-toggle="true" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}">${favoriteIcon}</button>
-                        ${unitBadge}
-                      </div>
+                      <button class="${favoriteClass}" type="button" data-favorite-toggle="true" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}"><span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span></button>
+                      <span class="parameter-kind">User Parameter</span>
                     </div>
                   </div>
+                </td>
+                <td class="param-name-cell">
+                  <strong class="param-name-text">${safeName}</strong>
+                </td>
+                <td class="unit-cell">
+                  <span class="unit-text">${unitLabel}</span>
                 </td>
                 <td>
                   <div class="field-shell">
@@ -2620,16 +3789,16 @@
                     <div class="field-error expression-field-error" aria-live="polite"></div>
                   </div>
                 </td>
-                <td class="mono preview-cell" data-saved-preview="${safePreview}">
+                <td class="mono preview-cell value-cell" data-saved-preview="${safePreview}">
                   <div class="preview-value"></div>
                 </td>
-                <td>
-                  <textarea class="comment-input" data-saved-comment="${safeComment}">${safeComment}</textarea>
-                </td>
-                <td>
-                  <div class="row-actions">
-                    ${revertButton}
-                    <button class="save-button" type="button" disabled>Save</button>
+                <td class="comment-col comments-cell">
+                  <div class="comment-shell">
+                    <textarea class="comment-input" data-saved-comment="${safeComment}">${safeComment}</textarea>
+                    <div class="row-actions">
+                      ${revertButton}
+                      <button class="save-button" type="button" disabled>Save</button>
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -2646,6 +3815,54 @@
         });
         syncParameterRowIndices();
         tbody.querySelectorAll("tr").forEach((row) => updateRowSaveState(row));
+        applySelectedRowState();
+      }
+
+      function getRowSelectionFromElement(row) {
+        if (!row || !row.matches("tr.parameter-row[data-parameter-key]")) {
+          return null;
+        }
+        return {
+          key: row.getAttribute("data-parameter-key") || "",
+          favoritesRow: row.getAttribute("data-favorites-row") === "true"
+        };
+      }
+
+      function rowMatchesSelection(row, selection) {
+        if (!row || !selection) {
+          return false;
+        }
+        const rowKey = row.getAttribute("data-parameter-key") || "";
+        if (!rowKey || rowKey !== selection.key) {
+          return false;
+        }
+        return (row.getAttribute("data-favorites-row") === "true") === !!selection.favoritesRow;
+      }
+
+      function applySelectedRowState() {
+        const rows = Array.from(document.querySelectorAll("#parameterRows tr.parameter-row[data-parameter-key]"));
+        rows.forEach((row) => row.classList.remove("is-selected"));
+        if (!state.selectedRow) {
+          return;
+        }
+        const selectedRowElement = rows.find((row) => rowMatchesSelection(row, state.selectedRow));
+        if (selectedRowElement) {
+          selectedRowElement.classList.add("is-selected");
+        }
+      }
+
+      function setSelectedParameterRow(row) {
+        const nextSelection = getRowSelectionFromElement(row);
+        if (!nextSelection || !nextSelection.key) {
+          return;
+        }
+        const current = state.selectedRow;
+        if (current && current.key === nextSelection.key && !!current.favoritesRow === !!nextSelection.favoritesRow) {
+          applySelectedRowState();
+          return;
+        }
+        state.selectedRow = nextSelection;
+        applySelectedRowState();
       }
 
       function syncParameterRowIndices() {
@@ -2682,8 +3899,9 @@
         pillRoot.innerHTML = normalized.map((group) => {
           const canonical = canonicalGroupName(group);
           const display = displayGroupName(group);
+          const displayHtml = renderLabelWithLeadingStarIcon(display);
           const active = canonical === currentGroup ? " is-active" : "";
-          return `<button class="group-pill${active}" type="button" data-group-pill="${escapeHtml(canonical)}">${escapeHtml(display)}</button>`;
+          return `<button class="group-pill${active}" type="button" data-group-pill="${escapeHtml(canonical)}">${displayHtml}</button>`;
         }).join("");
       }
 
@@ -2700,14 +3918,33 @@
       }
 
       function getCurrentParameterRowOrder() {
+        const seen = new Set();
         return Array.from(document.querySelectorAll("#parameterRows tr[data-parameter-key]"))
+          .filter((row) => row.getAttribute("data-favorites-row") !== "true")
           .map((row) => row.getAttribute("data-parameter-key") || "")
-          .filter(Boolean);
+          .filter((key) => {
+            if (!key || seen.has(key)) {
+              return false;
+            }
+            seen.add(key);
+            return true;
+          });
       }
 
       function getParameterRowByKey(key) {
         return Array.from(document.querySelectorAll("#parameterRows tr[data-parameter-key]"))
           .find((row) => (row.getAttribute("data-parameter-key") || "") === key) || null;
+      }
+
+      function getReorderMenuTargetRow() {
+        const rowUid = state.reorderMenu.rowUid || "";
+        if (rowUid) {
+          const byUid = document.querySelector(`#parameterRows tr[data-row-uid="${rowUid}"]`);
+          if (byUid) {
+            return byUid;
+          }
+        }
+        return getParameterRowByKey(state.reorderMenu.key);
       }
 
       function getRowsInGroup(groupLabel) {
@@ -2732,12 +3969,43 @@
           return clientY < rect.top + (rect.height / 2);
         });
 
+        const targetKey = nextRow || "end";
+        if (dragState.lastTargetBefore === targetKey) return;
+        dragState.lastTargetBefore = targetKey;
+
+        // Cancel any in-progress FLIP animations
+        candidateRows.forEach((r) => { r.style.transition = "none"; r.style.transform = ""; });
+
+        // FLIP: capture positions before DOM change
+        const beforeRects = new Map(candidateRows.map((r) => [r, r.getBoundingClientRect().top]));
+
         if (nextRow) {
           tbody.insertBefore(draggingRow, nextRow);
         } else {
-          tbody.appendChild(draggingRow);
+          const lastCandidate = candidateRows[candidateRows.length - 1];
+          if (lastCandidate) lastCandidate.after(draggingRow);
         }
         syncParameterRowIndices();
+
+        // Move indicator to sit just above dragging row
+        const indicator = dragState.indicator;
+        if (indicator && indicator.parentNode) indicator.remove();
+        if (indicator) tbody.insertBefore(indicator, draggingRow);
+
+        // FLIP: animate shifted rows
+        requestAnimationFrame(() => {
+          for (const [row, beforeTop] of beforeRects) {
+            const dy = beforeTop - row.getBoundingClientRect().top;
+            if (Math.abs(dy) > 0.5) {
+              row.style.transition = "none";
+              row.style.transform = `translateY(${dy}px)`;
+              requestAnimationFrame(() => {
+                row.style.transition = "transform 100ms ease";
+                row.style.transform = "";
+              });
+            }
+          }
+        });
       }
 
       function closeReorderMenu() {
@@ -2748,6 +4016,7 @@
         menu.hidden = true;
         state.reorderMenu = {
           key: "",
+          rowUid: "",
           left: 0,
           top: 0,
           hideTimer: null,
@@ -2782,6 +4051,7 @@
         const rowCount = getRowsInGroup(groupName).length;
         state.reorderMenu = {
           key: row.getAttribute("data-parameter-key") || "",
+          rowUid: row.getAttribute("data-row-uid") || "",
           left: clientX,
           top: clientY,
           hideTimer: null,
@@ -2810,7 +4080,7 @@
       }
 
       function scheduleReorderMenuClose(delayMs = 500) {
-        if (!state.reorderMenu.key) {
+        if (!state.reorderMenu.key && !state.reorderMenu.rowUid) {
           return;
         }
 
@@ -2925,13 +4195,23 @@
           return;
         }
 
-        const { row, startOrder } = dragState;
+        const { row, startOrder, indicator } = dragState;
         state.activeRowDrag = null;
+
+        if (indicator && indicator.parentNode) indicator.remove();
 
         if (row) {
           row.classList.remove("is-row-dragging");
+          row.style.transform = "";
+          row.style.transition = "";
           row.removeAttribute("data-drag-armed");
         }
+
+        document.querySelectorAll("#parameterRows tr").forEach((r) => {
+          r.style.transition = "";
+          r.style.transform = "";
+        });
+
         document.body.classList.remove("is-row-dragging");
 
         const nextOrder = getCurrentParameterRowOrder();
@@ -2953,9 +4233,16 @@
           return;
         }
 
+        const indicator = document.createElement("tr");
+        indicator.className = "drag-indicator-row";
+        indicator.innerHTML = `<td colspan="6"></td>`;
+        row.parentNode.insertBefore(indicator, row);
+
         state.activeRowDrag = {
           row,
-          startOrder: getCurrentParameterRowOrder()
+          startOrder: getCurrentParameterRowOrder(),
+          indicator,
+          lastTargetBefore: row
         };
         row.classList.add("is-row-dragging");
         document.body.classList.add("is-row-dragging");
@@ -3030,11 +4317,34 @@
           return clientY < rect.top + (rect.height / 2);
         });
 
+        const targetKey = nextHeader || "end";
+        if (dragState.lastTargetBefore === targetKey) return;
+        dragState.lastTargetBefore = targetKey;
+
+        // Cancel in-progress FLIP animations
+        candidateHeaders.forEach((h) => { h.style.transition = "none"; h.style.transform = ""; });
+
+        // FLIP: capture before
+        const beforeRects = new Map(candidateHeaders.map((h) => [h, h.getBoundingClientRect().top]));
+
         moveGroupBlockBefore(groupLabel, nextHeader || null);
         const refreshedHeader = getGroupHeaderByName(groupLabel);
-        if (refreshedHeader) {
-          refreshedHeader.classList.add("is-group-dragging");
-        }
+        if (refreshedHeader) refreshedHeader.classList.add("is-group-dragging");
+
+        // FLIP: animate shifted headers
+        requestAnimationFrame(() => {
+          for (const [header, beforeTop] of beforeRects) {
+            const dy = beforeTop - header.getBoundingClientRect().top;
+            if (Math.abs(dy) > 0.5) {
+              header.style.transition = "none";
+              header.style.transform = `translateY(${dy}px)`;
+              requestAnimationFrame(() => {
+                header.style.transition = "transform 100ms ease";
+                header.style.transform = "";
+              });
+            }
+          }
+        });
       }
 
       function startGroupDrag(groupLabel, event) {
@@ -3083,6 +4393,11 @@
         }
         document.body.classList.remove("is-group-dragging");
 
+        document.querySelectorAll("#parameterRows tr.group-header-row").forEach((h) => {
+          h.style.transition = "";
+          h.style.transform = "";
+        });
+
         const previousCollapsed = dragState.previousCollapsed || {};
         const startOrder = dragState.startOrder || [];
         const nextOrder = getCurrentGroupOrder();
@@ -3113,19 +4428,31 @@
         }
       }
 
-      function applyTheme(theme) {
+      function applyTheme(theme, options = {}) {
+        const persistSetting = options.persistSetting !== false;
+        const persistLocal = options.persistLocal !== false;
         const normalizedTheme = theme === "dark" ? "dark" : "light";
-        state.settings.theme = normalizedTheme;
+        if (persistSetting) {
+          state.settings.theme = normalizedTheme;
+        }
+        state.appliedTheme = normalizedTheme;
         document.documentElement.dataset.theme = normalizedTheme;
         renderToggle("themeToggle", normalizedTheme === "dark");
-        try { localStorage.setItem("bp_theme", normalizedTheme); } catch (_) {}
+        if (persistLocal) {
+          try { localStorage.setItem("bp_theme", normalizedTheme); } catch (_) {}
+        }
+        if (TEMP_TEXT_TUNER_ENABLED) {
+          buildTextTunerColorInputs();
+          syncTextTunerUiFromCss();
+          renderTextTunerDebug(collectTextTunerValuesFromCss());
+        }
       }
 
       function applySettings(settings) {
         state.settings = {
           ...state.settings,
           ...settings,
-          parameterTableColumns: normalizeColumnWidths(
+          parameterTableColumns: migrateColumnWidths(
             settings.parameterTableColumns || state.settings.parameterTableColumns
           ),
           unitCategoryState: {
@@ -3137,7 +4464,13 @@
           pinnedUnits: Array.isArray(settings.pinnedUnits) ? settings.pinnedUnits.slice() : (state.settings.pinnedUnits || []).slice(),
           showRevertButtons: typeof settings.showRevertButtons === "boolean"
             ? settings.showRevertButtons
-            : (state.settings.showRevertButtons !== false)
+            : (state.settings.showRevertButtons !== false),
+          showCommentColumn: typeof settings.showCommentColumn === "boolean"
+            ? settings.showCommentColumn
+            : (state.settings.showCommentColumn === true),
+          showTextTunerSidebar: typeof settings.showTextTunerSidebar === "boolean"
+            ? settings.showTextTunerSidebar
+            : (state.settings.showTextTunerSidebar !== false)
         };
 
         applyTheme(state.settings.theme);
@@ -3145,8 +4478,400 @@
         renderToggle("autoUpdateToggle", state.settings.autoCheckUpdates !== false);
         renderRevertToggle();
         renderAutoFitToggle();
+        renderAutoOpenToggle();
+        renderCommentColumnToggle();
+        renderTextTunerSidebarToggle();
+        document.body.classList.toggle("hide-comment", state.settings.showCommentColumn !== true);
+        applyTextTunerSidebarVisibility();
         renderUnitPicker();
         applyColumnWidths();
+      }
+
+      function getRootCssVar(name) {
+        const value = getComputedStyle(document.documentElement).getPropertyValue(name);
+        return String(value || "").trim();
+      }
+
+      function getActiveThemeMode() {
+        return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+      }
+
+      function getTextTunerColorModeBindings(mode = getActiveThemeMode()) {
+        const normalizedMode = mode === "dark" ? "dark" : "light";
+        const modeKeySuffix = normalizedMode === "dark" ? "Dark" : "Light";
+        return TEXT_TUNER_COLOR_BINDINGS.map((entry) => ({
+          id: `textTuner${entry.keyBase.charAt(0).toUpperCase()}${entry.keyBase.slice(1)}Mode`,
+          key: `${entry.keyBase}${modeKeySuffix}`,
+          cssVar: normalizedMode === "dark" ? entry.cssVarDark : entry.cssVarLight
+        }));
+      }
+
+      function buildTextTunerColorInputs() {
+        const root = document.getElementById("textTunerColorGrid");
+        if (!root) {
+          return;
+        }
+        const modeLabel = document.getElementById("textTunerColorModeLabel");
+        const mode = getActiveThemeMode();
+        const modeText = mode === "dark" ? "Dark" : "Light";
+        if (modeLabel) {
+          modeLabel.textContent = modeText;
+        }
+
+        const sortedBindings = [...TEXT_TUNER_COLOR_BINDINGS].sort((a, b) => (
+          String(a.label || "").localeCompare(String(b.label || ""), undefined, { sensitivity: "base" })
+        ));
+
+        root.innerHTML = sortedBindings.map((entry) => {
+          const base = `${entry.keyBase.charAt(0).toUpperCase()}${entry.keyBase.slice(1)}`;
+          const modeId = `textTuner${base}Mode`;
+          const swatchId = `${modeId}Swatch`;
+          return `<div class="tuner-color-row" title="${escapeHtml(entry.usage || "")}"><span class="tuner-color-label">${escapeHtml(entry.label)}</span><span id="${swatchId}" class="text-tuner-color-swatch" aria-hidden="true"></span><input id="${modeId}" class="tuner-color-input" type="text" placeholder="${modeText}" /></div>`;
+        }).join("");
+      }
+
+      function updateColorSwatchForInput(input) {
+        if (!input) {
+          return;
+        }
+        const swatch = document.getElementById(`${input.id}Swatch`);
+        if (!swatch) {
+          return;
+        }
+
+        const value = String(input.value || "").trim();
+        if (!value) {
+          swatch.style.background = "transparent";
+          swatch.classList.remove("is-invalid");
+          return;
+        }
+
+        if (!CSS.supports("color", value)) {
+          swatch.style.background = "transparent";
+          swatch.classList.add("is-invalid");
+          return;
+        }
+
+        swatch.style.background = value;
+        swatch.classList.remove("is-invalid");
+      }
+
+      function refreshTextTunerColorSwatches() {
+        for (const binding of getTextTunerColorModeBindings()) {
+          updateColorSwatchForInput(document.getElementById(binding.id));
+        }
+      }
+
+      function collectTextTunerValuesFromUi() {
+        const values = collectTextTunerValuesFromCss();
+        for (const binding of TEXT_TUNER_BINDINGS) {
+          const input = document.getElementById(binding.id);
+          if (input) {
+            values[binding.key] = String(input.value || "").trim();
+          }
+        }
+        for (const binding of getTextTunerColorModeBindings()) {
+          const input = document.getElementById(binding.id);
+          if (input) {
+            values[binding.key] = normalizeHexColor(String(input.value || "").trim());
+          }
+        }
+        return values;
+      }
+
+      function collectTextTunerValuesFromCss() {
+        const values = {};
+        for (const binding of TEXT_TUNER_BINDINGS) {
+          values[binding.key] = getRootCssVar(binding.cssVar);
+        }
+        for (const entry of TEXT_TUNER_COLOR_BINDINGS) {
+          values[`${entry.keyBase}Light`] = getRootCssVar(entry.cssVarLight);
+          values[`${entry.keyBase}Dark`] = getRootCssVar(entry.cssVarDark);
+        }
+        return values;
+      }
+
+      function syncTextTunerUiFromCss() {
+        for (const binding of TEXT_TUNER_BINDINGS) {
+          const input = document.getElementById(binding.id);
+          if (!input) {
+            continue;
+          }
+          input.value = getRootCssVar(binding.cssVar);
+        }
+        for (const binding of getTextTunerColorModeBindings()) {
+          const input = document.getElementById(binding.id);
+          if (!input) {
+            continue;
+          }
+          input.value = getRootCssVar(binding.cssVar);
+        }
+        refreshTextTunerColorSwatches();
+        markModifiedTunerFields();
+      }
+
+      function markModifiedTunerFields() {
+        const allBindings = [...TEXT_TUNER_BINDINGS, ...getTextTunerColorModeBindings()];
+        for (const binding of allBindings) {
+          const el = document.getElementById(binding.id);
+          if (!el) continue;
+          const current = (el.value || "").trim();
+          const def = String(TEXT_TUNER_DEFAULTS[binding.key] || "").trim();
+          el.classList.toggle("is-modified", current !== def);
+        }
+      }
+
+      function renderTextTunerDebug(values) {
+        const output = document.getElementById("textTunerDebugOutput");
+        if (!output) {
+          return;
+        }
+
+        const theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+        const lines = [
+          "TEMP TEXT TUNING SNAPSHOT",
+          `theme=${theme}`,
+          "",
+          ":root {",
+          `  --ui-font-family: ${values.fontFamily};`,
+          `  --ui-font-size: ${values.fontSize};`,
+          `  --ui-font-weight: ${values.fontWeight};`,
+          `  --ui-font-line-height: ${values.lineHeight};`,
+          `  --ui-font-letter-spacing: ${values.letterSpacing};`,
+          `  --ui-font-text-transform: ${values.textTransform};`,
+          `  --ui-text-color-light: ${values.textColorLight};`,
+          `  --ui-text-color-dark: ${values.textColorDark};`,
+          `  --glyph-icon-btn: ${values.glyphIconBtn};`,
+          `  --glyph-clear: ${values.glyphClear};`,
+          `  --glyph-search: ${values.glyphSearch};`,
+          `  --glyph-theme: ${values.glyphTheme};`,
+          `  --glyph-star: ${values.glyphStar};`,
+          `  --glyph-drag: ${values.glyphDrag};`,
+          `  --glyph-chevron: ${values.glyphChevron};`,
+          `  --bg-light: ${values.bgLight};`,
+          `  --bg-dark: ${values.bgDark};`,
+          `  --panel-light: ${values.panelLight};`,
+          `  --panel-dark: ${values.panelDark};`,
+          `  --panel-raised-light: ${values.panelRaisedLight};`,
+          `  --panel-raised-dark: ${values.panelRaisedDark};`,
+          `  --panel-hover-light: ${values.panelHoverLight};`,
+          `  --panel-hover-dark: ${values.panelHoverDark};`,
+          `  --selected-row-bg-light: ${values.selectedRowBgLight};`,
+          `  --selected-row-bg-dark: ${values.selectedRowBgDark};`,
+          `  --selected-row-hover-light: ${values.selectedRowHoverLight};`,
+          `  --selected-row-hover-dark: ${values.selectedRowHoverDark};`,
+          `  --line-light: ${values.lineLight};`,
+          `  --line-dark: ${values.lineDark};`,
+          `  --line-subtle-light: ${values.lineSubtleLight};`,
+          `  --line-subtle-dark: ${values.lineSubtleDark};`,
+          `  --group-row-bg-light: ${values.groupRowBgLight};`,
+          `  --group-row-bg-dark: ${values.groupRowBgDark};`,
+          `  --search-field-bg-light: ${values.searchFieldBgLight};`,
+          `  --search-field-bg-dark: ${values.searchFieldBgDark};`,
+          `  --table-header-bg-light: ${values.tableHeaderBgLight};`,
+          `  --table-header-bg-dark: ${values.tableHeaderBgDark};`,
+          `  --ink-light: ${values.inkLight};`,
+          `  --ink-dark: ${values.inkDark};`,
+          `  --muted-light: ${values.mutedLight};`,
+          `  --muted-dark: ${values.mutedDark};`,
+          `  --accent-light: ${values.accentLight};`,
+          `  --accent-dark: ${values.accentDark};`,
+          `  --accent-hover-light: ${values.accentHoverLight};`,
+          `  --accent-hover-dark: ${values.accentHoverDark};`,
+          `  --accent-text-light: ${values.accentTextLight};`,
+          `  --accent-text-dark: ${values.accentTextDark};`,
+          `  --error-light: ${values.errorLight};`,
+          `  --error-dark: ${values.errorDark};`,
+          `  --success-light: ${values.successLight};`,
+          `  --success-dark: ${values.successDark};`,
+          `  --btn-bg-light: ${values.btnBgLight};`,
+          `  --btn-bg-dark: ${values.btnBgDark};`,
+          `  --btn-hover-light: ${values.btnHoverLight};`,
+          `  --btn-hover-dark: ${values.btnHoverDark};`,
+          `  --input-bg-light: ${values.inputBgLight};`,
+          `  --input-bg-dark: ${values.inputBgDark};`,
+          `  --overlay-light: ${values.overlayLight};`,
+          `  --overlay-dark: ${values.overlayDark};`,
+          `  --pill-bg-light: ${values.pillBgLight};`,
+          `  --pill-bg-dark: ${values.pillBgDark};`,
+          `  --pill-ink-light: ${values.pillInkLight};`,
+          `  --pill-ink-dark: ${values.pillInkDark};`,
+          "}",
+          "",
+          ':root[data-theme="dark"] {',
+          "  --ui-text-color: var(--ui-text-color-dark);",
+          "}",
+          "",
+          "APPLY VALUES JSON",
+          JSON.stringify(values, null, 2)
+        ];
+
+        output.textContent = lines.join("\n");
+      }
+
+      function rerenderForTextTuning() {
+        renderParameters(state.parameters);
+        setParameterSummary(state.parameters);
+        applyColumnWidths();
+      }
+
+      function applyTextTunerValues(values, options = {}) {
+        for (const binding of TEXT_TUNER_BINDINGS) {
+          const next = String(values[binding.key] || "").trim();
+          if (!next) {
+            continue;
+          }
+          document.documentElement.style.setProperty(binding.cssVar, next);
+        }
+        for (const entry of TEXT_TUNER_COLOR_BINDINGS) {
+          const lightValue = String(values[`${entry.keyBase}Light`] || "").trim();
+          if (lightValue) {
+            document.documentElement.style.setProperty(entry.cssVarLight, lightValue);
+          }
+          const darkValue = String(values[`${entry.keyBase}Dark`] || "").trim();
+          if (darkValue) {
+            document.documentElement.style.setProperty(entry.cssVarDark, darkValue);
+          }
+        }
+        if (options.rerender !== false) {
+          rerenderForTextTuning();
+        }
+        renderTextTunerDebug(collectTextTunerValuesFromCss());
+      }
+
+      async function persistTextTunerValuesNow(values) {
+        try {
+          const response = await sendToFusion("saveTextTunerState", { values });
+          if (response && response.ok) {
+            state.textTunerState = { ...(response.values || values || {}) };
+          }
+        } catch (_error) {
+        }
+      }
+
+      function schedulePersistTextTunerValues(values, delayMs = TEXT_TUNER_PERSIST_DEBOUNCE_MS) {
+        if (textTunerPersistTimer) {
+          window.clearTimeout(textTunerPersistTimer);
+          textTunerPersistTimer = null;
+        }
+        const snapshot = { ...(values || {}) };
+        textTunerPersistTimer = window.setTimeout(() => {
+          textTunerPersistTimer = null;
+          persistTextTunerValuesNow(snapshot);
+        }, Math.max(0, Number(delayMs || 0)));
+      }
+
+      function scheduleLiveTextTunerApply() {
+        if (textTunerLiveApplyTimer) {
+          window.clearTimeout(textTunerLiveApplyTimer);
+          textTunerLiveApplyTimer = null;
+        }
+        textTunerLiveApplyTimer = window.setTimeout(() => {
+          textTunerLiveApplyTimer = null;
+          const values = collectTextTunerValuesFromUi();
+          applyTextTunerValues(values, { rerender: true });
+          schedulePersistTextTunerValues(values);
+        }, TEXT_TUNER_LIVE_DEBOUNCE_MS);
+      }
+
+      function normalizeHexColor(value) {
+        const s = (value || "").trim();
+        if (!s || s.startsWith("#")) return s;
+        if (/^[0-9a-fA-F]{3}$/.test(s) || /^[0-9a-fA-F]{6}$/.test(s)) return "#" + s;
+        return s;
+      }
+
+      function bindTextTunerLiveInputs() {
+        const card = document.getElementById("textTunerCard");
+        if (!card || card.dataset.liveBound === "true") {
+          return;
+        }
+        card.dataset.liveBound = "true";
+        card.addEventListener("input", (event) => {
+          const target = event.target;
+          if (!target || (target.tagName !== "INPUT" && target.tagName !== "SELECT")) {
+            return;
+          }
+          if (target.tagName === "INPUT" && target.classList.contains("tuner-color-input")) {
+            const normalized = normalizeHexColor(target.value);
+            if (normalized !== target.value) target.value = normalized;
+            updateColorSwatchForInput(target);
+          } else if (target.tagName === "INPUT") {
+            updateColorSwatchForInput(target);
+          }
+          markModifiedTunerFields();
+          scheduleLiveTextTunerApply();
+        });
+      }
+
+      function applyPersistedTextTunerValues(values) {
+        const normalized = values && typeof values === "object" ? values : {};
+        state.textTunerState = { ...normalized };
+        state.textTunerStateLoaded = true;
+        if (!Object.keys(normalized).length) {
+          renderTextTunerDebug(collectTextTunerValuesFromCss());
+          return;
+        }
+        applyTextTunerValues(normalized, { rerender: true });
+        syncTextTunerUiFromCss();
+      }
+
+      function initializeTextTunerCard() {
+        const card = document.getElementById("textTunerCard");
+        if (!card) {
+          return;
+        }
+
+        if (!TEMP_TEXT_TUNER_ENABLED) {
+          card.hidden = true;
+          const sidebar = document.getElementById("tunerSidebar");
+          if (sidebar) sidebar.hidden = true;
+          return;
+        }
+
+        card.hidden = false;
+        buildTextTunerColorInputs();
+        bindTextTunerLiveInputs();
+        syncTextTunerUiFromCss();
+        renderTextTunerDebug(collectTextTunerValuesFromCss());
+
+        const applyButton = document.getElementById("textTunerApplyButton");
+        const resetButton = document.getElementById("textTunerResetButton");
+        const copyButton = document.getElementById("textTunerCopyButton");
+
+        if (applyButton) {
+          applyButton.addEventListener("click", () => {
+            const values = collectTextTunerValuesFromUi();
+            applyTextTunerValues(values, { rerender: true });
+            schedulePersistTextTunerValues(values, 0);
+            setGlobalStatus("Temporary text tuning applied.", "success");
+          });
+        }
+
+        if (resetButton) {
+          resetButton.addEventListener("click", () => {
+            applyTextTunerValues(TEXT_TUNER_DEFAULTS, { rerender: true });
+            syncTextTunerUiFromCss();
+            schedulePersistTextTunerValues(TEXT_TUNER_DEFAULTS, 0);
+            setGlobalStatus("Temporary text tuning reset to defaults.", "success");
+          });
+        }
+
+        if (copyButton) {
+          copyButton.addEventListener("click", async () => {
+            const output = document.getElementById("textTunerDebugOutput");
+            const text = output ? output.textContent : "";
+            if (!text) {
+              return;
+            }
+            try {
+              await navigator.clipboard.writeText(text);
+              setGlobalStatus("Text tuning debug copied to clipboard.", "success");
+            } catch (_error) {
+              setGlobalStatus("Clipboard copy failed. Copy manually from debug box.", "error");
+            }
+          });
+        }
       }
 
       function syncDefaultUnit(force = false) {
@@ -3224,6 +4949,10 @@
       function applyStateFromFusion(payload) {
         if (payload.document) {
           state.document = { ...state.document, ...payload.document };
+          const docLabel = document.getElementById("docNameLabel");
+          if (docLabel) {
+            docLabel.textContent = state.document.name || "";
+          }
         }
 
         if (payload.settings && payload.settings.paletteSize) {
@@ -3253,9 +4982,36 @@
           applySettings(payload.settings);
         }
 
+        if (payload.textTunerState && typeof payload.textTunerState === "object") {
+          state.textTunerState = { ...payload.textTunerState };
+        }
+
+        if (!state.fusionThemeApplied) {
+          if (payload.fusionTheme === "dark" || payload.fusionTheme === "light") {
+            applyTheme(payload.fusionTheme, { persistSetting: false, persistLocal: false });
+          }
+          state.fusionThemeApplied = true;
+        }
+
         if (payload.parameters) {
           renderParameters(payload.parameters);
           setParameterSummary(payload.parameters);
+          const tableWrap = document.querySelector(".table-wrap");
+          const wrapWidth = tableWrap ? tableWrap.offsetWidth : 0;
+          if (wrapWidth > 0 && wrapWidth < NARROW_NAME_EXPRESSION_ONLY_PX) {
+            requestAnimationFrame(() => {
+              const nextColumns = buildAutoFitColumnWidths();
+              const currentColumns = state.settings.parameterTableColumns || {};
+              if (areColumnWidthsSimilar(currentColumns, nextColumns)) {
+                return;
+              }
+              state.settings.parameterTableColumns = nextColumns;
+              applyColumnWidths();
+              if (state.settings.autoFitColumns === true) {
+                saveSettingsPartial({ parameterTableColumns: nextColumns }).catch(() => {});
+              }
+            });
+          }
         }
 
         if (payload.updateInfo) {
@@ -3907,6 +5663,7 @@
         const expressionDirty = expressionInput.value !== (expressionInput.getAttribute("data-saved-expression") || "");
         const commentDirty = commentInput.value !== (commentInput.getAttribute("data-saved-comment") || "");
         const isDirty = expressionDirty || commentDirty;
+        row.classList.toggle("is-dirty", isDirty);
         saveButton.disabled = !isDirty;
         saveButton.classList.toggle("is-dirty", isDirty);
         if (revertButton) {
@@ -4118,8 +5875,47 @@
         }
       }
 
+      function isSettingsPanelOpen() {
+        const panel = document.getElementById("settingsPanel");
+        return !!(panel && !panel.hidden);
+      }
+
+      function setSettingsPanelOpen(isOpen) {
+        const panel = document.getElementById("settingsPanel");
+        const backdrop = document.getElementById("settingsBackdrop");
+        const gear = document.getElementById("settingsGearButton");
+        if (!panel || !backdrop) {
+          return;
+        }
+
+        panel.hidden = !isOpen;
+        panel.setAttribute("aria-hidden", isOpen ? "false" : "true");
+        backdrop.hidden = !isOpen;
+        document.body.classList.toggle("settings-open", isOpen);
+        if (gear) {
+          gear.setAttribute("aria-expanded", isOpen ? "true" : "false");
+        }
+      }
+
+      function toggleSettingsPanel(forceOpen) {
+        const shouldOpen = forceOpen !== undefined ? !!forceOpen : !isSettingsPanelOpen();
+        setSettingsPanelOpen(shouldOpen);
+      }
+
       document.getElementById("refreshButton").addEventListener("click", () => {
         refreshParameters();
+      });
+
+      document.getElementById("settingsGearButton").addEventListener("click", () => {
+        toggleSettingsPanel();
+      });
+
+      document.getElementById("settingsPanelCloseButton").addEventListener("click", () => {
+        setSettingsPanelOpen(false);
+      });
+
+      document.getElementById("settingsBackdrop").addEventListener("click", () => {
+        setSettingsPanelOpen(false);
       });
 
       document.getElementById("debugRefreshButton").addEventListener("click", async () => {
@@ -4142,9 +5938,35 @@
         await runMetadataSync("repairMetadata", "Metadata repair completed.");
       });
 
+      function toggleCreateForm(forceOpen) {
+        const body = document.getElementById("createFormBody");
+        const toggle = document.getElementById("createFormToggle");
+        if (!body || !toggle) return;
+        const isOpen = body.classList.contains("is-open");
+        const shouldOpen = forceOpen !== undefined ? forceOpen : !isOpen;
+        body.classList.toggle("is-open", shouldOpen);
+        toggle.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+        if (!shouldOpen) {
+          document.getElementById("nameError").textContent = "";
+          document.getElementById("expressionError").textContent = "";
+        }
+        try { localStorage.setItem("bp_create_open", shouldOpen ? "true" : "false"); } catch (_) {}
+      }
+
+      (function initCreateForm() {
+        try {
+          const open = localStorage.getItem("bp_create_open") === "true";
+          if (open) toggleCreateForm(true);
+        } catch (_) {}
+      })();
+
+      document.getElementById("createFormToggle").addEventListener("click", () => toggleCreateForm());
+      document.getElementById("newParamButton").addEventListener("click", () => toggleCreateForm(true));
+
       document.getElementById("themeToggle").addEventListener("click", async () => {
-        const nextTheme = state.settings.theme === "dark" ? "light" : "dark";
-        const previousTheme = state.settings.theme;
+        const currentTheme = state.appliedTheme === "dark" ? "dark" : "light";
+        const nextTheme = currentTheme === "dark" ? "light" : "dark";
+        const previousTheme = currentTheme;
 
         applyTheme(nextTheme);
         setGlobalStatus("Saving appearance setting...");
@@ -4333,6 +6155,14 @@
         parameterSearchInput.focus();
       });
 
+      parameterRows.addEventListener("click", (event) => {
+        const row = event.target.closest("tr.parameter-row[data-parameter-key]");
+        if (!row) {
+          return;
+        }
+        setSelectedParameterRow(row);
+      });
+
       parameterRows.addEventListener("input", (event) => {
         const commentInput = event.target.closest(".comment-input");
         if (commentInput) {
@@ -4488,38 +6318,19 @@
       });
 
       parameterRows.addEventListener("focusin", (event) => {
+        const row = event.target.closest("tr.parameter-row[data-parameter-key]");
+        if (row) {
+          setSelectedParameterRow(row);
+        }
         const input = event.target.closest(".expression-input");
-        if (!input) {
-          return;
-        }
-        cancelExpressionStatusClear(input);
-      });
-
-      document.getElementById("favoritesList").addEventListener("click", (event) => {
-        const button = event.target.closest("[data-favorite-name]");
-        if (!button) {
-          return;
-        }
-
-        const targetName = button.getAttribute("data-favorite-name") || "";
-        const row = Array.from(document.querySelectorAll("#parameterRows tr")).find((candidate) => (
-          candidate.getAttribute("data-parameter-name") === targetName
-        ));
-        if (!row) {
-          return;
-        }
-
-        row.scrollIntoView({ block: "center", behavior: "smooth" });
-        const expressionInput = row.querySelector(".expression-input");
-        if (expressionInput) {
-          expressionInput.focus();
-          expressionInput.select();
+        if (input) {
+          cancelExpressionStatusClear(input);
         }
       });
 
       document.getElementById("moveRowTopButton").addEventListener("click", async () => {
         cancelReorderMenuClose();
-        const row = getParameterRowByKey(state.reorderMenu.key);
+        const row = getReorderMenuTargetRow();
         if (!row) {
           closeReorderMenu();
           return;
@@ -4537,7 +6348,7 @@
 
       document.getElementById("moveRowBottomButton").addEventListener("click", async () => {
         cancelReorderMenuClose();
-        const row = getParameterRowByKey(state.reorderMenu.key);
+        const row = getReorderMenuTargetRow();
         if (!row) {
           closeReorderMenu();
           return;
@@ -4554,7 +6365,7 @@
       });
 
       document.getElementById("moveRowNumberButton").addEventListener("click", async () => {
-        const row = getParameterRowByKey(state.reorderMenu.key);
+        const row = getReorderMenuTargetRow();
         const input = document.getElementById("moveRowNumberInput");
         const groupName = displayGroupName(row?.getAttribute("data-group-name") || "");
         const rowCount = getRowsInGroup(groupName).length;
@@ -4587,7 +6398,7 @@
 
       document.getElementById("moveRowGroupButton").addEventListener("click", async () => {
         cancelReorderMenuClose();
-        const row = getParameterRowByKey(state.reorderMenu.key);
+        const row = getReorderMenuTargetRow();
         if (!row) {
           closeReorderMenu();
           return;
@@ -4619,7 +6430,7 @@
           return;
         }
         cancelReorderMenuClose();
-        const row = getParameterRowByKey(state.reorderMenu.key);
+        const row = getReorderMenuTargetRow();
         if (!row) {
           closeReorderMenu();
           return;
@@ -4657,8 +6468,8 @@
       });
 
       parameterRows.addEventListener("mousedown", (event) => {
-        const groupHandle = event.target.closest("[data-group-drag-handle]");
-        if (groupHandle) {
+        const groupRow = event.target.closest("tr.group-header-row[data-group-draggable='true']");
+        if (groupRow) {
           if (state.searchQuery.trim()) {
             setGlobalStatus("Clear search to reorder groups.");
             return;
@@ -4668,8 +6479,14 @@
             return;
           }
 
-          const groupRow = groupHandle.closest("tr.group-header-row");
-          const groupLabel = groupRow ? (groupRow.getAttribute("data-group-header") || "") : "";
+          const inDefinedControlArea = !!event.target.closest(
+            "[data-group-toggle], [data-group-rename], [data-group-delete], .group-header-actions, button, input, textarea, select, a"
+          );
+          if (inDefinedControlArea) {
+            return;
+          }
+
+          const groupLabel = groupRow.getAttribute("data-group-header") || "";
           if (!groupLabel) {
             return;
           }
@@ -5037,21 +6854,14 @@
 
         const colKey = resizer.dataset.col;
         const colIndex = COLUMN_KEYS.indexOf(colKey);
-        if (colIndex < 0 || colIndex >= COLUMN_KEYS.length - 1) {
+        if (colIndex < 0) {
           return;
         }
 
-        const nextColKey = COLUMN_KEYS[colIndex + 1];
-        const table = document.querySelector(".table-wrap table");
-        const tableWidth = table ? table.getBoundingClientRect().width : 1;
-
         state.activeColumnResize = {
           colKey,
-          nextColKey,
           startX: event.clientX,
-          startWidthA: state.settings.parameterTableColumns[colKey],
-          startWidthB: state.settings.parameterTableColumns[nextColKey],
-          tableWidth,
+          startWidth: state.settings.parameterTableColumns[colKey] || DEFAULT_TABLE_COLUMNS[colKey],
           resizer
         };
 
@@ -5064,22 +6874,15 @@
           return;
         }
 
-        const { colKey, nextColKey, startX, startWidthA, startWidthB, tableWidth } = state.activeColumnResize;
+        const { colKey, startX, startWidth } = state.activeColumnResize;
         const deltaX = event.clientX - startX;
-        const deltaPct = (deltaX / tableWidth) * 100;
-        const mins = getColumnMinimumPercents(tableWidth);
-        const minWidthA = mins[colKey] || 5;
-        const minWidthB = mins[nextColKey] || 5;
-        const combined = startWidthA + startWidthB;
-        let newA = Math.max(minWidthA, Math.min(startWidthA + deltaPct, combined - minWidthB));
-        let newB = combined - newA;
-        if (nextColKey === "actions") {
-          newB = minWidthB;
-          newA = Math.max(minWidthA, combined - newB);
-        }
-
-        state.settings.parameterTableColumns[colKey] = Number(newA.toFixed(2));
-        state.settings.parameterTableColumns[nextColKey] = Number(newB.toFixed(2));
+        const minPx = COLUMN_MIN_PX[colKey] || 40;
+        const cols = state.settings.parameterTableColumns;
+        const othersPx = COLUMN_KEYS.filter(k => k !== colKey)
+          .reduce((s, k) => s + Math.round(cols[k] || DEFAULT_TABLE_COLUMNS[k]), 0);
+        const containerWidth = document.querySelector(".table-wrap")?.offsetWidth || window.innerWidth;
+        const maxPx = Math.max(minPx, containerWidth - othersPx);
+        state.settings.parameterTableColumns[colKey] = Math.max(minPx, Math.min(maxPx, Math.round(startWidth + deltaX)));
         applyColumnWidths();
       });
 
@@ -5095,6 +6898,20 @@
           await saveSettingsPartial({ parameterTableColumns: state.settings.parameterTableColumns });
         } catch (error) {
           setGlobalStatus(error.message, "error");
+        }
+      });
+
+      document.addEventListener("dblclick", (event) => {
+        const resizer = event.target.closest(".column-resizer");
+        if (!resizer) return;
+        const colKey = resizer.dataset.col;
+        if (!colKey || !(colKey in DEFAULT_TABLE_COLUMNS)) return;
+        event.preventDefault();
+        const fitted = buildAutoFitColumnWidths();
+        if (fitted[colKey] !== undefined) {
+          state.settings.parameterTableColumns[colKey] = fitted[colKey];
+          applyColumnWidths();
+          saveSettingsPartial({ parameterTableColumns: state.settings.parameterTableColumns }).catch(() => {});
         }
       });
 
@@ -5121,6 +6938,20 @@
         }
       });
 
+      document.getElementById("autoOpenOnStartToggle").addEventListener("click", async () => {
+        const previousValue = state.settings.autoOpenOnStart === true;
+        const nextValue = !previousValue;
+        state.settings.autoOpenOnStart = nextValue;
+        renderAutoOpenToggle();
+        try {
+          await saveSettingsPartial({ autoOpenOnStart: nextValue });
+        } catch (error) {
+          state.settings.autoOpenOnStart = previousValue;
+          renderAutoOpenToggle();
+          setGlobalStatus(error.message, "error");
+        }
+      });
+
       document.getElementById("toggleRevertButtonsButton").addEventListener("click", async () => {
         const previousValue = state.settings.showRevertButtons !== false;
         const nextValue = !previousValue;
@@ -5135,6 +6966,53 @@
           state.settings.showRevertButtons = previousValue;
           renderRevertToggle();
           renderParameters(state.parameters);
+          applyColumnWidths();
+          setGlobalStatus(error.message, "error");
+        }
+      });
+
+      document.getElementById("commentColumnButton").addEventListener("click", async () => {
+        const previousValue = state.settings.showCommentColumn === true;
+        const nextValue = !previousValue;
+        state.settings.showCommentColumn = nextValue;
+        renderCommentColumnToggle();
+        document.body.classList.toggle("hide-comment", !nextValue);
+
+        try {
+          await saveSettingsPartial({ showCommentColumn: nextValue });
+        } catch (error) {
+          state.settings.showCommentColumn = previousValue;
+          renderCommentColumnToggle();
+          document.body.classList.toggle("hide-comment", !previousValue);
+          setGlobalStatus(error.message, "error");
+        }
+      });
+
+      document.getElementById("textTunerSidebarButton").addEventListener("click", async () => {
+        if (!TEMP_TEXT_TUNER_ENABLED) {
+          return;
+        }
+
+        const previousValue = state.settings.showTextTunerSidebar !== false;
+        const nextValue = !previousValue;
+        state.settings.showTextTunerSidebar = nextValue;
+        renderTextTunerSidebarToggle();
+        applyTextTunerSidebarVisibility();
+
+        const partialSettings = { showTextTunerSidebar: nextValue };
+        if (state.settings.autoFitColumns === true) {
+          const nextColumns = buildAutoFitColumnWidths();
+          state.settings.parameterTableColumns = nextColumns;
+          partialSettings.parameterTableColumns = nextColumns;
+        }
+        applyColumnWidths();
+
+        try {
+          await saveSettingsPartial(partialSettings);
+        } catch (error) {
+          state.settings.showTextTunerSidebar = previousValue;
+          renderTextTunerSidebarToggle();
+          applyTextTunerSidebarVisibility();
           applyColumnWidths();
           setGlobalStatus(error.message, "error");
         }
@@ -5464,6 +7342,15 @@
       document.getElementById("checkUpdatesButton").addEventListener("click", () => handleCheckForUpdates());
       document.getElementById("updateCardInstallButton").addEventListener("click", () => handleInstallUpdate());
 
+      document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") {
+          return;
+        }
+        if (isSettingsPanelOpen()) {
+          setSettingsPanelOpen(false);
+        }
+      });
+
       window.fusionJavaScriptHandler = {
         handle(action, payload) {
           try {
@@ -5482,6 +7369,7 @@
 
       window.addEventListener("load", async () => {
         try {
+          initializeTextTunerCard();
           applySettings(state.settings);
           syncDefaultUnit(true);
           renderUnitPicker();
@@ -5492,9 +7380,22 @@
             throw new Error("Fusion palette bridge is not available.");
           }
 
+          if (TEMP_TEXT_TUNER_ENABLED && !state.textTunerStateLoaded) {
+            try {
+              const tunerResponse = await sendToFusion("getTextTunerState");
+              if (tunerResponse && tunerResponse.ok) {
+                applyPersistedTextTunerValues(tunerResponse.values || {});
+              }
+            } catch (_error) {
+            }
+          }
+
           const response = await sendToFusion("ready");
           if (response.ok) {
             applyStateFromFusion(response);
+            if (TEMP_TEXT_TUNER_ENABLED && !state.textTunerStateLoaded) {
+              applyPersistedTextTunerValues(state.textTunerState || {});
+            }
             setGlobalStatus(`Loaded ${response.parameters.length} parameter(s).`, "success");
             await refreshMetadataDebug();
 

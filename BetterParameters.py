@@ -44,6 +44,7 @@ PALETTE_NAME = "Better Parameters"
 PALETTE_FILE = "palette.html"
 COMMAND_RESOURCES = "./Resources/BetterParameters"
 SETTINGS_FILE = "settings.json"
+TEXT_TUNER_STATE_FILE = "text_tuner_temp.json"
 DOCUMENT_ORDER_DIRNAME = "document_orders"
 DEFAULT_PALETTE_WIDTH = 520
 DEFAULT_PALETTE_HEIGHT = 640
@@ -96,11 +97,11 @@ DEFAULT_SETTINGS = {
         "height": DEFAULT_PALETTE_HEIGHT,
     },
     "parameterTableColumns": {
-        "name": 21,
-        "expression": 27,
-        "preview": 16,
-        "comment": 24,
-        "actions": 8,
+        "name": 140,
+        "expression": 180,
+        "preview": 80,
+        "comment": 220,
+        "actions": 120,
     },
     "unitCategoryState": {
         "Length": True,
@@ -118,10 +119,13 @@ DEFAULT_SETTINGS = {
     },
     "customUnits": [],
     "showRevertButtons": True,
+    "showCommentColumn": False,
+    "showTextTunerSidebar": True,
     "autoFitColumns": True,
     "pinnedUnits": [],
     "autoCheckUpdates": True,
     "updateCheck": {},
+    "autoOpenOnStart": False,
 }
 TARGET_PANEL_IDS = [
     PANEL_ID,
@@ -161,6 +165,13 @@ def run(context):
         _register_command()
         _register_application_events()
         threading.Thread(target=_background_update_check, daemon=True).start()
+
+        try:
+            if _load_settings().get("autoOpenOnStart", False):
+                palette = _ensure_palette()
+                palette.isVisible = True
+        except Exception:
+            pass
     except Exception:
         _message_box(f"Add-in start failed:\n{traceback.format_exc()}")
 
@@ -427,6 +438,20 @@ def _handle_palette_action(action, data):
         _send_to_palette("renderState", payload)
         return payload
 
+    if action == "getTextTunerState":
+        return {
+            "ok": True,
+            "values": _load_text_tuner_state(),
+        }
+
+    if action == "saveTextTunerState":
+        values = data.get("values") if isinstance(data, dict) else {}
+        saved_values = _save_text_tuner_state(values)
+        return {
+            "ok": True,
+            "values": saved_values,
+        }
+
     if action == "validateParameterName":
         return _validate_parameter_name_response(data.get("name", ""))
 
@@ -520,6 +545,8 @@ def _current_state_payload(settings=None):
         "documentDefaults": {
             "unit": _default_document_unit(),
         },
+        "textTunerState": _load_text_tuner_state(),
+        "fusionTheme": _detect_fusion_theme(),
         "updateInfo": _build_update_info_payload(active_settings),
     }
 
@@ -652,6 +679,57 @@ def _collect_all_parameter_names():
 
 def _settings_path():
     return Path(__file__).resolve().with_name(SETTINGS_FILE)
+
+
+def _text_tuner_state_path():
+    root = _app_support_root()
+    root.mkdir(parents=True, exist_ok=True)
+    return root / TEXT_TUNER_STATE_FILE
+
+
+def _normalize_text_tuner_state(values):
+    if not isinstance(values, dict):
+        return {}
+
+    normalized = {}
+    for raw_key, raw_value in values.items():
+        if not isinstance(raw_key, str):
+            continue
+        key = raw_key.strip()
+        if not key or len(key) > 80:
+            continue
+
+        if raw_value is None:
+            continue
+        text = str(raw_value).strip()
+        if not text:
+            continue
+        if len(text) > 300:
+            text = text[:300]
+        normalized[key] = text
+        if len(normalized) >= 200:
+            break
+    return normalized
+
+
+def _load_text_tuner_state():
+    path = _text_tuner_state_path()
+    if not path.exists():
+        return {}
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return _normalize_text_tuner_state(loaded)
+
+
+def _save_text_tuner_state(values):
+    normalized = _normalize_text_tuner_state(values)
+    path = _text_tuner_state_path()
+    temp_path = path.with_suffix(".tmp")
+    temp_path.write_text(json.dumps(normalized, indent=2), encoding="utf-8")
+    temp_path.replace(path)
+    return normalized
 
 
 def _document_order_root():
@@ -980,6 +1058,8 @@ def _load_settings():
     settings["unitCategoryState"] = dict(DEFAULT_SETTINGS["unitCategoryState"])
     settings["customUnits"] = []
     settings["showRevertButtons"] = bool(DEFAULT_SETTINGS["showRevertButtons"])
+    settings["showCommentColumn"] = bool(DEFAULT_SETTINGS["showCommentColumn"])
+    settings["showTextTunerSidebar"] = bool(DEFAULT_SETTINGS["showTextTunerSidebar"])
     settings["updateCheck"] = {}
     settings_path = _settings_path()
     if not settings_path.exists():
@@ -1037,6 +1117,12 @@ def _load_settings():
         if isinstance(loaded.get("showRevertButtons"), bool):
             settings["showRevertButtons"] = loaded["showRevertButtons"]
 
+        if isinstance(loaded.get("showCommentColumn"), bool):
+            settings["showCommentColumn"] = loaded["showCommentColumn"]
+
+        if isinstance(loaded.get("showTextTunerSidebar"), bool):
+            settings["showTextTunerSidebar"] = loaded["showTextTunerSidebar"]
+
         if isinstance(loaded.get("autoFitColumns"), bool):
             settings["autoFitColumns"] = loaded["autoFitColumns"]
 
@@ -1060,6 +1146,9 @@ def _load_settings():
 
         if isinstance(loaded.get("autoCheckUpdates"), bool):
             settings["autoCheckUpdates"] = loaded["autoCheckUpdates"]
+
+        if isinstance(loaded.get("autoOpenOnStart"), bool):
+            settings["autoOpenOnStart"] = loaded["autoOpenOnStart"]
 
         if isinstance(loaded.get("updateCheck"), dict):
             settings["updateCheck"] = _normalized_update_check(loaded["updateCheck"])
@@ -1120,13 +1209,7 @@ def _save_settings(data):
                     raise ValueError(f'"parameterTableColumns.{key}" must be a positive number.')
                 normalized[key] = float(incoming_value)
 
-        total = sum(normalized.values())
-        if total <= 0:
-            raise ValueError('"parameterTableColumns" total must be greater than 0.')
-
-        settings["parameterTableColumns"] = {
-            key: round((value / total) * 100, 2) for key, value in normalized.items()
-        }
+        settings["parameterTableColumns"] = normalized
 
     category_state = data.get("unitCategoryState")
     if category_state is not None:
@@ -1165,6 +1248,18 @@ def _save_settings(data):
             raise ValueError('"showRevertButtons" must be a boolean.')
         settings["showRevertButtons"] = show_revert_buttons
 
+    if "showCommentColumn" in data:
+        show_comment_column = data.get("showCommentColumn")
+        if not isinstance(show_comment_column, bool):
+            raise ValueError('"showCommentColumn" must be a boolean.')
+        settings["showCommentColumn"] = show_comment_column
+
+    if "showTextTunerSidebar" in data:
+        show_text_tuner_sidebar = data.get("showTextTunerSidebar")
+        if not isinstance(show_text_tuner_sidebar, bool):
+            raise ValueError('"showTextTunerSidebar" must be a boolean.')
+        settings["showTextTunerSidebar"] = show_text_tuner_sidebar
+
     if "autoFitColumns" in data:
         auto_fit_columns = data.get("autoFitColumns")
         if not isinstance(auto_fit_columns, bool):
@@ -1199,6 +1294,12 @@ def _save_settings(data):
 
     if "updateCheck" in data:
         settings["updateCheck"] = _normalized_update_check(data["updateCheck"])
+
+    if "autoOpenOnStart" in data:
+        auto_open = data.get("autoOpenOnStart")
+        if not isinstance(auto_open, bool):
+            raise ValueError('"autoOpenOnStart" must be a boolean.')
+        settings["autoOpenOnStart"] = auto_open
 
     settings_path = _settings_path()
     temp_path = settings_path.with_suffix(".tmp")
@@ -1242,6 +1343,19 @@ def _default_document_unit():
         return default_unit or "mm"
     except Exception:
         return "mm"
+
+
+def _detect_fusion_theme():
+    if not app:
+        return None
+    try:
+        prefs = app.preferences.generalPreferences
+        theme = prefs.activeUserInterfaceTheme
+        if theme == adsk.core.UserInterfaceThemes.DarkUserInterfaceTheme:
+            return "dark"
+        return "light"
+    except Exception:
+        return None
 
 
 def _active_document_info():
