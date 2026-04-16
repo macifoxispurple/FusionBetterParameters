@@ -579,8 +579,36 @@
         color: var(--error);
       }
 
+      .status.warning {
+        color: var(--accent);
+      }
+
       .status.success {
         color: var(--success);
+      }
+
+      .contract-error-banner {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 4000;
+        padding: 10px 12px;
+        background: color-mix(in srgb, var(--error) 86%, var(--panel));
+        color: var(--accent-text);
+        border-bottom: 1px solid color-mix(in srgb, var(--error) 70%, var(--line));
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .contract-error-banner[hidden] {
+        display: none !important;
+      }
+
+      body.contract-frozen .page,
+      body.contract-frozen .settings-panel,
+      body.contract-frozen .settings-backdrop {
+        pointer-events: none !important;
       }
 
       .global-status {
@@ -1108,7 +1136,7 @@
       }
 
       body.auto-hide-unit td.unit-cell,
-      body.auto-hide-unit th.preview-col {
+      body.auto-hide-unit th.unit-col {
         display: none;
       }
 
@@ -2575,11 +2603,11 @@
             <table>
               <thead>
                 <tr>
-                  <th class="parameter-col"><span class="header-label">Parameter</span><div class="column-resizer" data-col="name"></div></th>
-                  <th><span class="header-label">Name</span><div class="column-resizer" data-col="expression"></div></th>
-                  <th class="preview-col"><span class="header-label">Unit</span><div class="column-resizer" data-col="preview"></div></th>
-                  <th><span class="header-label">Expression</span><div class="column-resizer" data-col="comment"></div></th>
-                  <th class="value-col"><span class="header-label">Value</span><div class="column-resizer" data-col="actions"></div></th>
+                  <th class="parameter-col"><span class="header-label">Parameter</span><div class="column-resizer" data-col="parameter"></div></th>
+                  <th><span class="header-label">Name</span><div class="column-resizer" data-col="name"></div></th>
+                  <th class="unit-col"><span class="header-label">Unit</span><div class="column-resizer" data-col="unit"></div></th>
+                  <th><span class="header-label">Expression</span><div class="column-resizer" data-col="expression"></div></th>
+                  <th class="value-col"><span class="header-label">Value</span><div class="column-resizer" data-col="value"></div></th>
                   <th class="comment-col comments-col"><span class="header-label">Comments</span></th>
                 </tr>
               </thead>
@@ -2688,6 +2716,7 @@
         </div>
       </div>
     </div>
+    <div id="contractErrorBanner" class="contract-error-banner" hidden></div>
 
     <script>
       const UNIT_CATEGORIES = [
@@ -2834,17 +2863,42 @@
       const DEFAULT_SHOW_TEXT_TUNER_SIDEBAR = true;
 
       const DEFAULT_TABLE_COLUMNS = {
-        name: 140,
-        expression: 180,
-        preview: 80,
-        comment: 220,
-        actions: 120
+        parameter: 140,
+        name: 180,
+        unit: 80,
+        expression: 220,
+        value: 120
       };
       const NARROW_NAME_EXPRESSION_ONLY_PX = 520;
 
-      const COLUMN_KEYS = ["name", "expression", "preview", "comment", "actions"];
+      // Maps new column key names → old names stored before the rename.
+      // Used in migrateColumnWidths to upgrade persisted settings transparently.
+      const COLUMN_KEY_OLD_NAMES = { parameter: "name", name: "expression", unit: "preview", expression: "comment", value: "actions" };
+
+      const COLUMN_KEYS = ["parameter", "name", "unit", "expression", "value"];
       const UNGROUPED_GROUP_LABEL = "Ungrouped";
       const FAVORITES_GROUP_LABEL = "\u2605 Favorites";
+      const API_VERSION_EXPECTED = 1;
+      const NORMATIVE_ACTIONS = new Set([
+        "ready", "refresh", "createParameter", "deleteParameter", "updateParameter", "revertParameter",
+        "setParameterFavorite", "setParameterGroup", "renameGroup", "deleteGroup",
+        "saveParameterOrder", "saveGroupUiState", "saveSettings", "savePaletteGeometry",
+        "getTextTunerState", "saveTextTunerState",
+        "validateParameterName", "validateExpression", "previewExpression", "validateUnit",
+        "checkForUpdates", "downloadAndStageUpdate",
+        "syncMetadataJsonToFusion", "syncMetadataFusionToJson", "repairMetadata"
+      ]);
+      const MUTATING_ACTIONS = new Set([
+        "ready", "refresh", "createParameter", "deleteParameter", "updateParameter", "revertParameter",
+        "setParameterFavorite", "setParameterGroup", "renameGroup", "deleteGroup",
+        "saveParameterOrder", "saveGroupUiState", "saveSettings", "savePaletteGeometry",
+        "saveTextTunerState", "checkForUpdates", "downloadAndStageUpdate",
+        "syncMetadataJsonToFusion", "syncMetadataFusionToJson", "repairMetadata"
+      ]);
+      const READ_ONLY_OR_VALIDATION_ACTIONS = new Set([
+        "getTextTunerState", "validateParameterName", "validateExpression", "previewExpression", "validateUnit"
+      ]);
+      const MOCK_BRIDGE_ENABLED = !!window.__BP_USE_MOCK_BRIDGE;
 
       const EXPRESSION_FUNCTIONS = [
         "abs", "acos", "acosh", "and", "asin", "asinh", "atan", "atanh",
@@ -3084,6 +3138,10 @@
         textTunerUiInitialized: false,
         hasLoadedFusionSettings: false,
         suppressNextNarrowAutoFit: false,
+        contractFrozen: false,
+        lastGoodState: null,
+        debugMetadataSnapshot: null,
+        lastSyncResult: null,
         expandedRows: {},
         commentOpenRows: {},
         selectedRow: null,
@@ -3102,7 +3160,10 @@
         if (vals.length === 0 || vals.every(v => v <= 100)) return { ...DEFAULT_TABLE_COLUMNS };
         const result = { ...DEFAULT_TABLE_COLUMNS };
         for (const k of COLUMN_KEYS) {
-          if (typeof stored[k] === "number" && stored[k] > 0) result[k] = Math.round(stored[k]);
+          // Try new key name first, then fall back to old key name for stored settings
+          // written before the column key rename (parameter/name/unit/expression/value).
+          const raw = stored[k] ?? stored[COLUMN_KEY_OLD_NAMES[k]];
+          if (typeof raw === "number" && raw > 0) result[k] = Math.round(raw);
         }
         return result;
       }
@@ -3117,7 +3178,7 @@
         });
       }
 
-      const COLUMN_MIN_PX = { name: 60, expression: 60, preview: 40, comment: 60, actions: 60 };
+      const COLUMN_MIN_PX = { parameter: 60, name: 60, unit: 40, expression: 60, value: 60 };
 
       function measureTextWidth(text, font) {
         const canvas = measureTextWidth.canvas || (measureTextWidth.canvas = document.createElement("canvas"));
@@ -3149,7 +3210,7 @@
         }, 160);
 
         const unitCells = Array.from(document.querySelectorAll("#parameterRows tr[data-parameter-key] td.unit-cell"));
-        const unitHeaderLabel = table.querySelector("thead th.preview-col .header-label");
+        const unitHeaderLabel = table.querySelector("thead th.unit-col .header-label");
         const unitSampleCell = unitCells[0] || null;
         const unitCellStyle = unitSampleCell ? getComputedStyle(unitSampleCell) : null;
         const unitPadX = unitCellStyle
@@ -3173,35 +3234,35 @@
         const containerWidth = wrap.offsetWidth || 600;
         if (containerWidth < NARROW_NAME_EXPRESSION_ONLY_PX) {
           const snugNamePx = Math.max(
-            COLUMN_MIN_PX.expression,
+            COLUMN_MIN_PX.name,
             Math.min(
               expressionPx,
-              Math.max(COLUMN_MIN_PX.expression, containerWidth - COLUMN_MIN_PX.comment)
+              Math.max(COLUMN_MIN_PX.name, containerWidth - COLUMN_MIN_PX.expression)
             )
           );
-          const fillExpressionPx = Math.max(COLUMN_MIN_PX.comment, containerWidth - snugNamePx);
+          const fillExpressionPx = Math.max(COLUMN_MIN_PX.expression, containerWidth - snugNamePx);
           return {
-            name: Math.max(COLUMN_MIN_PX.name, namePx),
-            expression: snugNamePx,
-            preview: Math.max(COLUMN_MIN_PX.preview, previewPx),
-            comment: fillExpressionPx,
-            actions: Math.max(COLUMN_MIN_PX.actions, actionsPx)
+            parameter: Math.max(COLUMN_MIN_PX.parameter, namePx),
+            name: snugNamePx,
+            unit: Math.max(COLUMN_MIN_PX.unit, previewPx),
+            expression: fillExpressionPx,
+            value: Math.max(COLUMN_MIN_PX.value, actionsPx)
           };
         }
 
         const showComments = !document.body.classList.contains("hide-comment");
         const fixedPx = namePx + expressionPx + previewPx + actionsPx;
         const remaining = Math.max(0, containerWidth - fixedPx);
-        const commentPx = showComments
-          ? Math.max(COLUMN_MIN_PX.comment, Math.round(remaining * 2 / 3))
-          : Math.max(COLUMN_MIN_PX.comment, remaining);
+        const expressionColPx = showComments
+          ? Math.max(COLUMN_MIN_PX.expression, Math.round(remaining * 2 / 3))
+          : Math.max(COLUMN_MIN_PX.expression, remaining);
 
         return {
-          name: Math.max(COLUMN_MIN_PX.name, namePx),
-          expression: Math.max(COLUMN_MIN_PX.expression, expressionPx),
-          preview: Math.max(COLUMN_MIN_PX.preview, previewPx),
-          comment: commentPx,
-          actions: Math.max(COLUMN_MIN_PX.actions, actionsPx)
+          parameter: Math.max(COLUMN_MIN_PX.parameter, namePx),
+          name: Math.max(COLUMN_MIN_PX.name, expressionPx),
+          unit: Math.max(COLUMN_MIN_PX.unit, previewPx),
+          expression: expressionColPx,
+          value: Math.max(COLUMN_MIN_PX.value, actionsPx)
         };
       }
 
@@ -3218,8 +3279,8 @@
         COLUMN_KEYS.forEach((key) => {
           columnPx[key] = Math.round(cols[key] || DEFAULT_TABLE_COLUMNS[key]);
         });
-        const requiredKeys = ["expression", "comment"]; // Keep Name + Expression visible.
-        const optionalKeysByPriority = ["actions", "name", "preview"]; // Value -> Parameter -> Unit
+        const requiredKeys = ["name", "expression"]; // Keep Name + Expression visible.
+        const optionalKeysByPriority = ["value", "parameter", "unit"]; // Value -> Parameter -> Unit
         const visibleMainKeys = [...requiredKeys];
         let visibleMainPx = requiredKeys.reduce((s, key) => s + (columnPx[key] || 0), 0);
 
@@ -3233,9 +3294,9 @@
           });
         }
 
-        const autoHideParameter = !isNarrowMode && !visibleMainKeys.includes("name");
-        const autoHideUnit = !isNarrowMode && !visibleMainKeys.includes("preview");
-        const autoHideValue = !isNarrowMode && !visibleMainKeys.includes("actions");
+        const autoHideParameter = !isNarrowMode && !visibleMainKeys.includes("parameter");
+        const autoHideUnit = !isNarrowMode && !visibleMainKeys.includes("unit");
+        const autoHideValue = !isNarrowMode && !visibleMainKeys.includes("value");
         const autoHideComments = !isNarrowMode && (userShowsComments && ((visibleMainPx + 120) > containerWidth));
         document.body.classList.toggle("auto-hide-comments", autoHideComments);
         document.body.classList.toggle("auto-hide-unit", autoHideUnit);
@@ -3261,7 +3322,7 @@
         const adjustedMainPx = { ...columnPx };
         if (!commentsVisible && containerWidth > visibleMainPx) {
           const slackPx = containerWidth - visibleMainPx;
-          const fillPriority = ["comment", "expression", "actions", "preview", "name"];
+          const fillPriority = ["expression", "name", "value", "unit", "parameter"];
           const fillKey = fillPriority.find((key) => visibleMainKeys.includes(key));
           if (fillKey) {
             adjustedMainPx[fillKey] = (adjustedMainPx[fillKey] || 0) + slackPx;
@@ -3292,10 +3353,10 @@
 
       function getHiddenColumnKeySet() {
         const hidden = new Set();
-        if (document.body.classList.contains("auto-hide-parameter")) hidden.add("name");
-        if (document.body.classList.contains("auto-hide-unit")) hidden.add("preview");
-        if (document.body.classList.contains("auto-hide-value")) hidden.add("actions");
-        if (document.body.classList.contains("auto-hide-comments") || document.body.classList.contains("hide-comment")) hidden.add("comment");
+        if (document.body.classList.contains("auto-hide-parameter")) hidden.add("parameter");
+        if (document.body.classList.contains("auto-hide-unit")) hidden.add("unit");
+        if (document.body.classList.contains("auto-hide-value")) hidden.add("value");
+        if (document.body.classList.contains("auto-hide-comments") || document.body.classList.contains("hide-comment")) hidden.add("expression");
         return hidden;
       }
 
@@ -5122,7 +5183,11 @@
         try {
           const response = await sendToFusion("saveTextTunerState", { values });
           if (response && response.ok) {
-            state.textTunerState = { ...(response.values || values || {}) };
+            applyStateFromFusion(response, { source: "response", action: "saveTextTunerState" });
+            const persisted = (response.state && response.state.textTunerState && typeof response.state.textTunerState === "object")
+              ? response.state.textTunerState
+              : (values || {});
+            applyPersistedTextTunerValues(persisted);
           }
         } catch (_error) {
         }
@@ -5344,7 +5409,7 @@
         setGlobalStatus(`Deleted group ${existing}.`, "success");
       }
 
-      function applyStateFromFusion(payload) {
+      function applyState(payload) {
         if (payload.document) {
           state.document = { ...state.document, ...payload.document };
           const docLabel = document.getElementById("docNameLabel");
@@ -5424,25 +5489,131 @@
         syncDefaultUnit();
       }
 
-      async function refreshIfDocumentChanged() {
-        try {
-          const response = await sendToFusion("getActiveDocumentInfo");
-          if (!response.ok || !response.document) {
-            return;
-          }
-
-          const activeDocument = response.document;
-          const currentId = state.document.id || "";
-          const activeId = activeDocument.id || "";
-          const currentName = state.document.name || "";
-          const activeName = activeDocument.name || "";
-          const sameDocument = activeId ? activeId === currentId : activeName === currentName;
-
-          if (!sameDocument) {
-            await refreshParameters();
-          }
-        } catch (_error) {
+      function hardFailContract(message) {
+        state.contractFrozen = true;
+        document.body.classList.add("contract-frozen");
+        const banner = document.getElementById("contractErrorBanner");
+        if (banner) {
+          banner.hidden = false;
+          banner.textContent = message || "Contract validation failed. UI frozen to prevent unsafe actions.";
         }
+        setGlobalStatus(message || "Contract validation failed. UI frozen.", "error");
+      }
+
+      function validateEnvelope(envelope, context = {}) {
+        const source = context.source || "response";
+        const action = context.action || "";
+        if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
+          return { ok: false, message: "Envelope is not an object." };
+        }
+        if (!Object.prototype.hasOwnProperty.call(envelope, "ok")) {
+          return { ok: false, message: 'Envelope missing required field "ok".' };
+        }
+        if (!Object.prototype.hasOwnProperty.call(envelope, "message")) {
+          return { ok: false, message: 'Envelope missing required field "message".' };
+        }
+        if (!Object.prototype.hasOwnProperty.call(envelope, "state")) {
+          return { ok: false, message: 'Envelope missing required field "state".' };
+        }
+        if (typeof envelope.ok !== "boolean") {
+          return { ok: false, message: 'Envelope field "ok" must be boolean.' };
+        }
+        if (typeof envelope.message !== "string") {
+          return { ok: false, message: 'Envelope field "message" must be string.' };
+        }
+        const hasStateObject = envelope.state && typeof envelope.state === "object" && !Array.isArray(envelope.state);
+        const shouldHaveStateObject = source === "push" || (MUTATING_ACTIONS.has(action) && envelope.ok === true);
+        if (shouldHaveStateObject && !hasStateObject) {
+          return { ok: false, message: "Mutating/push envelope must include object state." };
+        }
+        if (READ_ONLY_OR_VALIDATION_ACTIONS.has(action) && envelope.state !== null) {
+          return { ok: false, message: "Read-only/validation envelope must have state=null." };
+        }
+        if (source === "response" && action && !NORMATIVE_ACTIONS.has(action)) {
+          return { ok: false, message: `Action "${action}" is not in normative API list.` };
+        }
+        if (hasStateObject) {
+          if (!Object.prototype.hasOwnProperty.call(envelope.state, "apiVersion")) {
+            return { ok: false, message: 'State payload missing required field "apiVersion".' };
+          }
+          if (envelope.state.apiVersion !== API_VERSION_EXPECTED) {
+            return { ok: false, message: `API version mismatch. Expected ${API_VERSION_EXPECTED}, got ${envelope.state.apiVersion}.` };
+          }
+        }
+        return { ok: true };
+      }
+
+      function parseBridgePayload(rawResponse) {
+        if (!rawResponse) {
+          return {};
+        }
+        if (typeof rawResponse === "string") {
+          return JSON.parse(rawResponse);
+        }
+        if (typeof rawResponse === "object") {
+          return rawResponse;
+        }
+        throw new Error(`Unexpected bridge response type: ${typeof rawResponse}`);
+      }
+
+      function buildMockStatePayload() {
+        return {
+          apiVersion: API_VERSION_EXPECTED,
+          parameters: Array.isArray(state.parameters) ? state.parameters : [],
+          groups: Array.isArray(state.groups) ? state.groups : [],
+          groupUi: state.groupUi && typeof state.groupUi === "object" ? normalizeGroupUiState(state.groupUi) : { order: [], collapsed: {} },
+          parameterNames: Array.isArray(state.parameterNames) ? state.parameterNames : [],
+          settings: state.settings && typeof state.settings === "object" ? state.settings : {},
+          document: state.document && typeof state.document === "object" ? state.document : { id: "", name: "" },
+          documentDefaults: state.documentDefaults && typeof state.documentDefaults === "object" ? state.documentDefaults : { unit: "mm" },
+          textTunerState: state.textTunerState && typeof state.textTunerState === "object" ? state.textTunerState : {},
+          fusionTheme: document.documentElement.dataset.theme === "dark" ? "dark" : "light",
+          updateInfo: state.updateInfo && typeof state.updateInfo === "object" ? state.updateInfo : {}
+        };
+      }
+
+      function createMockBridge() {
+        return {
+          async fusionSendData(action, _jsonPayload) {
+            const fixtureMode = String(window.__BP_MOCK_FIXTURE_MODE || "").trim().toLowerCase();
+            if (fixtureMode === "malformed_missing_state") {
+              return { ok: true, message: "mock malformed" };
+            }
+            if (fixtureMode === "malformed_bad_api") {
+              return { ok: true, message: "", state: { ...buildMockStatePayload(), apiVersion: 999 } };
+            }
+            if (fixtureMode === "error_mutating" && MUTATING_ACTIONS.has(action)) {
+              return { ok: false, message: `Mock mutating failure: ${action}`, state: null, traceback: "" };
+            }
+            if (fixtureMode === "error_readonly" && action === "getTextTunerState") {
+              return { ok: false, message: "Mock read-only failure: getTextTunerState", state: null, traceback: "" };
+            }
+            if (fixtureMode === "error_validation" && READ_ONLY_OR_VALIDATION_ACTIONS.has(action) && action !== "getTextTunerState") {
+              return { ok: false, message: `Mock validation failure: ${action}`, state: null, traceback: "" };
+            }
+            if (
+              fixtureMode === "error_metadata"
+              && (action === "syncMetadataJsonToFusion" || action === "syncMetadataFusionToJson" || action === "repairMetadata")
+            ) {
+              return { ok: false, message: `Mock metadata failure: ${action}`, state: null, traceback: "" };
+            }
+
+            const statePayload = buildMockStatePayload();
+            if (MUTATING_ACTIONS.has(action)) {
+              return { ok: true, message: "", state: statePayload };
+            }
+            if (action === "getTextTunerState") {
+              return { ok: true, message: "", state: null, values: statePayload.textTunerState || {} };
+            }
+            if (action === "previewExpression") {
+              return { ok: true, message: "", state: null, preview: "0 mm" };
+            }
+            if (action === "validateExpression" || action === "validateParameterName" || action === "validateUnit") {
+              return { ok: true, message: "", state: null };
+            }
+            return { ok: false, message: `Unknown action: ${action}`, state: null, traceback: "" };
+          }
+        };
       }
 
       function getFusionBridge() {
@@ -5454,7 +5625,59 @@
           return window.adsk;
         }
 
+        if (MOCK_BRIDGE_ENABLED) {
+          return createMockBridge();
+        }
+
         return null;
+      }
+
+      async function refreshIfDocumentChanged() {
+        try {
+          await refreshParameters();
+        } catch (_error) {
+        }
+      }
+
+      function applyStateFromFusion(envelope, context = {}) {
+        const validation = validateEnvelope(envelope, context);
+        if (!validation.ok) {
+          const source = context.source || "response";
+          const action = context.action ? ` (${context.action})` : "";
+          const message = `Backend contract error${action} from ${source}: ${validation.message}`;
+          hardFailContract(message);
+          throw new Error(message);
+        }
+
+        if (envelope.debugMetadata && typeof envelope.debugMetadata === "object") {
+          state.debugMetadataSnapshot = envelope.debugMetadata;
+        }
+        if (envelope.syncResult && typeof envelope.syncResult === "object") {
+          state.lastSyncResult = envelope.syncResult;
+        }
+
+        if (!envelope.ok) {
+          setGlobalStatus(envelope.message || "Action failed.", "error");
+          if (state.debugMetadataSnapshot) {
+            renderMetadataDebug(state.debugMetadataSnapshot, state.lastSyncResult);
+          }
+          return envelope;
+        }
+
+        if (envelope.state && typeof envelope.state === "object") {
+          state.lastGoodState = envelope.state;
+          applyState(envelope.state);
+          const warnings = Array.isArray(envelope.state.migrationWarnings) ? envelope.state.migrationWarnings : [];
+          if (warnings.length > 0) {
+            setGlobalStatus(`Migration warnings: ${warnings.join(" | ")}`, "warning");
+          }
+        }
+
+        if (state.debugMetadataSnapshot) {
+          renderMetadataDebug(state.debugMetadataSnapshot, state.lastSyncResult);
+        }
+
+        return envelope;
       }
 
       async function sendToFusion(action, data = {}) {
@@ -5464,19 +5687,14 @@
         }
 
         const rawResponse = await bridge.fusionSendData(action, JSON.stringify(data));
-        if (!rawResponse) {
-          return {};
+        const envelope = parseBridgePayload(rawResponse);
+        const validation = validateEnvelope(envelope, { source: "response", action });
+        if (!validation.ok) {
+          const message = `Backend contract error (${action}): ${validation.message}`;
+          hardFailContract(message);
+          throw new Error(message);
         }
-
-        if (typeof rawResponse === "string") {
-          return JSON.parse(rawResponse);
-        }
-
-        if (typeof rawResponse === "object") {
-          return rawResponse;
-        }
-
-        throw new Error(`Unexpected bridge response type: ${typeof rawResponse}`);
+        return envelope;
       }
 
       async function waitForFusionBridge(maxAttempts = 20, delayMs = 150) {
@@ -5528,7 +5746,11 @@
 
         state.paletteSize = { width, height };
         try {
-          await saveSettingsPartial({ paletteSize: state.paletteSize });
+          const response = await sendToFusion("savePaletteGeometry", { paletteSize: state.paletteSize });
+          if (!response.ok) {
+            throw new Error(response.message || "Palette geometry save failed.");
+          }
+          applyStateFromFusion(response, { source: "response", action: "savePaletteGeometry" });
         } catch (error) {
           setGlobalStatus(error.message, "error");
         }
@@ -6241,8 +6463,8 @@
             throw new Error(response.message || "Refresh failed.");
           }
 
-          applyStateFromFusion(response);
-          setGlobalStatus(`Loaded ${response.parameters.length} parameter(s).`, "success");
+          applyStateFromFusion(response, { source: "response", action: "refresh" });
+          setGlobalStatus(`Loaded ${state.parameters.length} parameter(s).`, "success");
 
           if (state.settings.autoFitColumns === true) {
             requestAnimationFrame(() => {
@@ -6258,15 +6480,12 @@
       }
 
       async function refreshMetadataDebug() {
-        try {
-          const response = await sendToFusion("getMetadataDebugSnapshot");
-          if (!response.ok) {
-            throw new Error(response.message || "Debug snapshot failed.");
-          }
-          renderMetadataDebug(response.debugMetadata || {});
-        } catch (error) {
-          setGlobalStatus(error.message, "error");
+        if (state.debugMetadataSnapshot) {
+          renderMetadataDebug(state.debugMetadataSnapshot, state.lastSyncResult);
+          setGlobalStatus("Metadata debug refreshed from latest sync result.", "success");
+          return;
         }
+        setGlobalStatus("Metadata debug is populated by sync/repair actions.", "warning");
       }
 
       async function runMetadataSync(action, successMessage) {
@@ -6275,8 +6494,7 @@
           if (!response.ok) {
             throw new Error(response.message || "Metadata sync failed.");
           }
-          applyStateFromFusion(response);
-          renderMetadataDebug(response.debugMetadata || {}, response.syncResult || null);
+          applyStateFromFusion(response, { source: "response", action });
           setGlobalStatus(successMessage, "success");
         } catch (error) {
           setGlobalStatus(error.message, "error");
@@ -6326,10 +6544,11 @@
         setSettingsPanelOpen(false);
       });
 
-      document.getElementById("debugRefreshButton").addEventListener("click", async () => {
-        setGlobalStatus("Loading metadata debug snapshot...");
-        await refreshMetadataDebug();
-      });
+      const debugRefreshButton = document.getElementById("debugRefreshButton");
+      if (debugRefreshButton) {
+        debugRefreshButton.disabled = true;
+        debugRefreshButton.title = "Debug metadata updates from sync/repair actions.";
+      }
 
       document.getElementById("debugJsonToFusionButton").addEventListener("click", async () => {
         setGlobalStatus("Syncing JSON metadata to Fusion attributes...");
@@ -7824,7 +8043,7 @@
           try {
             const data = payload ? JSON.parse(payload) : {};
             if (action === "renderState" || action === "renderParameters") {
-              applyStateFromFusion(data);
+              applyStateFromFusion(data, { source: "push", action });
             }
           } catch (error) {
             console.error(error);
@@ -7860,12 +8079,11 @@
 
           const response = await sendToFusion("ready");
           if (response.ok) {
-            applyStateFromFusion(response);
+            applyStateFromFusion(response, { source: "response", action: "ready" });
             if (TEMP_TEXT_TUNER_ENABLED && !state.textTunerStateLoaded) {
               applyPersistedTextTunerValues(state.textTunerState || {});
             }
-            setGlobalStatus(`Loaded ${response.parameters.length} parameter(s).`, "success");
-            await refreshMetadataDebug();
+            setGlobalStatus(`Loaded ${state.parameters.length} parameter(s).`, "success");
 
             window.setTimeout(async () => {
               try {
@@ -7874,7 +8092,7 @@
                 if (autoCheck && !hasCached) {
                   const updateResponse = await sendToFusion("checkForUpdates");
                   if (updateResponse.ok !== false) {
-                    applyStateFromFusion(updateResponse);
+                    applyStateFromFusion(updateResponse, { source: "response", action: "checkForUpdates" });
                   } else {
                     renderUpdateCard();
                   }

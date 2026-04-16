@@ -99,11 +99,11 @@ DEFAULT_SETTINGS = {
     "palettePosition": {},
     "paletteDockingState": "floating",
     "parameterTableColumns": {
-        "name": 140,
-        "expression": 180,
-        "preview": 80,
-        "comment": 220,
-        "actions": 120,
+        "parameter": 140,
+        "name": 180,
+        "unit": 80,
+        "expression": 220,
+        "value": 120,
     },
     "unitCategoryState": {
         "Length": True,
@@ -129,6 +129,16 @@ DEFAULT_SETTINGS = {
     "updateCheck": {},
     "autoOpenOnStart": False,
 }
+# Maps new parameterTableColumns key names → old key names stored in settings before the rename.
+# Used in _load_settings to migrate settings files written before the column key rename.
+_COLUMN_KEY_OLD_NAMES = {
+    "parameter": "name",
+    "name": "expression",
+    "unit": "preview",
+    "expression": "comment",
+    "value": "actions",
+}
+
 ALLOWED_PALETTE_DOCKING_STATE_NAMES = {"floating", "left", "right", "top", "bottom"}
 TARGET_PANEL_IDS = [
     PANEL_ID,
@@ -250,7 +260,7 @@ class DocumentActivatedHandler(adsk.core.DocumentEventHandler):
         try:
             palette = _palette()
             if palette and palette.isVisible:
-                _send_to_palette("renderState", _current_state_payload())
+                _send_to_palette("renderState", _ok_state(_current_state_payload()))
         except Exception:
             if app:
                 app.log(f"Better Parameters documentActivated refresh failed:\n{traceback.format_exc()}")
@@ -276,6 +286,7 @@ class PaletteIncomingHandler(adsk.core.HTMLEventHandler):
                         "ok": False,
                         "message": str(exc),
                         "traceback": traceback.format_exc(),
+                        "state": None,
                     }
                 )
 
@@ -373,160 +384,147 @@ def _ensure_command_controls(cmd_def):
             panel.controls.addCommand(cmd_def)
 
 
-def _handle_palette_action(action, data):
-    if action == "ready":
-        payload = _current_state_payload()
-        _send_to_palette("renderState", payload)
-        return payload
+def _ok_state(state):
+    """Uniform success envelope for actions that return updated application state."""
+    return {"ok": True, "message": "", "state": state}
 
-    if action == "refresh":
-        payload = _current_state_payload()
-        _send_to_palette("renderState", payload)
-        return payload
+
+def _ok_data(**kwargs):
+    """Uniform success envelope for read-only / validation actions (no state change)."""
+    return {"ok": True, "message": "", "state": None, **kwargs}
+
+
+def _handle_palette_action(action, data):
+    if action in ("ready", "refresh"):
+        return _ok_state(_current_state_payload())
 
     if action == "updateParameter":
         _update_parameter(data)
-        payload = _current_state_payload()
-        _send_to_palette("renderState", payload)
-        return payload
+        return _ok_state(_current_state_payload())
 
     if action == "revertParameter":
         _revert_parameter(data)
-        payload = _current_state_payload()
-        _send_to_palette("renderState", payload)
-        return payload
+        return _ok_state(_current_state_payload())
 
     if action == "setParameterFavorite":
         _set_parameter_favorite(data)
-        payload = _current_state_payload()
-        _send_to_palette("renderState", payload)
-        return payload
+        return _ok_state(_current_state_payload())
 
     if action == "setParameterGroup":
         _set_parameter_group(data)
-        payload = _current_state_payload()
-        _send_to_palette("renderState", payload)
-        return payload
+        return _ok_state(_current_state_payload())
 
     if action == "renameGroup":
         _rename_group(data)
-        payload = _current_state_payload()
-        _send_to_palette("renderState", payload)
-        return payload
+        return _ok_state(_current_state_payload())
 
     if action == "deleteGroup":
         _delete_group(data)
-        payload = _current_state_payload()
-        _send_to_palette("renderState", payload)
-        return payload
+        return _ok_state(_current_state_payload())
 
     if action == "saveParameterOrder":
         _save_parameter_order(data)
-        payload = _current_state_payload()
-        _send_to_palette("renderState", payload)
-        return payload
+        return _ok_state(_current_state_payload())
 
     if action == "saveGroupUiState":
         _save_group_ui_state(data)
-        payload = _current_state_payload()
-        _send_to_palette("renderState", payload)
-        return payload
+        return _ok_state(_current_state_payload())
 
     if action == "createParameter":
         _create_parameter(data)
-        payload = _current_state_payload()
-        _send_to_palette("renderState", payload)
-        return payload
+        return _ok_state(_current_state_payload())
+
+    if action == "deleteParameter":
+        _delete_parameter(data)
+        return _ok_state(_current_state_payload())
 
     if action == "saveSettings":
         settings = _save_settings(data)
-        payload = _current_state_payload(settings=settings)
-        _send_to_palette("renderState", payload)
-        return payload
+        return _ok_state(_current_state_payload(settings=settings))
+
+    if action == "savePaletteGeometry":
+        geometry = {k: data[k] for k in ("paletteSize", "palettePosition", "paletteDockingState") if k in data}
+        settings = _save_settings(geometry)
+        return _ok_state(_current_state_payload(settings=settings))
 
     if action == "getTextTunerState":
-        return {
-            "ok": True,
-            "values": _load_text_tuner_state(),
-        }
+        return _ok_data(values=_load_text_tuner_state())
 
     if action == "saveTextTunerState":
         values = data.get("values") if isinstance(data, dict) else {}
-        saved_values = _save_text_tuner_state(values)
-        return {
-            "ok": True,
-            "values": saved_values,
-        }
+        _save_text_tuner_state(values)
+        return _ok_state(_current_state_payload())
 
     if action == "validateParameterName":
-        return _validate_parameter_name_response(data.get("name", ""))
+        result = _validate_parameter_name_response(data.get("name", ""))
+        return {**result, "state": None}
 
     if action == "validateExpression":
-        return _validate_expression_response(
+        result = _validate_expression_response(
             data.get("expression", ""),
             data.get("currentParameterName", ""),
             data.get("units", "")
         )
+        return {**result, "state": None}
 
     if action == "previewExpression":
-        return _preview_expression_response(
+        result = _preview_expression_response(
             data.get("expression", ""),
             data.get("currentParameterName", ""),
             data.get("units", ""),
             data.get("fallbackPreview", "")
         )
+        return {**result, "state": None}
 
     if action == "validateUnit":
-        return _validate_unit_response(data.get("unit", ""))
+        result = _validate_unit_response(data.get("unit", ""))
+        return {**result, "state": None}
 
     if action == "getActiveDocumentInfo":
-        return {"ok": True, "document": _active_document_info()}
+        return _ok_data(document=_active_document_info())
 
     if action == "checkForUpdates":
         release_info = _latest_release_info(force_refresh=True)
         _save_update_check(release_info)
-        return _current_state_payload()
+        return _ok_state(_current_state_payload())
 
     if action == "downloadAndStageUpdate":
         release_info = _latest_release_info(force_refresh=True, allow_cached_on_error=False)
         _stage_update_payload(release_info)
-        return _current_state_payload()
+        return _ok_state(_current_state_payload())
 
     if action == "getMetadataDebugSnapshot":
-        return {
-            "ok": True,
-            "debugMetadata": _collect_metadata_debug_snapshot(),
-        }
+        return _ok_data(debugMetadata=_collect_metadata_debug_snapshot())
 
     if action == "syncMetadataJsonToFusion":
         sync_result = _sync_metadata_json_to_fusion()
-        payload = _current_state_payload()
-        payload["syncResult"] = sync_result
-        payload["debugMetadata"] = _collect_metadata_debug_snapshot()
-        _send_to_palette("renderState", payload)
-        return payload
+        return {
+            **_ok_state(_current_state_payload()),
+            "syncResult": sync_result,
+            "debugMetadata": _collect_metadata_debug_snapshot(),
+        }
 
     if action == "syncMetadataFusionToJson":
         sync_result = _sync_metadata_fusion_to_json()
-        payload = _current_state_payload()
-        payload["syncResult"] = sync_result
-        payload["debugMetadata"] = _collect_metadata_debug_snapshot()
-        _send_to_palette("renderState", payload)
-        return payload
+        return {
+            **_ok_state(_current_state_payload()),
+            "syncResult": sync_result,
+            "debugMetadata": _collect_metadata_debug_snapshot(),
+        }
 
     if action == "repairMetadata":
         sync_result = _repair_metadata()
-        payload = _current_state_payload()
-        payload["syncResult"] = sync_result
-        payload["debugMetadata"] = _collect_metadata_debug_snapshot()
-        _send_to_palette("renderState", payload)
-        return payload
+        return {
+            **_ok_state(_current_state_payload()),
+            "syncResult": sync_result,
+            "debugMetadata": _collect_metadata_debug_snapshot(),
+        }
 
-    return {"ok": False, "message": f"Unknown action: {action}"}
+    return {"ok": False, "message": f"Unknown action: {action}", "state": None}
 
 
 def _push_parameter_list():
-    _send_to_palette("renderState", _current_state_payload())
+    _send_to_palette("renderState", _ok_state(_current_state_payload()))
 
 
 def _send_to_palette(action, payload):
@@ -542,6 +540,7 @@ def _current_state_payload(settings=None):
     parameters = _collect_user_parameters(order_state)
     return {
         "ok": True,
+        "apiVersion": 1,
         "parameters": parameters,
         "groups": _collect_parameter_groups(parameters),
         "groupUi": order_state.get("groupUi", {"order": [], "collapsed": {}}),
@@ -1102,8 +1101,15 @@ def _load_settings():
             if normalized_docking_state in ALLOWED_PALETTE_DOCKING_STATE_NAMES:
                 settings["paletteDockingState"] = normalized_docking_state
         if isinstance(loaded.get("parameterTableColumns"), dict):
-            for key, default_value in DEFAULT_SETTINGS["parameterTableColumns"].items():
-                incoming_value = loaded["parameterTableColumns"].get(key)
+            stored_cols = loaded["parameterTableColumns"]
+            for key in DEFAULT_SETTINGS["parameterTableColumns"]:
+                # Try new key name first; fall back to old key name for settings files
+                # written before the column key rename (parameter/name/unit/expression/value).
+                incoming_value = stored_cols.get(key)
+                if incoming_value is None:
+                    old_key = _COLUMN_KEY_OLD_NAMES.get(key)
+                    if old_key:
+                        incoming_value = stored_cols.get(old_key)
                 if isinstance(incoming_value, (int, float)) and incoming_value > 0:
                     settings["parameterTableColumns"][key] = float(incoming_value)
 
@@ -1387,7 +1393,7 @@ def _default_document_unit():
 
 def _detect_fusion_theme():
     if not app:
-        return None
+        return "light"
     try:
         prefs = app.preferences.generalPreferences
         theme = prefs.activeUserInterfaceTheme
@@ -1395,7 +1401,7 @@ def _detect_fusion_theme():
             return "dark"
         return "light"
     except Exception:
-        return None
+        return "light"
 
 
 def _active_document_info():
@@ -1549,16 +1555,22 @@ def _save_palette_geometry(palette):
 
 def _update_parameter(data):
     design = _require_design()
-    name = _required_text(data, "name")
+    key = str(data.get("key") or "").strip()
+    name = str(data.get("name") or "").strip()
+    if not key and not name:
+        raise ValueError('Either "key" or "name" is required.')
+
     expression = _required_text(data, "expression")
     comment = data.get("comment", "")
 
-    param = design.userParameters.itemByName(name)
-    if not param:
-        raise ValueError(f'User parameter "{name}" was not found.')
+    parameter = _find_user_parameter_by_token(design, key) if key else None
+    if not parameter and name:
+        parameter = design.userParameters.itemByName(name)
+    if not parameter:
+        raise ValueError("User parameter was not found.")
 
-    param.expression = expression
-    param.comment = comment
+    parameter.expression = expression
+    parameter.comment = comment
 
 
 def _revert_parameter(data):
@@ -1790,28 +1802,78 @@ def _save_parameter_order(data):
         ordered_keys.append(key_text)
         seen.add(key_text)
 
-    current_parameters = []
-    params = design.userParameters
-    for index in range(params.count):
-        param = params.item(index)
-        if not param:
-            continue
-        current_parameters.append(
-            {
-                "key": _parameter_entity_token(param),
-                "name": param.name,
-            }
-        )
-
-    current_by_key = {item["key"]: item for item in current_parameters if item.get("key")}
-    merged = []
-    for key in ordered_keys:
-        item = current_by_key.pop(key, None)
-        if item:
-            merged.append(item)
-
-    merged.extend(current_parameters_item for current_parameters_item in current_parameters if current_parameters_item.get("key") in current_by_key)
+    group_filter = _normalize_group_name(data["group"]) if "group" in data else None
     previous_state = _read_document_order_state()
+
+    if group_filter is None:
+        # Flat global reorder (original behaviour): keys describes the full cross-group order.
+        current_parameters = []
+        params = design.userParameters
+        for index in range(params.count):
+            param = params.item(index)
+            if not param:
+                continue
+            current_parameters.append(
+                {
+                    "key": _parameter_entity_token(param),
+                    "name": param.name,
+                }
+            )
+
+        current_by_key = {item["key"]: item for item in current_parameters if item.get("key")}
+        merged = []
+        for key in ordered_keys:
+            item = current_by_key.pop(key, None)
+            if item:
+                merged.append(item)
+        merged.extend(p for p in current_parameters if p.get("key") in current_by_key)
+    else:
+        # Per-group reorder: only reorders parameters within the specified group;
+        # all other groups' relative order is preserved.
+        records = _resolve_document_order_records(design, previous_state.get("parameters") or {})
+        params = design.userParameters
+
+        all_params = []
+        for index in range(params.count):
+            param = params.item(index)
+            if not param:
+                continue
+            key = _parameter_entity_token(param)
+            record = records.get(key) or {}
+            param_group = _normalize_group_name(record.get("group") or _parameter_group_name(param) or "")
+            sort_order = record.get("order") if isinstance(record.get("order"), int) else params.count + index
+            all_params.append({
+                "key": key,
+                "name": param.name,
+                "group": param_group,
+                "_sort": sort_order,
+            })
+        all_params.sort(key=lambda x: x["_sort"])
+
+        # Build new order for the target group.
+        in_group = {p["key"]: p for p in all_params if p["group"].casefold() == group_filter.casefold()}
+        new_group_order = []
+        for key in ordered_keys:
+            item = in_group.pop(key, None)
+            if item:
+                new_group_order.append(item)
+        # Append group members not mentioned in keys (preserve their relative order).
+        for p in all_params:
+            if p["key"] in in_group:
+                new_group_order.append(p)
+
+        # Splice reordered group members back into the full list at the original group slots.
+        group_iter = iter(new_group_order)
+        merged = []
+        for p in all_params:
+            if p["group"].casefold() == group_filter.casefold():
+                try:
+                    merged.append(next(group_iter))
+                except StopIteration:
+                    pass
+            else:
+                merged.append(p)
+
     _persist_document_order_snapshot(merged, previous_state)
     next_state = _read_document_order_state()
     next_state[UI_STATE_RECORD_KEY] = _bump_ui_state_record(next_state.get(UI_STATE_RECORD_KEY))
@@ -1860,6 +1922,25 @@ def _create_parameter(data):
         raise ValueError("Fusion rejected the new parameter.")
 
 
+def _delete_parameter(data):
+    design = _require_design()
+    key = str(data.get("key") or "").strip()
+    name = str(data.get("name") or "").strip()
+    if not key and not name:
+        raise ValueError('Either "key" or "name" is required.')
+
+    parameter = _find_user_parameter_by_token(design, key) if key else None
+    if not parameter and name:
+        parameter = design.userParameters.itemByName(name)
+    if not parameter:
+        raise ValueError("User parameter was not found.")
+
+    try:
+        parameter.deleteMe()
+    except Exception as exc:
+        raise ValueError(f"Fusion could not delete this parameter: {exc}")
+
+
 def _validate_parameter_name_response(name):
     trimmed_name = (name or "").strip()
     if not trimmed_name:
@@ -1887,7 +1968,7 @@ def _validate_parameter_name_response(name):
 def _validate_expression_response(expression, current_parameter_name="", units=""):
     text = (expression or "").strip()
     if not text:
-        return {"ok": False, "message": "Expression is required."}
+        return {"ok": False, "message": "Expression is required.", "isIncomplete": False}
 
     parameter_names = set(_collect_all_parameter_names())
     allowed_identifiers = set(ALLOWED_EXPRESSION_IDENTIFIERS)
@@ -1899,7 +1980,8 @@ def _validate_expression_response(expression, current_parameter_name="", units="
         if current_parameter_name and token == current_parameter_name:
             return {
                 "ok": False,
-                "message": f'Expression cannot reference "{current_parameter_name}" exactly because that is the parameter currently being edited.'
+                "message": f'Expression cannot reference "{current_parameter_name}" exactly because that is the parameter currently being edited.',
+                "isIncomplete": False,
             }
         if token in parameter_names or token in allowed_identifiers:
             continue
@@ -1910,18 +1992,20 @@ def _validate_expression_response(expression, current_parameter_name="", units="
         try:
             validate_units = units or design.unitsManager.defaultLengthUnits or "mm"
             if design.unitsManager.isValidExpression(text, validate_units):
-                return {"ok": True, "message": ""}
+                return {"ok": True, "message": "", "isIncomplete": False}
             if unknown_tokens:
                 token = unknown_tokens[0]
                 case_hint = _case_sensitive_parameter_hint(token, parameter_names)
                 if case_hint:
                     return {
                         "ok": False,
-                        "message": f'Unknown parameter name "{token}". Parameter names are case sensitive. Did you mean "{case_hint}"?'
+                        "message": f'Unknown parameter name "{token}". Parameter names are case sensitive. Did you mean "{case_hint}"?',
+                        "isIncomplete": False,
                     }
                 return {
                     "ok": False,
-                    "message": f'Unknown parameter name "{token}". Parameter names are case sensitive and must match an existing parameter exactly.'
+                    "message": f'Unknown parameter name "{token}". Parameter names are case sensitive and must match an existing parameter exactly.',
+                    "isIncomplete": False,
                 }
             if not design.unitsManager.isValidExpression(text, validate_units):
                 incomplete_hint = _incomplete_expression_hint(text)
@@ -1933,7 +2017,8 @@ def _validate_expression_response(expression, current_parameter_name="", units="
                     }
                 return {
                     "ok": False,
-                    "message": "Expression syntax is invalid. Use explicit operators between terms; parentheses do not imply multiplication."
+                    "message": "Expression syntax is invalid. Use explicit operators between terms; parentheses do not imply multiplication.",
+                    "isIncomplete": False,
                 }
         except Exception:
             pass
@@ -1944,14 +2029,16 @@ def _validate_expression_response(expression, current_parameter_name="", units="
         if case_hint:
             return {
                 "ok": False,
-                "message": f'Unknown parameter name "{token}". Parameter names are case sensitive. Did you mean "{case_hint}"?'
+                "message": f'Unknown parameter name "{token}". Parameter names are case sensitive. Did you mean "{case_hint}"?',
+                "isIncomplete": False,
             }
         return {
             "ok": False,
-            "message": f'Unknown parameter name "{token}". Parameter names are case sensitive and must match an existing parameter exactly.'
+            "message": f'Unknown parameter name "{token}". Parameter names are case sensitive and must match an existing parameter exactly.',
+            "isIncomplete": False,
         }
 
-    return {"ok": True, "message": ""}
+    return {"ok": True, "message": "", "isIncomplete": False}
 
 
 def _incomplete_expression_hint(text):
