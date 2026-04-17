@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 import importlib
 import importlib.util
@@ -454,6 +456,49 @@ def _handle_palette_action(action, data):
     if action == "deleteParameter":
         _delete_parameter(data)
         return _ok_state(_current_state_payload())
+
+    if action == "deleteParameters":
+        result = _delete_parameters_batch(data)
+        return {**result, "state": _current_state_payload() if result["ok"] else None}
+
+    if action == "renameParameter":
+        _rename_parameter(data)
+        return _ok_state(_current_state_payload())
+
+    if action == "validateUnitChange":
+        result = _validate_unit_change_response(data)
+        return {**result, "state": None}
+
+    if action == "updateParameterUnit":
+        new_key = _update_parameter_unit(data)
+        return {**_ok_state(_current_state_payload()), "newKey": new_key}
+
+    if action == "copyParameter":
+        _copy_parameter(data)
+        return _ok_state(_current_state_payload())
+
+    if action == "sortByTimelineOrder":
+        _sort_by_timeline_order()
+        return _ok_state(_current_state_payload())
+
+    if action == "exportParameters":
+        result = _export_parameters(data)
+        if result.get("cancelled"):
+            return {"ok": False, "message": "Export cancelled.", "state": None, "exportedCount": 0, "filePath": ""}
+        return _ok_data(exportedCount=result["exportedCount"], filePath=result["filePath"])
+
+    if action == "importParameters":
+        result = _import_parameters(data)
+        state = _current_state_payload() if result["ok"] else None
+        return {
+            "ok": result["ok"],
+            "message": result["message"],
+            "state": state,
+            "importedCount": result["importedCount"],
+            "skippedCount": result["skippedCount"],
+            "failedCount": result["failedCount"],
+            "failedRows": result["failedRows"],
+        }
 
     if action == "saveSettings":
         settings = _save_settings(data)
@@ -1956,6 +2001,565 @@ def _delete_parameter(data):
         parameter.deleteMe()
     except Exception as exc:
         raise ValueError(f"Fusion could not delete this parameter: {exc}")
+
+
+def _rename_parameter(data):
+    design = _require_design()
+    key = str(data.get("key") or "").strip()
+    name = str(data.get("name") or "").strip()
+    if not key and not name:
+        raise ValueError('Either "key" or "name" is required.')
+    new_name = _required_text(data, "newName")
+
+    parameter = _find_user_parameter_by_token(design, key) if key else None
+    if not parameter and name:
+        parameter = design.userParameters.itemByName(name)
+    if not parameter:
+        raise ValueError("User parameter was not found.")
+
+    validation = _validate_parameter_name_response(new_name)
+    if not validation["ok"]:
+        raise ValueError(validation["message"])
+
+    try:
+        parameter.name = new_name
+    except Exception as exc:
+        raise ValueError(f"Fusion could not rename this parameter: {exc}")
+
+
+def _validate_unit_change_response(data):
+    key = str(data.get("key") or "").strip()
+    name = str(data.get("name") or "").strip()
+    new_unit = str(data.get("newUnit") or "").strip()
+    new_expression = str(data.get("newExpression") or "").strip()
+
+    if not key and not name:
+        return {"ok": False, "message": 'Either "key" or "name" is required.', "isIncomplete": False, "preview": ""}
+    if not new_expression:
+        return {"ok": False, "message": '"newExpression" is required.', "isIncomplete": False, "preview": ""}
+
+    unit_result = _validate_unit_response(new_unit)
+    if not unit_result["ok"]:
+        return {"ok": False, "message": unit_result["message"], "isIncomplete": False, "preview": ""}
+    normalized_unit = unit_result["unit"]
+
+    param_name = ""
+    design = _design()
+    if design:
+        param = _find_user_parameter_by_token(design, key) if key else None
+        if not param and name:
+            param = design.userParameters.itemByName(name)
+        if param:
+            param_name = str(param.name or "")
+
+    expr_result = _validate_expression_response(new_expression, param_name, normalized_unit)
+    if not expr_result["ok"]:
+        return {**expr_result, "preview": ""}
+
+    preview_result = _preview_expression_response(new_expression, param_name, normalized_unit, "")
+    return {
+        "ok": True,
+        "message": "",
+        "isIncomplete": False,
+        "preview": preview_result.get("preview", ""),
+    }
+
+
+def _update_parameter_unit(data):
+    """Change the unit of an existing parameter.
+
+    Fusion's UserParameter.unit is read-only. The only way to change unit is
+    delete and recreate. This means the entity token (key) changes. The new
+    key is returned as the 'newKey' extra field on the action response so the
+    FE can update its reference.
+
+    Fails with a clear error if the parameter is referenced by model features
+    or other parameters (Fusion will reject the deletion).
+    """
+    design = _require_design()
+    key = str(data.get("key") or "").strip()
+    name = str(data.get("name") or "").strip()
+    if not key and not name:
+        raise ValueError('Either "key" or "name" is required.')
+    new_expression = _required_text(data, "newExpression")
+    new_unit = str(data.get("newUnit") or "").strip()
+    comment_override = data.get("comment")
+
+    parameter = _find_user_parameter_by_token(design, key) if key else None
+    if not parameter and name:
+        parameter = design.userParameters.itemByName(name)
+    if not parameter:
+        raise ValueError("User parameter was not found.")
+
+    unit_result = _validate_unit_response(new_unit)
+    if not unit_result["ok"]:
+        raise ValueError(unit_result["message"])
+    normalized_unit = unit_result["unit"]
+
+    expr_result = _validate_expression_response(new_expression, str(parameter.name or ""), normalized_unit)
+    if not expr_result["ok"]:
+        raise ValueError(expr_result["message"])
+
+    # Capture all state before deletion.
+    param_name = str(parameter.name or "")
+    param_comment = str(comment_override if comment_override is not None else (parameter.comment or ""))
+    param_favorite = bool(parameter.isFavorite)
+    old_token = _parameter_entity_token(parameter)
+
+    order_state = _read_document_order_state()
+    stored_records = _resolve_document_order_records(design, order_state.get("parameters") or {})
+    old_record = stored_records.get(old_token) or {}
+    old_group = _normalize_group_name(old_record.get("group") or _parameter_group_name(parameter) or "")
+    old_order = old_record.get("order")
+    if not isinstance(old_order, int):
+        old_order = len(stored_records)
+
+    try:
+        parameter.deleteMe()
+    except Exception as exc:
+        raise ValueError(f"Fusion could not change unit for '{param_name}' because it is in use: {exc}")
+
+    value_input = adsk.core.ValueInput.createByString(new_expression)
+    created = design.userParameters.add(param_name, value_input, normalized_unit, param_comment)
+    if not created:
+        raise ValueError("Fusion could not recreate the parameter with the new unit.")
+
+    try:
+        created.isFavorite = param_favorite
+    except Exception:
+        pass
+
+    new_token = _parameter_entity_token(created)
+    timestamp = _now_metadata_timestamp_ms()
+    new_payload = _next_metadata_payload(
+        _normalized_metadata_payload(
+            group_name=old_group,
+            metadata_changed_at=old_record.get(METADATA_CHANGED_AT_RECORD_KEY),
+            revision=old_record.get(METADATA_REVISION_RECORD_KEY),
+            writer_id=old_record.get(METADATA_WRITER_ID_RECORD_KEY),
+            writer_version=old_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
+        ),
+        old_group,
+        timestamp,
+    )
+    _write_parameter_group_name(created, old_group, timestamp, new_payload)
+
+    stored_records.pop(old_token, None)
+    stored_records[new_token] = {
+        "order": old_order,
+        "name": param_name,
+        "current_expression": new_expression,
+        "previous_expression": "",
+        "current_value": "",
+        "previous_value": "",
+        "group": old_group,
+        METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(new_payload.get(METADATA_CHANGED_AT_RECORD_KEY)),
+        METADATA_REVISION_RECORD_KEY: _metadata_revision_value(new_payload.get(METADATA_REVISION_RECORD_KEY)),
+        METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(new_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
+        METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(new_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
+    }
+    _write_document_order_state({
+        "documentId": order_state.get("documentId", ""),
+        "documentName": order_state.get("documentName", ""),
+        "parameters": stored_records,
+        "groupUi": order_state.get("groupUi", {"order": [], "collapsed": {}}),
+        UI_STATE_RECORD_KEY: order_state.get(UI_STATE_RECORD_KEY, {}),
+    })
+    return new_token
+
+
+def _generate_copy_name(design, source_name):
+    """Return a collision-safe copy name: {name}_copy, then {name}_copy_2, etc."""
+    base = f"{source_name}_copy"
+    candidate = base
+    counter = 2
+    while design.allParameters.itemByName(candidate):
+        candidate = f"{base}_{counter}"
+        counter += 1
+    return candidate
+
+
+def _copy_parameter(data):
+    design = _require_design()
+    key = str(data.get("key") or "").strip()
+    name = str(data.get("name") or "").strip()
+    if not key and not name:
+        raise ValueError('Either "key" or "name" is required.')
+
+    parameter = _find_user_parameter_by_token(design, key) if key else None
+    if not parameter and name:
+        parameter = design.userParameters.itemByName(name)
+    if not parameter:
+        raise ValueError("User parameter was not found.")
+
+    target_name = str(data.get("targetName") or "").strip()
+    if not target_name:
+        target_name = _generate_copy_name(design, parameter.name)
+
+    validation = _validate_parameter_name_response(target_name)
+    if not validation["ok"]:
+        raise ValueError(validation["message"])
+
+    source_group = _parameter_group_name(parameter)
+    value_input = adsk.core.ValueInput.createByString(parameter.expression)
+    created = design.userParameters.add(target_name, value_input, parameter.unit, parameter.comment or "")
+    if not created:
+        raise ValueError("Fusion could not create the parameter copy.")
+
+    # Restore group and write order record.
+    new_token = _parameter_entity_token(created)
+    timestamp = _now_metadata_timestamp_ms()
+    new_payload = _next_metadata_payload(
+        _normalized_metadata_payload(group_name=source_group),
+        source_group,
+        timestamp,
+    )
+    _write_parameter_group_name(created, source_group, timestamp, new_payload)
+
+    order_state = _read_document_order_state()
+    stored_records = _resolve_document_order_records(design, order_state.get("parameters") or {})
+    max_order = max(
+        (r.get("order", 0) for r in stored_records.values() if isinstance(r.get("order"), int)),
+        default=0,
+    )
+    stored_records[new_token] = {
+        "order": max_order + 1,
+        "name": target_name,
+        "current_expression": parameter.expression,
+        "previous_expression": "",
+        "current_value": "",
+        "previous_value": "",
+        "group": source_group,
+        METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(new_payload.get(METADATA_CHANGED_AT_RECORD_KEY)),
+        METADATA_REVISION_RECORD_KEY: _metadata_revision_value(new_payload.get(METADATA_REVISION_RECORD_KEY)),
+        METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(new_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
+        METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(new_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
+    }
+    _write_document_order_state({
+        "documentId": order_state.get("documentId", ""),
+        "documentName": order_state.get("documentName", ""),
+        "parameters": stored_records,
+        "groupUi": order_state.get("groupUi", {"order": [], "collapsed": {}}),
+        UI_STATE_RECORD_KEY: order_state.get(UI_STATE_RECORD_KEY, {}),
+    })
+
+
+def _delete_parameters_batch(data):
+    """Batch delete. Returns a result dict (not a full envelope) with ok, message,
+    deletedCount, failedCount, and failedDetails. The handler adds 'state'."""
+    design = _require_design()
+    keys = data.get("keys") if isinstance(data.get("keys"), list) else []
+    names = data.get("names") if isinstance(data.get("names"), list) else []
+
+    if not keys and not names:
+        return {
+            "ok": False,
+            "message": '"keys" or "names" array is required.',
+            "deletedCount": 0,
+            "failedCount": 0,
+            "failedDetails": [],
+        }
+
+    seen_tokens = set()
+    targets = []
+    failed_details = []
+
+    for raw_key in keys:
+        token = str(raw_key or "").strip()
+        if not token or token in seen_tokens:
+            continue
+        param = _find_user_parameter_by_token(design, token)
+        if param:
+            seen_tokens.add(token)
+            targets.append({"param": param, "key": token, "name": str(param.name or "")})
+        else:
+            failed_details.append({"key": token, "name": "", "message": "Parameter not found."})
+
+    for raw_name in names:
+        name = str(raw_name or "").strip()
+        if not name:
+            continue
+        param = design.userParameters.itemByName(name)
+        if param:
+            token = _parameter_entity_token(param)
+            if token in seen_tokens:
+                continue
+            seen_tokens.add(token)
+            targets.append({"param": param, "key": token, "name": name})
+        else:
+            if not any(d.get("name") == name for d in failed_details):
+                failed_details.append({"key": "", "name": name, "message": "Parameter not found."})
+
+    deleted_count = 0
+    for target in targets:
+        try:
+            target["param"].deleteMe()
+            deleted_count += 1
+        except Exception as exc:
+            failed_details.append({
+                "key": target["key"],
+                "name": target["name"],
+                "message": f"Fusion could not delete this parameter: {exc}",
+            })
+
+    failed_count = len(failed_details)
+    ok = deleted_count > 0
+    if not ok:
+        first_msg = failed_details[0]["message"] if failed_details else "No parameters specified."
+        message = f"No parameters were deleted. {first_msg}"
+    elif failed_count > 0:
+        message = f"{failed_count} parameter(s) could not be deleted."
+    else:
+        message = ""
+
+    return {
+        "ok": ok,
+        "message": message,
+        "deletedCount": deleted_count,
+        "failedCount": failed_count,
+        "failedDetails": failed_details,
+    }
+
+
+def _sort_by_timeline_order():
+    """Reset stored parameter order to match Fusion's native creation (timeline) order.
+    design.userParameters iterates parameters in creation order."""
+    design = _require_design()
+    order_state = _read_document_order_state()
+    stored_records = _resolve_document_order_records(design, order_state.get("parameters") or {})
+
+    params = design.userParameters
+    for fusion_index in range(params.count):
+        param = params.item(fusion_index)
+        if not param:
+            continue
+        token = _parameter_entity_token(param)
+        record = stored_records.get(token)
+        if isinstance(record, dict):
+            record["order"] = fusion_index
+        else:
+            stored_records[token] = {
+                "order": fusion_index,
+                "name": str(param.name or ""),
+                "current_expression": str(param.expression or ""),
+                "previous_expression": "",
+                "current_value": "",
+                "previous_value": "",
+                "group": _normalize_group_name(_parameter_group_name(param) or ""),
+                METADATA_CHANGED_AT_RECORD_KEY: 0,
+                METADATA_REVISION_RECORD_KEY: 0,
+                METADATA_WRITER_ID_RECORD_KEY: "",
+                METADATA_WRITER_VERSION_RECORD_KEY: "",
+            }
+
+    _write_document_order_state({
+        "documentId": order_state.get("documentId", ""),
+        "documentName": order_state.get("documentName", ""),
+        "parameters": stored_records,
+        "groupUi": order_state.get("groupUi", {"order": [], "collapsed": {}}),
+        UI_STATE_RECORD_KEY: order_state.get(UI_STATE_RECORD_KEY, {}),
+    })
+
+
+def _serialize_parameters_to_csv(parameters):
+    """Serialize a list of parameter dicts to a CSV string (UTF-8, with header row)."""
+    buf = io.StringIO()
+    writer = csv.writer(buf, lineterminator="\n")
+    writer.writerow(["name", "expression", "unit", "comment", "group"])
+    for p in parameters:
+        writer.writerow([
+            p.get("name", ""),
+            p.get("expression", ""),
+            p.get("unit", ""),
+            p.get("comment", ""),
+            p.get("group", ""),
+        ])
+    return buf.getvalue()
+
+
+def _parse_parameters_csv(content):
+    """Parse CSV content into a list of row dicts.
+
+    Returns (rows, error_message). rows is None on parse failure.
+    Required columns: name, expression. Optional: unit, comment, group.
+    """
+    try:
+        reader = csv.DictReader(io.StringIO(content))
+        fieldnames = [f.strip().lower() for f in (reader.fieldnames or [])]
+        if "name" not in fieldnames or "expression" not in fieldnames:
+            return None, 'CSV must include "name" and "expression" columns.'
+        rows = []
+        for raw_row in reader:
+            # Normalize keys to lowercase stripped form.
+            row = {k.strip().lower(): str(v or "").strip() for k, v in raw_row.items() if k}
+            rows.append({
+                "name": row.get("name", ""),
+                "expression": row.get("expression", ""),
+                "unit": row.get("unit", ""),
+                "comment": row.get("comment", ""),
+                "group": row.get("group", ""),
+            })
+        return rows, ""
+    except Exception as exc:
+        return None, f"CSV parse error: {exc}"
+
+
+def _export_parameters(data):
+    """Export current user parameters to a CSV file.
+
+    If data['filePath'] is provided, writes directly without opening a dialog.
+    Returns dict with keys: cancelled, filePath, exportedCount.
+    """
+    file_path = str(data.get("filePath") or "").strip()
+    if not file_path:
+        if not ui:
+            raise RuntimeError("UI is not available to open a save dialog.")
+        dialog = ui.createFileDialog()
+        dialog.isMultiSelectEnabled = False
+        dialog.title = "Export Parameters — Better Parameters"
+        dialog.filter = "CSV Files (*.csv)"
+        dialog.filterIndex = 0
+        result = dialog.showSave()
+        if result != adsk.core.DialogResults.DialogOK:
+            return {"cancelled": True, "filePath": "", "exportedCount": 0}
+        file_path = str(dialog.filename or "").strip()
+        if not file_path:
+            return {"cancelled": True, "filePath": "", "exportedCount": 0}
+        if not file_path.lower().endswith(".csv"):
+            file_path += ".csv"
+
+    parameters = _collect_user_parameters()
+    content = _serialize_parameters_to_csv(parameters)
+    # UTF-8 with BOM for Excel compatibility on Windows.
+    Path(file_path).write_text(content, encoding="utf-8-sig")
+    return {"cancelled": False, "filePath": file_path, "exportedCount": len(parameters)}
+
+
+def _import_parameters(data):
+    """Import user parameters from a CSV file.
+
+    If data['filePath'] is provided, reads directly without a dialog.
+    Conflict policy: 'skip' (default) leaves existing parameters unchanged;
+    'overwrite' updates expression and comment of existing parameters.
+
+    Returns dict with: ok, message, importedCount, skippedCount, failedCount, failedRows.
+    Does NOT return state — the action handler adds it.
+    """
+    conflict_policy = str(data.get("conflictPolicy") or "skip").strip().lower()
+    if conflict_policy not in ("skip", "overwrite"):
+        conflict_policy = "skip"
+
+    file_path = str(data.get("filePath") or "").strip()
+    if not file_path:
+        if not ui:
+            raise RuntimeError("UI is not available to open a file dialog.")
+        dialog = ui.createFileDialog()
+        dialog.isMultiSelectEnabled = False
+        dialog.title = "Import Parameters — Better Parameters"
+        dialog.filter = "CSV Files (*.csv)"
+        dialog.filterIndex = 0
+        result = dialog.showOpen()
+        if result != adsk.core.DialogResults.DialogOK:
+            return {
+                "ok": False, "message": "Import cancelled.",
+                "importedCount": 0, "skippedCount": 0, "failedCount": 0, "failedRows": [],
+            }
+        file_path = str(dialog.filename or "").strip()
+        if not file_path:
+            return {
+                "ok": False, "message": "Import cancelled.",
+                "importedCount": 0, "skippedCount": 0, "failedCount": 0, "failedRows": [],
+            }
+
+    try:
+        raw = Path(file_path).read_text(encoding="utf-8-sig")
+    except Exception as exc:
+        raise ValueError(f"Could not read file: {exc}")
+
+    rows, parse_error = _parse_parameters_csv(raw)
+    if rows is None:
+        raise ValueError(parse_error)
+
+    design = _require_design()
+    imported_count = 0
+    skipped_count = 0
+    failed_rows = []
+
+    for row_index, row in enumerate(rows):
+        row_label = row.get("name") or f"row {row_index + 2}"
+        name = row.get("name", "")
+        expression = row.get("expression", "")
+        unit = row.get("unit", "")
+        comment = row.get("comment", "")
+        group = _normalize_group_name(row.get("group", ""))
+
+        if not name:
+            failed_rows.append({"row": row_index + 2, "name": "", "message": "Name is required."})
+            continue
+        if not expression:
+            failed_rows.append({"row": row_index + 2, "name": name, "message": "Expression is required."})
+            continue
+
+        existing = design.userParameters.itemByName(name)
+
+        if existing:
+            if conflict_policy == "skip":
+                skipped_count += 1
+                continue
+            # overwrite: update expression and comment.
+            try:
+                existing.expression = expression
+                if comment:
+                    existing.comment = comment
+                # Update group if specified.
+                if group:
+                    _set_parameter_group({"name": name, "group": group})
+                imported_count += 1
+            except Exception as exc:
+                failed_rows.append({"row": row_index + 2, "name": name, "message": str(exc)})
+        else:
+            # Validate before creating.
+            name_check = _validate_parameter_name_response(name)
+            if not name_check["ok"]:
+                failed_rows.append({"row": row_index + 2, "name": name, "message": name_check["message"]})
+                continue
+
+            expr_check = _validate_expression_response(expression, name, unit)
+            if not expr_check["ok"] and not expr_check.get("isIncomplete"):
+                failed_rows.append({"row": row_index + 2, "name": name, "message": expr_check["message"]})
+                continue
+
+            try:
+                value_input = adsk.core.ValueInput.createByString(expression)
+                created = design.userParameters.add(name, value_input, unit, comment)
+                if not created:
+                    raise ValueError("Fusion rejected the parameter.")
+                if group:
+                    _set_parameter_group({"name": name, "group": group})
+                imported_count += 1
+            except Exception as exc:
+                failed_rows.append({"row": row_index + 2, "name": name, "message": str(exc)})
+
+    failed_count = len(failed_rows)
+    ok = True  # file was read and processed successfully even if some rows failed
+    if imported_count == 0 and failed_count > 0:
+        message = f"No parameters were imported. {failed_rows[0]['message']}" if len(failed_rows) == 1 else f"No parameters were imported. {failed_count} rows failed."
+        ok = False
+    elif failed_count > 0:
+        message = f"{failed_count} row(s) could not be imported."
+    elif skipped_count > 0 and imported_count == 0:
+        message = f"{skipped_count} parameter(s) already exist and were skipped (conflictPolicy: skip)."
+    else:
+        message = ""
+
+    return {
+        "ok": ok,
+        "message": message,
+        "importedCount": imported_count,
+        "skippedCount": skipped_count,
+        "failedCount": failed_count,
+        "failedRows": failed_rows,
+    }
 
 
 def _validate_parameter_name_response(name):

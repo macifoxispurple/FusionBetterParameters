@@ -553,6 +553,8 @@
         padding: 0;
         display: flex;
         flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
       }
 
       .status {
@@ -724,6 +726,8 @@
       }
 
       .table-wrap {
+        flex: 1 1 auto;
+        min-height: 0;
         overflow: auto;
         padding-left: 0;
       }
@@ -1594,6 +1598,40 @@
         background: color-mix(in srgb, var(--panel-raised) 72%, transparent);
       }
 
+      .batch-action-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 6px 8px;
+        border-top: 1px solid var(--line-subtle);
+        background: color-mix(in srgb, var(--panel-raised) 88%, transparent);
+        position: sticky;
+        bottom: 0;
+        z-index: 1095;
+      }
+
+      .batch-action-bar[hidden] {
+        display: none !important;
+      }
+
+      .batch-action-copy {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .batch-action-buttons {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .batch-action-buttons .ghost,
+      .batch-action-buttons .primary {
+        height: 24px;
+        padding: 0 9px;
+      }
+
       .search-icon {
         position: absolute;
         left: 7px;
@@ -1926,55 +1964,61 @@
         flex-shrink: 0;
       }
 
-      .create-section {
-        order: 3;
-        flex-shrink: 0;
+      body.create-modal-open {
+        overflow: hidden;
       }
 
-      .create-toggle {
-        width: 100%;
+      .create-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: var(--overlay);
+        z-index: 1570;
+      }
+
+      .create-modal-backdrop[hidden] {
+        display: none !important;
+      }
+
+      .create-modal {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: min(560px, calc(100vw - 24px));
+        max-height: calc(100vh - 28px);
+        overflow: auto;
+        z-index: 1580;
+      }
+
+      .create-modal[hidden] {
+        display: none !important;
+      }
+
+      .create-modal-card {
+        margin: 0;
+      }
+
+      .create-modal-header {
+        height: 34px;
+        padding: 0 8px 0 10px;
+        border-bottom: 1px solid var(--line);
         display: flex;
         align-items: center;
-        gap: 6px;
-        padding: 0 10px;
-        height: 30px;
-        background: none;
-        border: none;
-        border-radius: 0;
-        color: var(--ink);
-        font: inherit;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .create-modal-title {
+        margin: 0;
         font-size: 12px;
         font-weight: 600;
-        text-align: left;
-        cursor: pointer;
-      }
-
-      .create-toggle:hover {
-        background: var(--btn-hover);
-      }
-
-      .create-toggle .chevron {
-        transition: transform 180ms ease;
-        flex-shrink: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
         color: var(--muted);
       }
 
-      .create-toggle[aria-expanded="true"] .chevron {
-        transform: rotate(90deg);
-      }
-
-      .create-body {
-        overflow: hidden;
-        max-height: 0;
-        transition: max-height 220ms ease;
-      }
-
-      .create-body.is-open {
-        max-height: 600px;
-      }
-
-      .create-body-inner {
-        border-top: 1px solid var(--line-subtle);
+      .create-modal-body {
+        padding: 10px;
       }
 
       .unit-picker {
@@ -2026,6 +2070,10 @@
         inset: 0;
         z-index: 1500;
         pointer-events: none;
+      }
+
+      body.create-modal-open .overlay-root {
+        z-index: 1590;
       }
 
       .overlay-root .unit-picker-menu {
@@ -2286,7 +2334,7 @@
       .unit-category-options {
         display: grid;
         gap: 1px;
-        padding: 0 0 2px;
+        padding: 0 0 2px 12px;
       }
 
       .unit-category-options[hidden] {
@@ -2556,6 +2604,18 @@
         color: var(--success);
       }
 
+      #parameterFileSummary.status-error {
+        color: var(--error);
+      }
+
+      #parameterFileSummary.status-warning {
+        color: var(--accent);
+      }
+
+      #parameterFileSummary.status-success {
+        color: var(--success);
+      }
+
       .update-notes-heading {
         margin: 0;
         font-size: 0.92rem;
@@ -2640,49 +2700,6 @@
 
         <div id="globalStatus" class="status global-status" aria-live="polite"></div>
 
-        <section class="card create-section">
-          <button id="createFormToggle" class="create-toggle" type="button" aria-expanded="false" aria-controls="createFormBody">
-            <svg class="chevron" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 4 10 8 6 12"/></svg>
-            <span>New Parameter</span>
-          </button>
-          <div id="createFormBody" class="create-body">
-            <div class="create-body-inner stack section">
-              <form id="createForm">
-                <div class="create-top-row">
-                  <label>
-                    Name
-                    <input id="newName" name="name" required />
-                    <div id="nameError" class="field-error" aria-live="polite"></div>
-                  </label>
-                  <label class="unit-picker">
-                    Units
-                    <input id="newUnit" name="unit" type="hidden" value="" />
-                    <button id="unitPickerButton" class="unit-picker-button" type="button" aria-haspopup="true" aria-expanded="false">
-                      <span id="unitPickerLabel">No Units</span>
-                    </button>
-                    <div id="unitPickerMenu" class="unit-picker-menu" hidden></div>
-                  </label>
-                </div>
-                <label>
-                  Expression
-                  <div class="field-shell">
-                    <input id="newExpression" name="expression" required placeholder="25 mm or Width / 2" autocomplete="off" />
-                    <div id="expressionSuggestions" class="expression-suggestions" hidden></div>
-                  </div>
-                  <div id="expressionError" class="field-error" aria-live="polite"></div>
-                </label>
-                <label>
-                  Comment
-                  <textarea id="newComment" name="comment" class="comment-input" placeholder="Optional description"></textarea>
-                </label>
-                <div class="actions">
-                  <button class="primary" type="submit">Create Parameter</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </section>
-
         <section class="card table-workspace">
           <div class="parameter-rail">
             <div class="rail-icons" aria-hidden="true">
@@ -2706,7 +2723,7 @@
               </button>
             </div>
             <div class="rail-actions">
-              <button id="newParamButton" class="ghost icon-btn" type="button" title="New Parameter" aria-label="New Parameter">+</button>
+              <button id="newParamButton" class="ghost icon-btn" type="button" title="New Parameter" aria-label="New Parameter" aria-haspopup="dialog" aria-controls="createModal" aria-expanded="false">+</button>
               <button id="refreshButton" class="ghost icon-btn" type="button" title="Refresh" aria-label="Refresh parameters">
                 <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.1-3.3"/><polyline points="13.5 2 13.5 5.5 10 5.5"/></svg>
               </button>
@@ -2731,8 +2748,63 @@
               </tbody>
             </table>
           </div>
+          <div id="batchActionBar" class="batch-action-bar" hidden>
+            <div class="batch-action-copy"><span id="batchActionDirtyCount">0</span> pending change(s)</div>
+            <div class="batch-action-buttons">
+              <button id="discardAllButton" class="ghost" type="button">Discard All</button>
+              <button id="applyAllButton" class="primary" type="button">Apply All</button>
+            </div>
+          </div>
         </section>
 
+      </div>
+      <div id="createModalBackdrop" class="create-modal-backdrop" hidden></div>
+      <div id="createModal" class="create-modal" role="dialog" aria-modal="true" aria-labelledby="createModalTitle" hidden>
+        <section class="card create-modal-card">
+          <div class="create-modal-header">
+            <h2 id="createModalTitle" class="create-modal-title">New Parameter</h2>
+            <button id="createModalCloseButton" class="ghost icon-btn" type="button" aria-label="Close new parameter dialog">
+              <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+                <line x1="3" y1="3" x2="13" y2="13"></line>
+                <line x1="13" y1="3" x2="3" y2="13"></line>
+              </svg>
+            </button>
+          </div>
+          <div class="create-modal-body stack section">
+            <form id="createForm">
+              <div class="create-top-row">
+                <label>
+                  Name
+                  <input id="newName" name="name" required />
+                  <div id="nameError" class="field-error" aria-live="polite"></div>
+                </label>
+                <label class="unit-picker">
+                  Units
+                  <input id="newUnit" name="unit" type="hidden" value="" />
+                  <button id="unitPickerButton" class="unit-picker-button" type="button" aria-haspopup="true" aria-expanded="false">
+                    <span id="unitPickerLabel">No Units</span>
+                  </button>
+                  <div id="unitPickerMenu" class="unit-picker-menu" hidden></div>
+                </label>
+              </div>
+              <label>
+                Expression
+                <div class="field-shell">
+                  <input id="newExpression" name="expression" required autocomplete="off" />
+                  <div id="expressionSuggestions" class="expression-suggestions" hidden></div>
+                </div>
+                <div id="expressionError" class="field-error" aria-live="polite"></div>
+              </label>
+              <label>
+                Comment
+                <textarea id="newComment" name="comment" class="comment-input"></textarea>
+              </label>
+              <div class="actions">
+                <button class="primary" type="submit">Create Parameter</button>
+              </div>
+            </form>
+          </div>
+        </section>
       </div>
       <div id="settingsBackdrop" class="settings-backdrop" hidden></div>
       <aside id="settingsPanel" class="settings-panel" hidden aria-hidden="true">
@@ -2768,6 +2840,7 @@
               <button id="commentColumnButton" class="ghost" type="button">Comment: Off</button>
               <button id="textTunerSidebarButton" class="ghost" type="button">Text Tuner: On</button>
               <button id="toggleRevertButtonsButton" class="ghost" type="button">Show Revert: On</button>
+              <button id="computeModeButton" class="ghost" type="button">Compute: Auto</button>
               <button id="autoFitColumnsButton" class="ghost" type="button">Auto Fit</button>
             </div>
           </section>
@@ -2791,6 +2864,27 @@
                 <button id="updateCardInstallButton" class="primary" type="button">Update Now</button>
               </div>
             </div>
+          </section>
+
+          <section class="settings-panel-section stack">
+            <div class="section-header">
+              <div>
+                <h2>Parameter Files</h2>
+                <p>CSV import/export for user parameters.</p>
+              </div>
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-label">Import Conflict Policy</span>
+              <select id="importConflictPolicySelect" aria-label="Import conflict policy">
+                <option value="skip">Skip existing</option>
+                <option value="overwrite">Overwrite existing</option>
+              </select>
+            </div>
+            <div class="actions">
+              <button id="importParametersButton" class="ghost" type="button">Import CSV</button>
+              <button id="exportParametersButton" class="ghost" type="button">Export CSV</button>
+            </div>
+            <pre id="parameterFileSummary" class="release-notes-body" style="display:none"></pre>
           </section>
 
           <details class="settings-collapsible">
@@ -3005,12 +3099,17 @@
       const UNGROUPED_GROUP_LABEL = "Ungrouped";
       const FAVORITES_GROUP_LABEL = "\u2605 Favorites";
       const API_VERSION_EXPECTED = 1;
+      const DEFAULT_COMPUTE_MODE = "auto";
+      const COMPUTE_MODE_STORAGE_KEY = "bp_compute_mode";
+      const IMPORT_CONFLICT_POLICY_STORAGE_KEY = "bp_import_conflict_policy";
       const NORMATIVE_ACTIONS = new Set([
         "ready", "refresh", "createParameter", "deleteParameter", "updateParameter", "revertParameter",
         "setParameterFavorite", "setParameterGroup", "renameGroup", "deleteGroup",
         "saveParameterOrder", "saveGroupUiState", "saveSettings", "savePaletteGeometry",
         "getTextTunerState", "saveTextTunerState",
-        "validateParameterName", "validateExpression", "previewExpression", "validateUnit",
+        "validateParameterName", "validateExpression", "previewExpression", "validateUnit", "validateUnitChange",
+        "renameParameter", "updateParameterUnit", "copyParameter", "deleteParameters", "sortByTimelineOrder",
+        "importParameters", "exportParameters",
         "checkForUpdates", "downloadAndStageUpdate",
         "syncMetadataJsonToFusion", "syncMetadataFusionToJson", "repairMetadata"
       ]);
@@ -3018,11 +3117,14 @@
         "ready", "refresh", "createParameter", "deleteParameter", "updateParameter", "revertParameter",
         "setParameterFavorite", "setParameterGroup", "renameGroup", "deleteGroup",
         "saveParameterOrder", "saveGroupUiState", "saveSettings", "savePaletteGeometry",
+        "renameParameter", "updateParameterUnit", "copyParameter", "deleteParameters", "sortByTimelineOrder",
+        "importParameters",
         "saveTextTunerState", "checkForUpdates", "downloadAndStageUpdate",
         "syncMetadataJsonToFusion", "syncMetadataFusionToJson", "repairMetadata"
       ]);
       const READ_ONLY_OR_VALIDATION_ACTIONS = new Set([
-        "getTextTunerState", "validateParameterName", "validateExpression", "previewExpression", "validateUnit"
+        "getTextTunerState", "validateParameterName", "validateExpression", "previewExpression", "validateUnit", "validateUnitChange",
+        "exportParameters"
       ]);
       const MOCK_BRIDGE_ENABLED = !!window.__BP_USE_MOCK_BRIDGE;
 
@@ -3197,7 +3299,15 @@
           showCommentColumn: DEFAULT_SHOW_COMMENT_COLUMN,
           showTextTunerSidebar: DEFAULT_SHOW_TEXT_TUNER_SIDEBAR,
           autoFitColumns: true,
-          pinnedUnits: []
+          pinnedUnits: [],
+          computeMode: (function () {
+            try {
+              const raw = String(localStorage.getItem(COMPUTE_MODE_STORAGE_KEY) || "").trim().toLowerCase();
+              return raw === "manual" ? "manual" : DEFAULT_COMPUTE_MODE;
+            } catch (_) {
+              return DEFAULT_COMPUTE_MODE;
+            }
+          }())
         },
         appliedTheme: (function () { try { var t = localStorage.getItem("bp_theme"); return t === "dark" || t === "light" ? t : "light"; } catch (_) { return "light"; } }()),
         fusionThemeApplied: false,
@@ -3272,9 +3382,18 @@
         statusHistory: [],
         expandedRows: {},
         localPreviousExpressions: {},
+        applyAllRunning: false,
         selectedRow: null,
         lastNarrowLayoutMode: null,
-        viewportModeAutoFitPending: false
+        viewportModeAutoFitPending: false,
+        importConflictPolicy: (function () {
+          try {
+            const raw = String(localStorage.getItem(IMPORT_CONFLICT_POLICY_STORAGE_KEY) || "").trim().toLowerCase();
+            return raw === "overwrite" ? "overwrite" : "skip";
+          } catch (_) {
+            return "skip";
+          }
+        }())
       };
       const EXPRESSION_STATUS_CLEAR_DELAY_MS = 5000;
       const expressionStatusClearTimers = new Map();
@@ -3528,6 +3647,92 @@
         button.textContent = `Text Tuner: ${isOn ? "On" : "Off"}`;
       }
 
+      function normalizeComputeMode(mode) {
+        return String(mode || "").trim().toLowerCase() === "manual" ? "manual" : "auto";
+      }
+
+      function isManualComputeMode() {
+        return normalizeComputeMode(state.settings.computeMode) === "manual";
+      }
+
+      function persistComputeMode(mode) {
+        try {
+          localStorage.setItem(COMPUTE_MODE_STORAGE_KEY, normalizeComputeMode(mode));
+        } catch (_) {
+        }
+      }
+
+      function renderComputeModeButton() {
+        const button = document.getElementById("computeModeButton");
+        if (!button) {
+          return;
+        }
+        const manual = isManualComputeMode();
+        button.textContent = `Compute: ${manual ? "Manual" : "Auto"}`;
+      }
+
+      function syncRowCommitButtonLabels() {
+        const label = isManualComputeMode() ? "Apply" : "Save";
+        document.querySelectorAll("#parameterRows .save-button").forEach((button) => {
+          button.textContent = label;
+        });
+      }
+
+      function setComputeMode(mode) {
+        state.settings.computeMode = normalizeComputeMode(mode);
+        persistComputeMode(state.settings.computeMode);
+        renderComputeModeButton();
+        syncRowCommitButtonLabels();
+        refreshBatchActionBar();
+      }
+
+      function normalizeConflictPolicy(value) {
+        return String(value || "").trim().toLowerCase() === "overwrite" ? "overwrite" : "skip";
+      }
+
+      function persistImportConflictPolicy(policy) {
+        try {
+          localStorage.setItem(IMPORT_CONFLICT_POLICY_STORAGE_KEY, normalizeConflictPolicy(policy));
+        } catch (_) {
+        }
+      }
+
+      function renderImportConflictPolicySelect() {
+        const select = document.getElementById("importConflictPolicySelect");
+        if (!select) {
+          return;
+        }
+        select.value = normalizeConflictPolicy(state.importConflictPolicy);
+      }
+
+      function getDirtyParameterRows() {
+        return Array.from(document.querySelectorAll("#parameterRows tr.parameter-row.is-dirty[data-parameter-key]"));
+      }
+
+      function refreshBatchActionBar() {
+        const bar = document.getElementById("batchActionBar");
+        const dirtyCountNode = document.getElementById("batchActionDirtyCount");
+        const applyAllButton = document.getElementById("applyAllButton");
+        const discardAllButton = document.getElementById("discardAllButton");
+        if (!bar || !dirtyCountNode || !applyAllButton || !discardAllButton) {
+          return;
+        }
+
+        const dirtyRows = getDirtyParameterRows();
+        const dirtyCount = dirtyRows.length;
+        const showBar = isManualComputeMode() && dirtyCount > 0;
+        bar.hidden = !showBar;
+        dirtyCountNode.textContent = String(dirtyCount);
+
+        const hasInvalidDirty = dirtyRows.some((row) => row.querySelector(".expression-input")?.getAttribute("aria-invalid") === "true");
+        const disabled = state.applyAllRunning || dirtyCount === 0;
+        discardAllButton.disabled = disabled;
+        applyAllButton.disabled = disabled || hasInvalidDirty;
+        applyAllButton.title = hasInvalidDirty
+          ? "Fix all invalid expression rows before Apply All."
+          : "";
+      }
+
       function shouldShowTextTunerSidebar() {
         return TEMP_TEXT_TUNER_ENABLED
           && state.hasLoadedFusionSettings
@@ -3616,6 +3821,30 @@
         status.classList.toggle("is-hidden", !showInline);
         document.body.classList.toggle("inline-status-visible", showInline);
         appendStatusHistory(message, kind);
+      }
+
+      function setParameterFileSummary(text, kind = "") {
+        const node = document.getElementById("parameterFileSummary");
+        if (!node) {
+          return;
+        }
+        const message = String(text || "").trim();
+        if (!message) {
+          node.style.display = "none";
+          node.textContent = "";
+          node.classList.remove("status-error", "status-warning", "status-success");
+          return;
+        }
+        node.style.display = "";
+        node.textContent = message;
+        node.classList.remove("status-error", "status-warning", "status-success");
+        if (kind === "error") {
+          node.classList.add("status-error");
+        } else if (kind === "warning") {
+          node.classList.add("status-warning");
+        } else if (kind === "success") {
+          node.classList.add("status-success");
+        }
       }
 
       function formatMetadataTimestamp(ms) {
@@ -4235,6 +4464,7 @@
 
         const isSearchActive = !!state.searchQuery.trim();
         const grouped = buildGroupedParameters(filteredParameters);
+        const rowCommitLabel = isManualComputeMode() ? "Apply" : "Save";
         const pieces = [];
         let renderRowCounter = 0;
         for (const groupBlock of grouped) {
@@ -4345,7 +4575,7 @@
                     <div class="row-actions">
                       ${revertButton}
                       <button class="discard-button" type="button" title="Discard unsaved edits in this row." aria-label="Discard unsaved edits in this row.">Discard</button>
-                      <button class="save-button" type="button" disabled>Save</button>
+                      <button class="save-button" type="button" disabled>${rowCommitLabel}</button>
                     </div>
                     <div class="narrow-expanded-kind">
                       <span class="parameter-kind">Type: User Parameter</span>
@@ -4368,6 +4598,7 @@
         syncParameterRowIndices();
         tbody.querySelectorAll("tr").forEach((row) => updateRowSaveState(row));
         applySelectedRowState();
+        refreshBatchActionBar();
       }
 
       function getRowSelectionFromElement(row) {
@@ -5080,10 +5311,12 @@
             : (state.settings.showCommentColumn === true),
           showTextTunerSidebar: typeof settings.showTextTunerSidebar === "boolean"
             ? settings.showTextTunerSidebar
-            : (state.settings.showTextTunerSidebar !== false)
+            : (state.settings.showTextTunerSidebar !== false),
+          computeMode: normalizeComputeMode(state.settings.computeMode)
         };
 
         applyTheme(state.settings.theme);
+        persistComputeMode(state.settings.computeMode);
         renderToggle("rememberUnitToggle", !!state.settings.rememberUnit);
         renderToggle("autoUpdateToggle", state.settings.autoCheckUpdates !== false);
         renderRevertToggle();
@@ -5091,10 +5324,13 @@
         renderAutoOpenToggle();
         renderCommentColumnToggle();
         renderTextTunerSidebarToggle();
+        renderComputeModeButton();
+        renderImportConflictPolicySelect();
         document.body.classList.toggle("hide-comment", state.settings.showCommentColumn !== true);
         applyTextTunerSidebarVisibility();
         renderUnitPicker();
         applyColumnWidths();
+        refreshBatchActionBar();
       }
 
       function getRootCssVar(name) {
@@ -5799,10 +6035,19 @@
             if (action === "getTextTunerState") {
               return { ok: true, message: "", state: null, values: statePayload.textTunerState || {} };
             }
+            if (action === "exportParameters") {
+              return {
+                ok: true,
+                message: "",
+                state: null,
+                exportedCount: Array.isArray(statePayload.parameters) ? statePayload.parameters.length : 0,
+                filePath: "C:\\mock\\BetterParameters-export.csv"
+              };
+            }
             if (action === "previewExpression") {
               return { ok: true, message: "", state: null, preview: "0 mm" };
             }
-            if (action === "validateExpression" || action === "validateParameterName" || action === "validateUnit") {
+            if (action === "validateExpression" || action === "validateParameterName" || action === "validateUnit" || action === "validateUnitChange") {
               return { ok: true, message: "", state: null };
             }
             return { ok: false, message: `Unknown action: ${action}`, state: null, traceback: "" };
@@ -6513,6 +6758,7 @@
         row.classList.toggle("has-visible-actions", hasVisibleSave || hasVisibleRevert);
         renderRowPreview(row);
         renderNarrowValueSummary(row);
+        refreshBatchActionBar();
       }
 
       function restoreRowPreview(input) {
@@ -6638,6 +6884,284 @@
           setExpressionValidationState(input, "", "success");
         }
         return true;
+      }
+
+      function discardRowDraft(row, options = {}) {
+        const showStatus = options.showStatus !== false;
+        if (!row) {
+          return false;
+        }
+        const expressionInput = row.querySelector(".expression-input");
+        const commentInput = row.querySelector(".comment-input");
+        if (!expressionInput || !commentInput) {
+          return false;
+        }
+
+        const savedExpression = expressionInput.getAttribute("data-saved-expression") || "";
+        const savedComment = commentInput.getAttribute("data-saved-comment") || "";
+        expressionInput.value = savedExpression;
+        commentInput.value = savedComment;
+        setExpressionValidationState(expressionInput, "", "success");
+        restoreRowPreview(expressionInput);
+        updateRowSaveState(row);
+        autoSizeTextarea(commentInput);
+        if (showStatus) {
+          setGlobalStatus("Discarded unsaved row changes.", "success");
+        }
+        return true;
+      }
+
+      async function applyRowDraft(row, options = {}) {
+        const showProgress = options.showProgress !== false;
+        const showSuccess = options.showSuccess !== false;
+        const showErrors = options.showErrors !== false;
+        if (!row) {
+          return { ok: false, message: "Row not found." };
+        }
+
+        const parameter = getParameterForRow(row);
+        if (!parameter) {
+          return { ok: false, message: "Parameter not found for row." };
+        }
+
+        const expressionInput = row.querySelector(".expression-input");
+        const commentInput = row.querySelector(".comment-input");
+        if (!expressionInput || !commentInput) {
+          return { ok: false, message: "Row inputs are not available." };
+        }
+
+        const expression = expressionInput.value;
+        const comment = commentInput.value;
+        const previousSavedExpression = String(expressionInput.getAttribute("data-saved-expression") || "");
+        const parameterKey = String(parameter.key || parameter.name || "");
+        const expressionDirty = expression !== previousSavedExpression;
+        const commentDirty = comment !== (commentInput.getAttribute("data-saved-comment") || "");
+        if (!expressionDirty && !commentDirty) {
+          return { ok: true, skipped: true, key: parameterKey, name: parameter.name };
+        }
+
+        const isExpressionValid = await validateExpressionAgainstFusion(expressionInput);
+        if (!isExpressionValid) {
+          return { ok: false, key: parameterKey, name: parameter.name, message: "Expression is invalid." };
+        }
+
+        if (showProgress) {
+          setGlobalStatus(`${isManualComputeMode() ? "Applying" : "Saving"} ${parameter.name}...`);
+        }
+
+        try {
+          const response = await sendToFusion("updateParameter", {
+            name: parameter.name,
+            expression,
+            comment
+          });
+          if (!response.ok) {
+            throw new Error(response.message || "Save failed.");
+          }
+
+          if (parameterKey) {
+            if (previousSavedExpression && previousSavedExpression !== expression) {
+              state.localPreviousExpressions[parameterKey] = previousSavedExpression;
+            } else {
+              delete state.localPreviousExpressions[parameterKey];
+            }
+          }
+
+          applyStateFromFusion(response, { source: "response", action: "updateParameter" });
+          if (showSuccess) {
+            setGlobalStatus(`${isManualComputeMode() ? "Applied" : "Saved"} ${parameter.name}.`, "success");
+          }
+          return { ok: true, key: parameterKey, name: parameter.name, response };
+        } catch (error) {
+          if (showErrors) {
+            setGlobalStatus(error.message, "error");
+          }
+          setExpressionValidationState(expressionInput, error.message || "Apply failed.", "error");
+          return { ok: false, key: parameterKey, name: parameter.name, message: error.message || "Apply failed." };
+        }
+      }
+
+      function collectDirtyRowOps() {
+        return getDirtyParameterRows().map((row) => {
+          const parameter = getParameterForRow(row);
+          const expressionInput = row.querySelector(".expression-input");
+          const commentInput = row.querySelector(".comment-input");
+          return {
+            key: row.getAttribute("data-parameter-key") || "",
+            name: parameter?.name || row.getAttribute("data-parameter-name") || "",
+            expression: expressionInput ? expressionInput.value : "",
+            comment: commentInput ? commentInput.value : ""
+          };
+        });
+      }
+
+      function restorePendingDirtyOps(pendingOps) {
+        pendingOps.forEach((draft, key) => {
+          const row = getParameterRowByKey(key);
+          if (!row) {
+            return;
+          }
+          const expressionInput = row.querySelector(".expression-input");
+          const commentInput = row.querySelector(".comment-input");
+          if (!expressionInput || !commentInput) {
+            return;
+          }
+          expressionInput.value = draft.expression;
+          commentInput.value = draft.comment;
+          if (draft.errorMessage) {
+            setExpressionValidationState(expressionInput, draft.errorMessage, "error");
+          } else {
+            setExpressionValidationState(expressionInput, "", "success");
+          }
+          autoSizeTextarea(commentInput);
+          updateRowSaveState(row);
+        });
+      }
+
+      async function applyAllDirtyRows() {
+        if (!isManualComputeMode() || state.applyAllRunning) {
+          return;
+        }
+        const dirtyRows = getDirtyParameterRows();
+        if (!dirtyRows.length) {
+          setGlobalStatus("No pending row changes to apply.", "warning");
+          return;
+        }
+
+        let invalidCount = 0;
+        for (const row of dirtyRows) {
+          const input = row.querySelector(".expression-input");
+          if (!input) {
+            continue;
+          }
+          const valid = await validateExpressionAgainstFusion(input);
+          if (!valid) {
+            invalidCount += 1;
+          }
+        }
+        if (invalidCount > 0) {
+          setGlobalStatus(`Fix ${invalidCount} invalid row(s) before Apply All.`, "error");
+          refreshBatchActionBar();
+          return;
+        }
+
+        const ops = collectDirtyRowOps();
+        const pending = new Map();
+        ops.forEach((op) => {
+          if (op.key) {
+            pending.set(op.key, { expression: op.expression, comment: op.comment, errorMessage: "" });
+          }
+        });
+
+        state.applyAllRunning = true;
+        refreshBatchActionBar();
+
+        let appliedCount = 0;
+        let failedCount = 0;
+        let skippedCount = 0;
+        const failedRows = [];
+
+        try {
+          for (const op of ops) {
+            if (!op.key) {
+              skippedCount += 1;
+              continue;
+            }
+
+            const row = getParameterRowByKey(op.key);
+            if (!row) {
+              skippedCount += 1;
+              continue;
+            }
+
+            const expressionInput = row.querySelector(".expression-input");
+            const commentInput = row.querySelector(".comment-input");
+            if (!expressionInput || !commentInput) {
+              skippedCount += 1;
+              continue;
+            }
+            expressionInput.value = op.expression;
+            commentInput.value = op.comment;
+            updateRowSaveState(row);
+
+            const result = await applyRowDraft(row, {
+              showProgress: false,
+              showSuccess: false,
+              showErrors: false
+            });
+
+            if (result.ok) {
+              appliedCount += 1;
+              pending.delete(op.key);
+            } else {
+              failedCount += 1;
+              failedRows.push({
+                name: op.name || op.key,
+                message: result.message || "Apply failed."
+              });
+              pending.set(op.key, {
+                expression: op.expression,
+                comment: op.comment,
+                errorMessage: result.message || "Apply failed."
+              });
+            }
+
+            restorePendingDirtyOps(pending);
+          }
+        } finally {
+          state.applyAllRunning = false;
+          refreshBatchActionBar();
+        }
+
+        const summary = `Apply All finished. Applied: ${appliedCount}; Failed: ${failedCount}; Skipped: ${skippedCount}.`;
+        setGlobalStatus(summary, failedCount > 0 ? "warning" : "success");
+        if (failedRows.length > 0) {
+          const detailLines = failedRows.map((item) => `${item.name}: ${item.message}`);
+          appendStatusHistory(`Apply All failed rows:\n${detailLines.join("\n")}`, "warning");
+        }
+      }
+
+      function discardAllDirtyRows() {
+        if (!isManualComputeMode() || state.applyAllRunning) {
+          return;
+        }
+        const dirtyRows = getDirtyParameterRows();
+        if (!dirtyRows.length) {
+          setGlobalStatus("No pending row changes to discard.", "warning");
+          return;
+        }
+        dirtyRows.forEach((row) => discardRowDraft(row, { showStatus: false }));
+        refreshBatchActionBar();
+        setGlobalStatus(`Discarded ${dirtyRows.length} pending row change(s).`, "success");
+      }
+
+      async function autoApplyRowIfNeeded(input, trigger = "blur") {
+        if (isManualComputeMode() || state.applyAllRunning) {
+          return;
+        }
+        const row = input && input.closest ? input.closest("tr.parameter-row[data-parameter-key]") : null;
+        if (!row) {
+          return;
+        }
+        if (row.getAttribute("data-auto-committing") === "true") {
+          return;
+        }
+        if (!row.classList.contains("is-dirty")) {
+          return;
+        }
+        row.setAttribute("data-auto-committing", "true");
+        try {
+          const result = await applyRowDraft(row, {
+            showProgress: false,
+            showSuccess: false,
+            showErrors: true
+          });
+          if (!result.ok && trigger === "enter") {
+            setGlobalStatus(result.message || "Auto-save failed.", "error");
+          }
+        } finally {
+          row.removeAttribute("data-auto-committing");
+        }
       }
 
       function validateParameterNameLocally(name) {
@@ -6797,30 +7321,71 @@
         });
       }
 
-      function toggleCreateForm(forceOpen) {
-        const body = document.getElementById("createFormBody");
-        const toggle = document.getElementById("createFormToggle");
-        if (!body || !toggle) return;
-        const isOpen = body.classList.contains("is-open");
-        const shouldOpen = forceOpen !== undefined ? forceOpen : !isOpen;
-        body.classList.toggle("is-open", shouldOpen);
-        toggle.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
-        if (!shouldOpen) {
-          document.getElementById("nameError").textContent = "";
-          document.getElementById("expressionError").textContent = "";
+      function setCreateModalOpen(isOpen, options = {}) {
+        const backdrop = document.getElementById("createModalBackdrop");
+        const modal = document.getElementById("createModal");
+        const launchButton = document.getElementById("newParamButton");
+        if (!backdrop || !modal || !launchButton) {
+          return;
         }
-        try { localStorage.setItem("bp_create_open", shouldOpen ? "true" : "false"); } catch (_) {}
+
+        const shouldFocusName = options.focusName === true;
+        const shouldRestoreFocus = options.restoreFocus !== false;
+        const wasOpen = !modal.hidden;
+        if (wasOpen === isOpen) {
+          return;
+        }
+
+        backdrop.hidden = !isOpen;
+        modal.hidden = !isOpen;
+        document.body.classList.toggle("create-modal-open", isOpen);
+        launchButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
+
+        if (isOpen) {
+          setSettingsPanelOpen(false);
+          const normalizeNullableField = (id) => {
+            const input = document.getElementById(id);
+            if (!input) {
+              return;
+            }
+            const raw = input.value;
+            if (raw == null || String(raw).trim().toLowerCase() === "null") {
+              input.value = "";
+            }
+          };
+          normalizeNullableField("newName");
+          normalizeNullableField("newExpression");
+          normalizeNullableField("newComment");
+          const nameInput = document.getElementById("newName");
+          if (shouldFocusName && nameInput) {
+            requestAnimationFrame(() => {
+              nameInput.focus();
+              nameInput.select();
+            });
+          }
+          return;
+        }
+
+        setNameError("");
+        setExpressionError("");
+        closeUnitPicker();
+        hideExpressionSuggestions();
+        if (shouldRestoreFocus) {
+          requestAnimationFrame(() => launchButton.focus());
+        }
       }
 
-      (function initCreateForm() {
-        try {
-          const open = localStorage.getItem("bp_create_open") === "true";
-          if (open) toggleCreateForm(true);
-        } catch (_) {}
-      })();
+      document.getElementById("newParamButton").addEventListener("click", () => {
+        setCreateModalOpen(true, { focusName: true });
+      });
 
-      document.getElementById("createFormToggle").addEventListener("click", () => toggleCreateForm());
-      document.getElementById("newParamButton").addEventListener("click", () => toggleCreateForm(true));
+      document.getElementById("createModalCloseButton").addEventListener("click", () => {
+        setCreateModalOpen(false);
+      });
+
+      document.getElementById("createModalBackdrop").addEventListener("click", () => {
+        setCreateModalOpen(false);
+      });
 
       document.getElementById("themeToggle").addEventListener("click", async () => {
         const currentTheme = state.appliedTheme === "dark" ? "dark" : "light";
@@ -7108,7 +7673,7 @@
         updateFunctionHelper(input);
       });
 
-      parameterRows.addEventListener("keydown", (event) => {
+      parameterRows.addEventListener("keydown", async (event) => {
         const input = event.target.closest(".expression-input");
         if (!input) {
           return;
@@ -7134,6 +7699,19 @@
 
         const { flatItems, highlightedIndex, activeInputId } = state.expressionAutocomplete;
         if (!flatItems.length || activeInputId !== input.id) {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            if (isManualComputeMode()) {
+              const row = input.closest("tr.parameter-row[data-parameter-key]");
+              const saveButton = row ? row.querySelector(".save-button") : null;
+              if (saveButton && !saveButton.disabled) {
+                saveButton.click();
+              }
+            } else {
+              await autoApplyRowIfNeeded(input, "enter");
+            }
+            return;
+          }
           return;
         }
 
@@ -7165,7 +7743,8 @@
 
       parameterRows.addEventListener("focusout", async (event) => {
         const input = event.target.closest(".expression-input");
-        if (!input) {
+        const commentInput = event.target.closest(".comment-input");
+        if (!input && !commentInput) {
           return;
         }
 
@@ -7174,7 +7753,16 @@
         if (rowExpressionValidationTimer) {
           window.clearTimeout(rowExpressionValidationTimer);
         }
-        await validateExpressionAgainstFusion(input);
+
+        const expressionInput = input
+          || (commentInput ? commentInput.closest("tr")?.querySelector(".expression-input") : null);
+        if (!expressionInput) {
+          return;
+        }
+        const isValid = await validateExpressionAgainstFusion(expressionInput);
+        if (isValid) {
+          await autoApplyRowIfNeeded(expressionInput, "blur");
+        }
       });
 
       parameterRows.addEventListener("focusin", (event) => {
@@ -7891,6 +8479,98 @@
         }
       });
 
+      document.getElementById("computeModeButton").addEventListener("click", () => {
+        const nextMode = isManualComputeMode() ? "auto" : "manual";
+        setComputeMode(nextMode);
+        setGlobalStatus(`Compute mode set to ${nextMode === "manual" ? "Manual" : "Auto"}.`, "success");
+      });
+
+      document.getElementById("importConflictPolicySelect").addEventListener("change", (event) => {
+        state.importConflictPolicy = normalizeConflictPolicy(event.currentTarget.value);
+        persistImportConflictPolicy(state.importConflictPolicy);
+      });
+
+      document.getElementById("importParametersButton").addEventListener("click", async () => {
+        const policy = normalizeConflictPolicy(state.importConflictPolicy);
+        setParameterFileSummary("");
+        setGlobalStatus("Importing parameters from CSV...");
+        try {
+          const response = await sendToFusion("importParameters", {
+            conflictPolicy: policy
+          });
+          if (!response.ok && response.message === "Import cancelled.") {
+            setGlobalStatus("Import cancelled.");
+            setParameterFileSummary("Import cancelled.");
+            return;
+          }
+          if (!response.ok) {
+            throw new Error(response.message || "Import failed.");
+          }
+
+          applyStateFromFusion(response, { source: "response", action: "importParameters" });
+          const imported = Number(response.importedCount || 0);
+          const skipped = Number(response.skippedCount || 0);
+          const failed = Number(response.failedCount || 0);
+          const failedRows = Array.isArray(response.failedRows) ? response.failedRows : [];
+          const lines = [
+            `Imported: ${imported}`,
+            `Skipped: ${skipped}`,
+            `Failed: ${failed}`
+          ];
+          if (failedRows.length) {
+            lines.push("");
+            lines.push("Failed rows:");
+            failedRows.slice(0, 50).forEach((item) => {
+              const rowLabel = Number.isFinite(Number(item?.row)) ? `Row ${Number(item.row)}` : "Row ?";
+              const name = String(item?.name || "").trim();
+              const message = String(item?.message || "Unknown import error.");
+              lines.push(`- ${rowLabel}${name ? ` (${name})` : ""}: ${message}`);
+            });
+          }
+          const summary = `Import complete. Imported ${imported}, skipped ${skipped}, failed ${failed}.`;
+          setGlobalStatus(summary, failed > 0 ? "warning" : "success");
+          setParameterFileSummary(lines.join("\n"), failed > 0 ? "warning" : "success");
+        } catch (error) {
+          setGlobalStatus(error.message, "error");
+          setParameterFileSummary(String(error.message || "Import failed."), "error");
+        }
+      });
+
+      document.getElementById("exportParametersButton").addEventListener("click", async () => {
+        setParameterFileSummary("");
+        setGlobalStatus("Exporting parameters to CSV...");
+        try {
+          const response = await sendToFusion("exportParameters", {});
+          if (!response.ok && response.message === "Export cancelled.") {
+            setGlobalStatus("Export cancelled.");
+            setParameterFileSummary("Export cancelled.");
+            return;
+          }
+          if (!response.ok) {
+            throw new Error(response.message || "Export failed.");
+          }
+          const exported = Number(response.exportedCount || 0);
+          const path = String(response.filePath || "").trim();
+          const lines = [
+            `Exported: ${exported}`,
+            path ? `Path: ${path}` : ""
+          ].filter(Boolean);
+          setGlobalStatus(`Exported ${exported} parameter(s).`, "success");
+          setParameterFileSummary(lines.join("\n"), "success");
+        } catch (error) {
+          setGlobalStatus(error.message, "error");
+          setParameterFileSummary(String(error.message || "Export failed."), "error");
+        }
+      });
+
+      document.getElementById("applyAllButton").addEventListener("click", async () => {
+        await applyAllDirtyRows();
+      });
+
+      document.getElementById("discardAllButton").addEventListener("click", () => {
+        discardAllDirtyRows();
+      });
+
       document.getElementById("createForm").addEventListener("submit", async (event) => {
         event.preventDefault();
         const form = event.currentTarget;
@@ -7923,6 +8603,7 @@
           setExpressionError("");
           syncDefaultUnit(true);
           applyStateFromFusion(response);
+          setCreateModalOpen(false, { restoreFocus: false });
           setGlobalStatus(`Created ${data.name}.`, "success");
         } catch (error) {
           setGlobalStatus(error.message, "error");
@@ -8030,67 +8711,16 @@
 
         if (discardButton) {
           const row = discardButton.closest("tr");
-          if (!row) {
-            return;
-          }
-          const expressionInput = row.querySelector(".expression-input");
-          const commentInput = row.querySelector(".comment-input");
-          if (!expressionInput || !commentInput) {
-            return;
-          }
-
-          const savedExpression = expressionInput.getAttribute("data-saved-expression") || "";
-          const savedComment = commentInput.getAttribute("data-saved-comment") || "";
-          expressionInput.value = savedExpression;
-          commentInput.value = savedComment;
-          setExpressionValidationState(expressionInput, "", "success");
-          restoreRowPreview(expressionInput);
-          updateRowSaveState(row);
-          autoSizeTextarea(commentInput);
-          setGlobalStatus("Discarded unsaved row changes.", "success");
+          discardRowDraft(row, { showStatus: true });
           return;
         }
 
         const row = button.closest("tr");
-        const parameter = getParameterForRow(row);
-        if (!parameter) {
-          return;
-        }
-
-        const expression = row.querySelector(".expression-input").value;
-        const expressionInput = row.querySelector(".expression-input");
-        const comment = row.querySelector(".comment-input").value;
-        const previousSavedExpression = String(expressionInput.getAttribute("data-saved-expression") || "");
-        const parameterKey = String(parameter.key || parameter.name || "");
-
-        const isExpressionValid = await validateExpressionAgainstFusion(expressionInput);
-        if (!isExpressionValid) {
-          return;
-        }
-
-        setGlobalStatus(`Saving ${parameter.name}...`);
-        try {
-          const response = await sendToFusion("updateParameter", {
-            name: parameter.name,
-            expression,
-            comment
-          });
-          if (!response.ok) {
-            throw new Error(response.message || "Save failed.");
-          }
-
-          if (parameterKey) {
-            if (previousSavedExpression && previousSavedExpression !== expression) {
-              state.localPreviousExpressions[parameterKey] = previousSavedExpression;
-            } else {
-              delete state.localPreviousExpressions[parameterKey];
-            }
-          }
-          applyStateFromFusion(response);
-          setGlobalStatus(`Saved ${parameter.name}.`, "success");
-        } catch (error) {
-          setGlobalStatus(error.message, "error");
-        }
+        await applyRowDraft(row, {
+          showProgress: true,
+          showSuccess: true,
+          showErrors: true
+        });
       });
 
       function renderUpdatePill() {
@@ -8339,6 +8969,11 @@
 
       document.addEventListener("keydown", (event) => {
         if (event.key !== "Escape") {
+          return;
+        }
+        const createModal = document.getElementById("createModal");
+        if (createModal && !createModal.hidden) {
+          setCreateModalOpen(false);
           return;
         }
         if (isSettingsPanelOpen()) {
