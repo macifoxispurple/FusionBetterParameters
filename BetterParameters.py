@@ -77,6 +77,23 @@ ALLOWED_EXPRESSION_IDENTIFIERS = {
     "cosh", "sinh", "tanh", "sqrt", "sign", "exp", "floor", "ceil", "round",
     "abs", "max", "min", "ln", "log", "pow", "random",
 }
+
+# Probe units used to conservatively detect "valid expression, wrong dimension" cases.
+# If an expression is invalid for the target unit but valid for one of these probes,
+# we can report likely unit/dimension mismatch instead of generic syntax failure.
+DIMENSION_PROBE_UNITS = [
+    "mm",      # length
+    "deg",     # angle
+    "mm^2",    # area
+    "mm^3",    # volume
+    "kg",      # mass
+    "s",       # time
+    "m/s",     # velocity
+    "m/s^2",   # acceleration
+    "N",       # force
+    "Pa",      # pressure
+    "W",       # power
+]
 PARAMETER_NAME_PATTERN = re.compile('^[A-Za-z_"\\$\\u00B0\\u00B5][A-Za-z0-9_"\\$\\u00B0\\u00B5]*$')
 
 MANIFEST_PATH = os.path.join(ADDIN_DIR, "BetterParameters.manifest")
@@ -2015,6 +2032,13 @@ def _validate_expression_response(expression, current_parameter_name="", units="
                         "message": incomplete_hint,
                         "isIncomplete": True,
                     }
+                mismatch_hint = _dimension_mismatch_hint(text, validate_units, design.unitsManager)
+                if mismatch_hint:
+                    return {
+                        "ok": False,
+                        "message": mismatch_hint,
+                        "isIncomplete": False,
+                    }
                 return {
                     "ok": False,
                     "message": "Expression syntax is invalid. Use explicit operators between terms; parentheses do not imply multiplication.",
@@ -2064,6 +2088,52 @@ def _incomplete_expression_hint(text):
             open_count -= 1
     if open_count > 0:
         return "Expression has an open parenthesis. Finish the expression and close it."
+
+    return ""
+
+
+def _dimension_mismatch_hint(expression_text, target_unit, units_manager):
+    if units_manager is None:
+        return ""
+
+    target = str(target_unit or "").strip()
+    if not target:
+        return ""
+    if target.lower() == "text":
+        return ""
+
+    target_valid = True
+    try:
+        # If target unit itself is not a valid Fusion unit token, do not emit mismatch hint.
+        target_valid = bool(
+            units_manager.isValidExpression("1", target)
+            or units_manager.isValidExpression(f"1 {target}", target)
+        )
+    except Exception:
+        target_valid = False
+    if not target_valid:
+        return ""
+
+    text = str(expression_text or "").strip()
+    if not text:
+        return ""
+
+    try:
+        for probe_unit in DIMENSION_PROBE_UNITS:
+            if not probe_unit:
+                continue
+            if probe_unit.lower() == target.lower():
+                continue
+            try:
+                if units_manager.isValidExpression(text, probe_unit):
+                    return (
+                        f'Expression units are incompatible with "{target}". '
+                        "Check dimensionality (for example area vs length)."
+                    )
+            except Exception:
+                continue
+    except Exception:
+        return ""
 
     return ""
 

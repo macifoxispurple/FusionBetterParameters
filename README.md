@@ -26,7 +26,7 @@ Better Parameters gives you:
 - **Grouping** (create, rename, delete, reorder)
 - **Favorites** for quick access to important parameters
 - Search across name, expression, comment, unit, and value
-- Per-row **Save and Revert** with dirty state tracking
+- Per-row **Save, Revert, and Discard** with dirty state tracking
 - Expression preview and validation using Fusion’s engine
 - Persistent UI settings (theme, layout, column sizes, etc.)
 
@@ -68,6 +68,8 @@ Settings are stored locally in `settings.json` next to the installed add-in insi
 - UI toggles (comments, revert buttons, etc.)
 
 Most changes are saved immediately.
+
+Status messages are also captured in a session-only **Status History** section in Settings. Inline status in the main view is now reserved for higher-priority warnings/errors.
 
 ## Installation
 

@@ -564,11 +564,6 @@
         flex-direction: column;
       }
 
-      .table-workspace #parameterSummary {
-        padding: 4px 8px;
-        border-bottom: 1px solid var(--line-subtle);
-      }
-
       .status {
         min-height: 20px;
         font-size: 12px;
@@ -620,6 +615,10 @@
         top: 36px;
         z-index: 1190;
         font-size: 11px;
+      }
+
+      .global-status.is-hidden {
+        display: none;
       }
 
       .section-meta {
@@ -890,6 +889,36 @@
         visibility: hidden;
         opacity: 0;
         pointer-events: none;
+      }
+
+      .discard-button {
+        background: var(--btn-bg);
+        color: var(--ink);
+        cursor: pointer;
+        display: none;
+        margin-left: auto;
+        width: 58px;
+        min-width: 58px;
+        max-width: 58px;
+        text-align: center;
+        white-space: nowrap;
+        border-color: var(--line);
+        font-size: 11px;
+        padding: 2px 6px;
+        visibility: hidden;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .discard-button.is-dirty {
+        display: inline-block;
+        visibility: visible;
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .discard-button:hover {
+        background: var(--btn-hover);
       }
 
       .save-button.is-dirty {
@@ -1235,39 +1264,12 @@
         font-weight: 600;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-badges {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-      }
-
-      body.narrow-stack #parameterRows tr.parameter-row .narrow-badge {
-        display: inline-block;
-        border-radius: 999px;
-        padding: 1px 6px;
-        font-size: 10px;
-        line-height: 1.2;
-        border: 1px solid var(--line);
-        background: var(--panel-raised);
-      }
-
-      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-meta {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        align-items: center;
-        gap: 8px;
-      }
-
-      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-value {
+      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-state {
+        color: var(--muted);
+        white-space: nowrap;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-unit {
-        color: var(--muted);
-        white-space: nowrap;
       }
 
       body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-icon-btn {
@@ -1283,49 +1285,107 @@
         font-size: 12px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row .narrow-comment-btn {
-        width: auto;
-        min-width: 64px;
-        padding: 0 7px;
-        font-size: 11px;
+      body.narrow-stack #parameterRows tr.parameter-row td:nth-child(4) {
+        display: block;
+        margin-top: 6px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row .narrow-comment-btn.has-comment {
-        border-color: var(--accent);
+      body.narrow-stack #parameterRows tr.parameter-row td:nth-child(4) .field-shell {
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--panel-raised) 96%, var(--panel));
+        padding: 5px 6px 4px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row .narrow-comment-btn.is-open {
-        background: var(--btn-hover);
+      body.narrow-stack #parameterRows tr.parameter-row td:nth-child(4) .expression-input {
+        border-color: color-mix(in srgb, var(--line) 75%, transparent);
+        background: var(--input-bg);
+        border-radius: 3px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td:nth-child(4),
+      body.narrow-stack #parameterRows tr.parameter-row td:nth-child(4) .expression-field-error {
+        margin-top: 4px;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row td.value-cell {
+        display: none;
+        margin-top: 6px;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row.has-narrow-value-summary td.value-cell {
+        display: block;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row td.value-cell .preview-value {
+        border: 1px solid var(--line-subtle);
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--panel-raised) 93%, var(--panel));
+        padding: 4px 6px;
+      }
+
       body.narrow-stack #parameterRows tr.parameter-row td.comments-cell {
         display: none;
         margin-top: 6px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row.is-narrow-expanded td:nth-child(4),
+      body.narrow-stack #parameterRows tr.parameter-row.has-visible-actions td.comments-cell,
       body.narrow-stack #parameterRows tr.parameter-row.is-narrow-expanded td.comments-cell {
         display: block !important;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td.comments-cell .comment-input {
-        display: none;
-      }
-
-      body.narrow-stack #parameterRows tr.parameter-row.is-narrow-comment-open td.comments-cell .comment-input {
-        display: block;
-      }
-
       body.narrow-stack #parameterRows tr.parameter-row td.comments-cell .comment-shell {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1fr);
         gap: 6px;
-        align-items: start;
       }
 
       body.narrow-stack #parameterRows tr.parameter-row td.comments-cell .row-actions {
-        justify-items: end;
+        order: 1;
+        display: none;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        width: auto;
+        min-width: 100%;
+        max-width: 100%;
+        margin: 0;
+        padding-top: 6px;
+        border-top: 1px solid var(--line-subtle);
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row.has-visible-actions td.comments-cell .row-actions {
+        display: flex;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row td.comments-cell .row-actions:not(.has-revert-action):not(.has-discard-action)::before {
+        content: "";
+        display: inline-block;
+        width: 74px;
+        min-width: 74px;
+        max-width: 74px;
+        height: 24px;
+        flex: 0 0 74px;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row td.comments-cell .comment-input {
+        order: 2;
+        display: none;
+        border-color: color-mix(in srgb, var(--line) 75%, transparent);
+        background: var(--input-bg);
+        border-radius: 3px;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row.is-narrow-expanded td.comments-cell .comment-input {
+        display: block;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row .narrow-expanded-kind {
+        order: 3;
+        display: none;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row.is-narrow-expanded .narrow-expanded-kind {
+        display: block;
       }
 
       body.narrow-stack #parameterRows tr.parameter-row .row-actions {
@@ -1333,7 +1393,20 @@
         pointer-events: auto;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row .parameter-kind {
+      body.narrow-stack #parameterRows tr.parameter-row .row-actions .revert-button,
+      body.narrow-stack #parameterRows tr.parameter-row .row-actions .discard-button,
+      body.narrow-stack #parameterRows tr.parameter-row .row-actions .save-button {
+        width: 74px;
+        min-width: 74px;
+        max-width: 74px;
+        height: 24px;
+        padding: 2px 8px;
+        margin: 0;
+        border-radius: 4px;
+        text-align: center;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row .narrow-expanded-kind .parameter-kind {
         opacity: 0.9;
       }
 
@@ -2441,6 +2514,50 @@
         overflow-y: auto;
       }
 
+      .status-history {
+        margin: 0;
+        padding: 8px 10px;
+        background: var(--btn-bg);
+        border-radius: 2px;
+        border: 1px solid var(--line-subtle);
+        list-style: none;
+        max-height: 220px;
+        overflow-y: auto;
+        display: grid;
+        gap: 6px;
+      }
+
+      .status-history-item {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 8px;
+        align-items: start;
+      }
+
+      .status-history-time {
+        color: var(--muted);
+        white-space: nowrap;
+        font-size: 11px;
+      }
+
+      .status-history-text {
+        min-width: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .status-history-kind-error .status-history-text {
+        color: var(--error);
+      }
+
+      .status-history-kind-warning .status-history-text {
+        color: var(--accent);
+      }
+
+      .status-history-kind-success .status-history-text {
+        color: var(--success);
+      }
+
       .update-notes-heading {
         margin: 0;
         font-size: 0.92rem;
@@ -2598,7 +2715,6 @@
               </button>
             </div>
           </div>
-          <div id="parameterSummary" class="section-meta" aria-live="polite"></div>
           <div class="table-wrap">
             <table>
               <thead>
@@ -2692,6 +2808,19 @@
               </div>
               <div id="debugSummary" class="section-meta"></div>
               <pre id="debugOutput" class="release-notes-body">Debug data not loaded yet.</pre>
+            </div>
+          </details>
+
+          <details class="settings-collapsible">
+            <summary>Status History (Session)</summary>
+            <div class="settings-collapsible-body">
+              <p>Transient status messages from this running session.</p>
+              <div class="actions">
+                <button id="clearStatusHistoryButton" class="ghost" type="button">Clear History</button>
+              </div>
+              <ul id="statusHistoryList" class="status-history" aria-live="polite">
+                <li class="status-history-item"><span class="status-history-time">--:--:--</span><span class="status-history-text">No status messages yet.</span></li>
+              </ul>
             </div>
           </details>
         </div>
@@ -3121,6 +3250,7 @@
           group: ""
         },
         rowPreviewRequestNonce: 0,
+        rowValidationRequestNonce: 0,
         updateInfo: {
           currentVersion: "",
           latestVersion: "",
@@ -3142,8 +3272,9 @@
         lastGoodState: null,
         debugMetadataSnapshot: null,
         lastSyncResult: null,
+        statusHistory: [],
         expandedRows: {},
-        commentOpenRows: {},
+        localPreviousExpressions: {},
         selectedRow: null,
         lastNarrowLayoutMode: null,
         viewportModeAutoFitPending: false
@@ -3305,6 +3436,9 @@
 
         const modeChanged = state.lastNarrowLayoutMode !== isNarrowMode;
         state.lastNarrowLayoutMode = isNarrowMode;
+        if (modeChanged) {
+          applyCommentInputPlaceholders(document.getElementById("parameterRows") || document);
+        }
         if (modeChanged && !isNarrowMode && !state.viewportModeAutoFitPending) {
           state.viewportModeAutoFitPending = true;
           requestAnimationFrame(() => {
@@ -3419,11 +3553,71 @@
         }
       }
 
+      function renderStatusHistory() {
+        const list = document.getElementById("statusHistoryList");
+        if (!list) {
+          return;
+        }
+        const items = Array.isArray(state.statusHistory) ? state.statusHistory : [];
+        if (!items.length) {
+          list.innerHTML = `<li class="status-history-item"><span class="status-history-time">--:--:--</span><span class="status-history-text">No status messages yet.</span></li>`;
+          return;
+        }
+        list.innerHTML = items.map((item) => {
+          const kindClass = item.kind ? ` status-history-kind-${escapeHtml(item.kind)}` : "";
+          return `<li class="status-history-item${kindClass}"><span class="status-history-time">${escapeHtml(item.time || "--:--:--")}</span><span class="status-history-text">${escapeHtml(item.message || "")}</span></li>`;
+        }).join("");
+      }
+
+      function appendStatusHistory(message, kind = "") {
+        const text = String(message || "").trim();
+        if (!text) {
+          return;
+        }
+        const now = new Date();
+        const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+        const item = {
+          time,
+          kind: String(kind || "").trim().toLowerCase(),
+          message: text
+        };
+        state.statusHistory.unshift(item);
+        if (state.statusHistory.length > 200) {
+          state.statusHistory.length = 200;
+        }
+        renderStatusHistory();
+      }
+
+      function shouldShowInlineStatus(message, kind = "") {
+        const level = String(kind || "").trim().toLowerCase();
+        if (level === "error" || level === "warning") {
+          return true;
+        }
+        const text = String(message || "").trim().toLowerCase();
+        if (!text) {
+          return false;
+        }
+        if (
+          text.includes("contract validation failed")
+          || text.includes("api version mismatch")
+          || text.includes("contract error")
+          || text.includes("restart to update")
+          || text.includes("update failed")
+          || text.includes("staged")
+        ) {
+          return true;
+        }
+        return false;
+      }
+
       function setGlobalStatus(message, kind = "") {
         const status = document.getElementById("globalStatus");
-        status.textContent = message || "";
+        const showInline = shouldShowInlineStatus(message, kind);
+        status.textContent = showInline ? (message || "") : "";
         status.className = kind ? `status ${kind}` : "status";
         status.classList.add("global-status");
+        status.classList.toggle("is-hidden", !showInline);
+        appendStatusHistory(message, kind);
       }
 
       function formatMetadataTimestamp(ms) {
@@ -3505,18 +3699,9 @@
       }
 
       function setParameterSummary(parameters) {
-        const summary = document.getElementById("parameterSummary");
-        const allParameters = Array.isArray(parameters) ? parameters : [];
-        const totalCount = allParameters.length;
-        const filteredCount = getFilteredParameters(allParameters).length;
-        const totalNoun = totalCount === 1 ? "parameter" : "parameters";
-
-        if (!state.searchQuery.trim()) {
-          summary.textContent = `${totalCount} ${totalNoun} in this document.`;
-          return;
-        }
-
-        summary.textContent = `${filteredCount} of ${totalCount} parameters match.`;
+        // Persistent summary count intentionally disabled.
+        // Session status history in Settings replaces header-level message repetition.
+        return;
       }
 
       function getParameterSearchNeedle() {
@@ -3739,6 +3924,16 @@
 
       function autoSizeCommentInputs(root = document) {
         root.querySelectorAll(".comment-input").forEach((textarea) => autoSizeTextarea(textarea));
+      }
+
+      function applyCommentInputPlaceholders(root = document) {
+        const isNarrow = document.body.classList.contains("narrow-stack");
+        root.querySelectorAll(".comment-input").forEach((textarea) => {
+          if (!textarea) {
+            return;
+          }
+          textarea.placeholder = isNarrow ? "Add comment..." : "";
+        });
       }
 
       function setPreviewCellContent(previewCell, savedPreview, draftPreview = "") {
@@ -4078,7 +4273,10 @@
             const safeExpression = escapeHtml(param.expression);
             const safeComment = escapeHtml(param.comment);
             const safePreview = escapeHtml(param.valuePreview);
-            const previousExpression = String(param.previousExpression || "");
+            const rowStateKey = String(param.key || param.name || "");
+            const localPreviousExpression = String(state.localPreviousExpressions[rowStateKey] || "");
+            const backendPreviousExpression = String(param.previousExpression || "");
+            const previousExpression = backendPreviousExpression || localPreviousExpression;
             const previousValue = String(param.previousValue || "");
             const safePreviousExpression = escapeHtml(previousExpression);
             const unitLabel = escapeHtml(param.unit || "No Units");
@@ -4090,10 +4288,7 @@
               : `Drag to reorder ${safeName}. Right-click for group + reorder options.`;
             const showRevert = state.settings.showRevertButtons !== false;
             const compactPreviousValue = previousValue.replace(/\s+/g, " ").trim();
-            const rowStateKey = String(param.key || param.name || "");
             const isNarrowExpanded = !!state.expandedRows[rowStateKey];
-            const isNarrowCommentOpen = !!state.commentOpenRows[rowStateKey];
-            const hasComment = !!String(param.comment || "").trim();
             const hasRevert = !!previousExpression;
             const revertTitle = previousExpression
               ? `Revert to: ${escapeHtml(previousExpression)}${compactPreviousValue ? ` (${escapeHtml(compactPreviousValue)})` : ""}`
@@ -4102,18 +4297,17 @@
                   ? `Revert to: ${escapeHtml(compactPreviousValue)}`
                   : "No previous value"
               );
-            const revertButton = showRevert
+            const revertButton = (showRevert && hasRevert)
               ? `<button class="revert-button" type="button" data-previous-expression="${safePreviousExpression}" title="${revertTitle}"${previousExpression ? "" : " disabled"}>Revert</button>`
               : "";
             const stripeClass = renderRowCounter % 2 === 0 ? " is-even" : " is-odd";
             const hiddenClass = groupCollapsed ? " is-hidden-by-group" : "";
             const narrowExpandedClass = isNarrowExpanded ? " is-narrow-expanded" : "";
-            const narrowCommentClass = isNarrowCommentOpen ? " is-narrow-comment-open" : "";
             const narrowToggleGlyph = isNarrowExpanded ? "\u25be" : "\u25b8";
-            const narrowCommentTitle = isNarrowCommentOpen ? "Hide comment editor" : "Show comment editor";
+            const narrowToggleTitle = isNarrowExpanded ? "Hide comment and parameter type" : "Show comment and parameter type";
 
             pieces.push(`
-              <tr class="parameter-row${stripeClass}${hiddenClass}${narrowExpandedClass}${narrowCommentClass}" data-index="0" data-group-index="${index}" data-group-name="${safeGroupLabel}" data-parameter-key="${safeKey}" data-parameter-name="${safeName}" data-row-uid="row-${renderRowCounter}"${isFavoritesGroup ? ' data-favorites-row="true"' : ""}>
+              <tr class="parameter-row${stripeClass}${hiddenClass}${narrowExpandedClass}" data-index="0" data-group-index="${index}" data-group-name="${safeGroupLabel}" data-parameter-key="${safeKey}" data-parameter-name="${safeName}" data-row-uid="row-${renderRowCounter}"${isFavoritesGroup ? ' data-favorites-row="true"' : ""}>
                 <td class="name-cell">
                   <div class="name-cell-main">
                     ${isFavoritesGroup ? `<span class="reorder-handle-placeholder" aria-hidden="true"></span>` : `<button class="reorder-handle" type="button" data-reorder-handle="true" tabindex="-1" aria-label="${reorderTitle}" title="${reorderTitle}"${isSearchActive ? " disabled" : ""}></button>`}
@@ -4126,19 +4320,9 @@
                     <div class="narrow-summary-head">
                       <button class="${favoriteClass}" type="button" data-favorite-toggle="true" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}"><span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span></button>
                       <strong class="narrow-summary-name">${safeName}</strong>
-                      <div class="narrow-summary-badges">
-                        <span class="narrow-badge" data-narrow-badge="revert"${showRevert && hasRevert ? "" : " hidden"}>Revert</span>
-                      </div>
+                      <span class="narrow-summary-state" data-narrow-summary-state>${safePreview}</span>
                       <button class="ghost narrow-summary-icon-btn" type="button" data-narrow-reorder="true" title="More / reorder">&#8942;</button>
-                      <button class="ghost narrow-summary-icon-btn narrow-summary-toggle" type="button" data-narrow-toggle="true" aria-expanded="${isNarrowExpanded ? "true" : "false"}" title="Expand row">${narrowToggleGlyph}</button>
-                    </div>
-                    <div class="narrow-summary-meta">
-                      <span class="narrow-summary-value" data-narrow-summary-value>${safePreview}</span>
-                      <span class="narrow-summary-unit" data-narrow-summary-unit>${unitLabel}</span>
-                    </div>
-                    <div class="narrow-summary-meta">
-                      <span class="parameter-kind">User Parameter</span>
-                      <button class="ghost narrow-summary-icon-btn narrow-comment-btn${isNarrowCommentOpen ? " is-open" : ""}${hasComment ? " has-comment" : ""}" type="button" data-narrow-comment-toggle="true" aria-expanded="${isNarrowCommentOpen ? "true" : "false"}" title="${narrowCommentTitle}">Comment</button>
+                      <button class="ghost narrow-summary-icon-btn narrow-summary-toggle" type="button" data-narrow-toggle="true" aria-expanded="${isNarrowExpanded ? "true" : "false"}" title="${narrowToggleTitle}">${narrowToggleGlyph}</button>
                     </div>
                   </div>
                 </td>
@@ -4162,7 +4346,11 @@
                     <textarea class="comment-input" data-saved-comment="${safeComment}">${safeComment}</textarea>
                     <div class="row-actions">
                       ${revertButton}
+                      <button class="discard-button" type="button" title="Discard unsaved edits in this row." aria-label="Discard unsaved edits in this row.">Discard</button>
                       <button class="save-button" type="button" disabled>Save</button>
+                    </div>
+                    <div class="narrow-expanded-kind">
+                      <span class="parameter-kind">Type: User Parameter</span>
                     </div>
                   </div>
                 </td>
@@ -4175,6 +4363,7 @@
         renderReorderMenuGroupOptions();
 
         autoSizeCommentInputs(tbody);
+        applyCommentInputPlaceholders(tbody);
         tbody.querySelectorAll(".preview-cell").forEach((previewCell) => {
           setPreviewCellContent(previewCell, previewCell.getAttribute("data-saved-preview") || "");
         });
@@ -4234,60 +4423,43 @@
         if (toggle) {
           toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
           toggle.textContent = expanded ? "\u25be" : "\u25b8";
+          toggle.title = expanded ? "Hide comment and parameter type" : "Show comment and parameter type";
         }
       }
 
-      function setNarrowRowCommentOpen(row, open) {
-        const key = narrowRowStateKeyFromRow(row);
-        if (!key) {
-          return;
-        }
-        state.commentOpenRows[key] = !!open;
-        row.classList.toggle("is-narrow-comment-open", !!open);
-        const toggle = row.querySelector("[data-narrow-comment-toggle]");
-        if (toggle) {
-          toggle.setAttribute("aria-expanded", open ? "true" : "false");
-          toggle.title = open ? "Hide comment editor" : "Show comment editor";
-        }
-      }
-
-      function updateNarrowRowSummary(row) {
+      function renderNarrowValueSummary(row) {
         if (!row) {
           return;
         }
 
-        const commentInput = row.querySelector(".comment-input");
-        const revertButton = row.querySelector(".revert-button");
+        const summaryState = row.querySelector("[data-narrow-summary-state]");
+        if (!summaryState) {
+          return;
+        }
+
         const previewCell = row.querySelector(".preview-cell");
-        const unitCell = row.querySelector(".unit-cell .unit-text");
+        const saveButton = row.querySelector(".save-button");
+        const isDirty = row.classList.contains("is-dirty");
+        const canSave = !!(saveButton && !saveButton.disabled && saveButton.classList.contains("is-ready"));
 
-        const revertBadge = row.querySelector('[data-narrow-badge="revert"]');
-        const summaryValue = row.querySelector("[data-narrow-summary-value]");
-        const summaryUnit = row.querySelector("[data-narrow-summary-unit]");
-        const commentToggle = row.querySelector("[data-narrow-comment-toggle]");
+        const currentText = (previewCell?.getAttribute("data-saved-preview") || "").trim();
+        const draftText = (previewCell?.getAttribute("data-draft-preview") || "").trim();
 
-        const hasComment = !!(commentInput && String(commentInput.value || "").trim());
-        const hasRevert = !!(revertButton && (revertButton.getAttribute("data-previous-expression") || "").trim());
+        summaryState.textContent = currentText || "";
 
-        if (revertBadge) revertBadge.hidden = !(state.settings.showRevertButtons !== false && hasRevert);
-        if (commentToggle) {
-          const isOpen = row.classList.contains("is-narrow-comment-open");
-          commentToggle.classList.toggle("has-comment", hasComment);
-          commentToggle.classList.toggle("is-open", isOpen);
-          commentToggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
-          commentToggle.title = isOpen ? "Hide comment editor" : "Show comment editor";
-        }
-
-        if (summaryValue && previewCell) {
-          const previewDraft = previewCell.querySelector(".preview-new")?.textContent
-            || previewCell.querySelector(".preview-current")?.textContent
-            || previewCell.getAttribute("data-saved-preview")
-            || "";
-          summaryValue.textContent = String(previewDraft || "").trim();
-        }
-
-        if (summaryUnit && unitCell) {
-          summaryUnit.textContent = unitCell.textContent || "";
+        if (document.body.classList.contains("narrow-stack") && previewCell) {
+          const previewValueNode = previewCell.querySelector(".preview-value");
+          if (isDirty && canSave) {
+            const nextValue = draftText || currentText;
+            row.classList.add("has-narrow-value-summary");
+            if (previewValueNode) {
+              previewValueNode.textContent = `${currentText} (current); ${nextValue} (unsaved)`;
+            }
+          } else {
+            row.classList.remove("has-narrow-value-summary");
+          }
+        } else {
+          row.classList.remove("has-narrow-value-summary");
         }
       }
 
@@ -5458,6 +5630,30 @@
         }
 
         if (payload.parameters) {
+          const parameterList = Array.isArray(payload.parameters) ? payload.parameters : [];
+          const seenKeys = new Set();
+          parameterList.forEach((param) => {
+            const key = String(param?.key || param?.name || "");
+            if (!key) {
+              return;
+            }
+            seenKeys.add(key);
+            const localPreviousExpression = String(state.localPreviousExpressions[key] || "");
+            if (!localPreviousExpression) {
+              return;
+            }
+            const backendPreviousExpression = String(param?.previousExpression || "");
+            const currentExpression = String(param?.expression || "");
+            if (backendPreviousExpression || localPreviousExpression === currentExpression) {
+              delete state.localPreviousExpressions[key];
+            }
+          });
+          Object.keys(state.localPreviousExpressions).forEach((key) => {
+            if (!seenKeys.has(key)) {
+              delete state.localPreviousExpressions[key];
+            }
+          });
+
           renderParameters(payload.parameters);
           setParameterSummary(payload.parameters);
           const tableWrap = document.querySelector(".table-wrap");
@@ -6185,9 +6381,10 @@
 
         const errorNode = input.parentElement ? input.parentElement.querySelector(".expression-field-error") : null;
         if (errorNode) {
-          errorNode.textContent = message || "";
-          errorNode.classList.toggle("is-valid", kind === "success");
-          errorNode.classList.toggle("has-message", !!message);
+          const visibleMessage = (kind === "success") ? "" : (message || "");
+          errorNode.textContent = visibleMessage;
+          errorNode.classList.toggle("is-valid", false);
+          errorNode.classList.toggle("has-message", !!visibleMessage);
         }
         input.setAttribute("aria-invalid", (message && kind === "error") ? "true" : "false");
         updateRowSaveState(input.closest("tr"));
@@ -6269,6 +6466,10 @@
         const currentExpression = expressionInput.value || "";
         const draftPreview = previewCell.getAttribute("data-draft-preview") || "";
         const showDraft = currentExpression !== savedExpression && !!draftPreview;
+        if (document.body.classList.contains("narrow-stack")) {
+          renderNarrowValueSummary(row);
+          return;
+        }
         setPreviewCellContent(previewCell, savedPreview, showDraft ? draftPreview : "");
       }
 
@@ -6280,8 +6481,10 @@
         const expressionInput = row.querySelector(".expression-input");
         const commentInput = row.querySelector(".comment-input");
         const saveButton = row.querySelector(".save-button");
+        const discardButton = row.querySelector(".discard-button");
         const revertButton = row.querySelector(".revert-button");
-        if (!expressionInput || !commentInput || !saveButton) {
+        const rowActions = row.querySelector(".row-actions");
+        if (!expressionInput || !commentInput || !saveButton || !discardButton) {
           return;
         }
 
@@ -6295,14 +6498,23 @@
         saveButton.classList.toggle("is-dirty", isDirty);
         saveButton.classList.toggle("is-ready", isDirty && !expressionHasError);
         saveButton.classList.toggle("is-error", isDirty && expressionHasError);
+        discardButton.disabled = !isDirty;
+        discardButton.classList.toggle("is-dirty", isDirty);
         if (revertButton) {
           const previousExpression = revertButton.getAttribute("data-previous-expression") || "";
           const canRevert = !!previousExpression && !isDirty;
           revertButton.disabled = !canRevert;
           revertButton.classList.toggle("is-ready", canRevert);
         }
+        if (rowActions) {
+          rowActions.classList.toggle("has-revert-action", !!revertButton);
+          rowActions.classList.toggle("has-discard-action", isDirty);
+        }
+        const hasVisibleSave = saveButton.classList.contains("is-dirty");
+        const hasVisibleRevert = !!revertButton;
+        row.classList.toggle("has-visible-actions", hasVisibleSave || hasVisibleRevert);
         renderRowPreview(row);
-        updateNarrowRowSummary(row);
+        renderNarrowValueSummary(row);
       }
 
       function restoreRowPreview(input) {
@@ -6347,7 +6559,7 @@
             return false;
           }
 
-          setExpressionValidationState(input, "Expression valid.", "success");
+          setExpressionValidationState(input, "", "success");
           if (previewCell) {
             previewCell.setAttribute("data-draft-preview", response.preview || "");
           }
@@ -6366,6 +6578,13 @@
 
       async function validateExpressionAgainstFusion(input) {
         const expression = typeof input === "string" ? input : input.value;
+        const isRowInput = typeof input !== "string" && input && input.id !== "newExpression";
+        let validationNonce = "";
+        if (isRowInput) {
+          state.rowValidationRequestNonce += 1;
+          validationNonce = String(state.rowValidationRequestNonce);
+          input.setAttribute("data-validation-request-nonce", validationNonce);
+        }
         const currentParameterName =
           typeof input === "string"
             ? ""
@@ -6392,6 +6611,9 @@
 
         try {
           const response = await sendToFusion("validateExpression", { expression, currentParameterName, units });
+          if (isRowInput && input.getAttribute("data-validation-request-nonce") !== validationNonce) {
+            return false;
+          }
           if (!response.ok) {
             if (typeof input === "string") {
               setExpressionError(response.message || "Invalid expression.");
@@ -6401,6 +6623,9 @@
             return false;
           }
         } catch (error) {
+          if (isRowInput && input.getAttribute("data-validation-request-nonce") !== validationNonce) {
+            return false;
+          }
           if (typeof input === "string") {
             setExpressionError(error.message);
           } else {
@@ -6412,7 +6637,7 @@
         if (typeof input === "string") {
           setExpressionError("");
         } else {
-          setExpressionValidationState(input, "Expression valid.", "success");
+          setExpressionValidationState(input, "", "success");
         }
         return true;
       }
@@ -6564,6 +6789,15 @@
         setGlobalStatus("Repairing metadata drift/corruption...");
         await runMetadataSync("repairMetadata", "Metadata repair completed.");
       });
+
+      const clearStatusHistoryButton = document.getElementById("clearStatusHistoryButton");
+      if (clearStatusHistoryButton) {
+        clearStatusHistoryButton.addEventListener("click", () => {
+          state.statusHistory = [];
+          renderStatusHistory();
+          setGlobalStatus("Status history cleared.", "success");
+        });
+      }
 
       function toggleCreateForm(forceOpen) {
         const body = document.getElementById("createFormBody");
@@ -6762,6 +6996,7 @@
 
       const parameterRows = document.getElementById("parameterRows");
       let rowExpressionValidationTimer = null;
+      let focusRefreshTimer = null;
       const parameterSearchInput = document.getElementById("parameterSearchInput");
       const parameterSearchClear = document.getElementById("parameterSearchClear");
 
@@ -6793,6 +7028,7 @@
       parameterRows.addEventListener("input", (event) => {
         const commentInput = event.target.closest(".comment-input");
         if (commentInput) {
+          applyCommentInputPlaceholders(commentInput.closest("tr") || parameterRows);
           autoSizeTextarea(commentInput);
           updateRowSaveState(commentInput.closest("tr"));
           return;
@@ -6941,7 +7177,6 @@
           window.clearTimeout(rowExpressionValidationTimer);
         }
         await validateExpressionAgainstFusion(input);
-        scheduleExpressionStatusClear(input);
       });
 
       parameterRows.addEventListener("focusin", (event) => {
@@ -7705,29 +7940,6 @@
           }
           const nextExpanded = !row.classList.contains("is-narrow-expanded");
           setNarrowRowExpanded(row, nextExpanded);
-          if (!nextExpanded) {
-            setNarrowRowCommentOpen(row, false);
-          }
-          return;
-        }
-
-        const narrowCommentToggle = event.target.closest("[data-narrow-comment-toggle]");
-        if (narrowCommentToggle) {
-          const row = narrowCommentToggle.closest("tr.parameter-row[data-parameter-key]");
-          if (!row) {
-            return;
-          }
-          if (!row.classList.contains("is-narrow-expanded")) {
-            setNarrowRowExpanded(row, true);
-          }
-          const nextOpen = !row.classList.contains("is-narrow-comment-open");
-          setNarrowRowCommentOpen(row, nextOpen);
-          if (nextOpen) {
-            const input = row.querySelector(".comment-input");
-            if (input) {
-              input.focus();
-            }
-          }
           return;
         }
 
@@ -7759,6 +7971,7 @@
           if (!parameter) {
             return;
           }
+          const parameterKey = String(parameter.key || parameter.name || "");
 
           const comment = row.querySelector(".comment-input")?.value ?? parameter.comment ?? "";
           revertButton.disabled = true;
@@ -7771,6 +7984,9 @@
             });
             if (!response.ok) {
               throw new Error(response.message || "Revert failed.");
+            }
+            if (parameterKey) {
+              delete state.localPreviousExpressions[parameterKey];
             }
             applyStateFromFusion(response);
             setGlobalStatus(`Reverted ${parameter.name}.`, "success");
@@ -7809,7 +8025,31 @@
         }
 
         const button = event.target.closest(".save-button");
-        if (!button) {
+        const discardButton = event.target.closest(".discard-button");
+        if (!button && !discardButton) {
+          return;
+        }
+
+        if (discardButton) {
+          const row = discardButton.closest("tr");
+          if (!row) {
+            return;
+          }
+          const expressionInput = row.querySelector(".expression-input");
+          const commentInput = row.querySelector(".comment-input");
+          if (!expressionInput || !commentInput) {
+            return;
+          }
+
+          const savedExpression = expressionInput.getAttribute("data-saved-expression") || "";
+          const savedComment = commentInput.getAttribute("data-saved-comment") || "";
+          expressionInput.value = savedExpression;
+          commentInput.value = savedComment;
+          setExpressionValidationState(expressionInput, "", "success");
+          restoreRowPreview(expressionInput);
+          updateRowSaveState(row);
+          autoSizeTextarea(commentInput);
+          setGlobalStatus("Discarded unsaved row changes.", "success");
           return;
         }
 
@@ -7822,6 +8062,8 @@
         const expression = row.querySelector(".expression-input").value;
         const expressionInput = row.querySelector(".expression-input");
         const comment = row.querySelector(".comment-input").value;
+        const previousSavedExpression = String(expressionInput.getAttribute("data-saved-expression") || "");
+        const parameterKey = String(parameter.key || parameter.name || "");
 
         const isExpressionValid = await validateExpressionAgainstFusion(expressionInput);
         if (!isExpressionValid) {
@@ -7839,6 +8081,13 @@
             throw new Error(response.message || "Save failed.");
           }
 
+          if (parameterKey) {
+            if (previousSavedExpression && previousSavedExpression !== expression) {
+              state.localPreviousExpressions[parameterKey] = previousSavedExpression;
+            } else {
+              delete state.localPreviousExpressions[parameterKey];
+            }
+          }
           applyStateFromFusion(response);
           setGlobalStatus(`Saved ${parameter.name}.`, "success");
         } catch (error) {
@@ -8056,6 +8305,7 @@
 
       window.addEventListener("load", async () => {
         try {
+          renderStatusHistory();
           initializeTextTunerCard();
           applySettings(state.settings);
           syncDefaultUnit(true);
@@ -8109,7 +8359,24 @@
       });
 
       window.addEventListener("focus", () => {
-        refreshIfDocumentChanged();
+        if (focusRefreshTimer) {
+          window.clearTimeout(focusRefreshTimer);
+        }
+        focusRefreshTimer = window.setTimeout(() => {
+          focusRefreshTimer = null;
+          const active = document.activeElement;
+          const isEditingField = !!(
+            active
+            && (
+              active.matches("input, textarea, select")
+              || active.getAttribute("contenteditable") === "true"
+            )
+          );
+          if (isEditingField) {
+            return;
+          }
+          refreshIfDocumentChanged();
+        }, 120);
       });
     </script>
   </body>
