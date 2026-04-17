@@ -3456,6 +3456,8 @@
         pendingRenderPushEnvelope: null,
         pendingRenderPushAction: "",
         pendingRenderPushNoticeShown: false,
+        initialLayoutDone: false,
+        initialLayoutPassPending: false,
         importConflictPolicy: (function () {
           try {
             const raw = String(localStorage.getItem(IMPORT_CONFLICT_POLICY_STORAGE_KEY) || "").trim().toLowerCase();
@@ -3502,6 +3504,19 @@
         return context.measureText(text || "").width;
       }
 
+      function getTableWrapInnerWidth() {
+        const wrap = document.querySelector(".table-wrap");
+        if (!wrap) {
+          return 0;
+        }
+        const clientWidth = Math.round(Number(wrap.clientWidth || 0));
+        if (clientWidth > 0) {
+          return clientWidth;
+        }
+        const offsetWidth = Math.round(Number(wrap.offsetWidth || 0));
+        return offsetWidth > 0 ? offsetWidth : 0;
+      }
+
       function buildAutoFitColumnWidths() {
         const table = document.querySelector(".table-wrap table");
         const wrap = table ? table.parentElement : null;
@@ -3546,7 +3561,7 @@
           return Math.max(max, Math.ceil(measureTextWidth(current, monoFont) + 26));
         }, 110);
 
-        const containerWidth = wrap.offsetWidth || 600;
+        const containerWidth = getTableWrapInnerWidth() || 600;
         if (containerWidth < NARROW_NAME_EXPRESSION_ONLY_PX) {
           const snugNamePx = Math.max(
             COLUMN_MIN_PX.name,
@@ -3581,12 +3596,63 @@
         };
       }
 
+      function clampColumnsToContainer(columns, containerWidth) {
+        const next = { ...DEFAULT_TABLE_COLUMNS };
+        COLUMN_KEYS.forEach((key) => {
+          next[key] = Math.max(COLUMN_MIN_PX[key] || 40, Math.round(Number(columns?.[key] || DEFAULT_TABLE_COLUMNS[key])));
+        });
+
+        if (!containerWidth || containerWidth <= 0) {
+          return next;
+        }
+
+        if (containerWidth < NARROW_NAME_EXPRESSION_ONLY_PX) {
+          const snugNamePx = Math.max(
+            COLUMN_MIN_PX.name,
+            Math.min(
+              next.name,
+              Math.max(COLUMN_MIN_PX.name, containerWidth - COLUMN_MIN_PX.expression)
+            )
+          );
+          next.name = snugNamePx;
+          next.expression = Math.max(COLUMN_MIN_PX.expression, containerWidth - snugNamePx);
+          return next;
+        }
+
+        const optionalKeysByPriority = ["value", "parameter", "unit"];
+        let visibleMainPx = (next.name || 0) + (next.expression || 0);
+        optionalKeysByPriority.forEach((key) => {
+          const keyPx = next[key] || 0;
+          if ((visibleMainPx + keyPx) <= containerWidth) {
+            visibleMainPx += keyPx;
+          }
+        });
+
+        if (visibleMainPx > containerWidth) {
+          let deficit = visibleMainPx - containerWidth;
+          const expressionHeadroom = Math.max(0, next.expression - COLUMN_MIN_PX.expression);
+          const expressionTrim = Math.min(deficit, expressionHeadroom);
+          if (expressionTrim > 0) {
+            next.expression -= expressionTrim;
+            deficit -= expressionTrim;
+          }
+          if (deficit > 0) {
+            const nameHeadroom = Math.max(0, next.name - COLUMN_MIN_PX.name);
+            const nameTrim = Math.min(deficit, nameHeadroom);
+            if (nameTrim > 0) {
+              next.name -= nameTrim;
+            }
+          }
+        }
+
+        return next;
+      }
+
       function applyColumnWidths() {
         const cols = state.settings.parameterTableColumns;
         const table = document.querySelector(".table-wrap table");
         const headers = document.querySelectorAll(".table-wrap table thead th");
-        const wrap = table ? table.parentElement : null;
-        const containerWidth = wrap ? wrap.offsetWidth : 600;
+        const containerWidth = getTableWrapInnerWidth() || 600;
         const isNarrowMode = containerWidth < NARROW_NAME_EXPRESSION_ONLY_PX;
         document.body.classList.toggle("narrow-stack", isNarrowMode);
         const userShowsComments = !document.body.classList.contains("hide-comment");
@@ -3652,6 +3718,7 @@
         });
 
         if (table) {
+          table.style.width = "";
           if (isNarrowMode) {
             table.style.width = `${containerWidth}px`;
             if (headers[5]) headers[5].style.width = "";
@@ -3665,7 +3732,7 @@
           if (headers[5]) {
             headers[5].style.width = commentsVisible && commentsWidth > 0 ? `${commentsWidth}px` : "";
           }
-          table.style.width = `${Math.max(effectiveSumPx + commentsWidth, containerWidth)}px`;
+          table.style.width = `${containerWidth}px`;
         }
       }
 
@@ -3674,7 +3741,6 @@
         if (document.body.classList.contains("auto-hide-parameter")) hidden.add("parameter");
         if (document.body.classList.contains("auto-hide-unit")) hidden.add("unit");
         if (document.body.classList.contains("auto-hide-value")) hidden.add("value");
-        if (document.body.classList.contains("auto-hide-comments") || document.body.classList.contains("hide-comment")) hidden.add("expression");
         return hidden;
       }
 
@@ -5641,7 +5707,52 @@
         }
       }
 
-      function applySettings(settings) {
+      function resolvePreferredTheme(settings, fusionTheme) {
+        if (fusionTheme === "dark" || fusionTheme === "light") {
+          return fusionTheme;
+        }
+        if (settings && (settings.theme === "dark" || settings.theme === "light")) {
+          return settings.theme;
+        }
+        return state.appliedTheme === "dark" ? "dark" : "light";
+      }
+
+      function scheduleInitialLayoutPass() {
+        if (state.initialLayoutDone || state.initialLayoutPassPending) {
+          return;
+        }
+        state.initialLayoutPassPending = true;
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            state.initialLayoutPassPending = false;
+            if (state.initialLayoutDone) {
+              return;
+            }
+            const tableWrap = document.querySelector(".table-wrap");
+            const table = document.querySelector(".table-wrap table");
+            const wrapWidth = getTableWrapInnerWidth();
+            if (!tableWrap || !table || wrapWidth <= 0) {
+              scheduleInitialLayoutPass();
+              return;
+            }
+
+            const previousColumns = { ...(state.settings.parameterTableColumns || DEFAULT_TABLE_COLUMNS) };
+            const nextColumns = state.settings.autoFitColumns === true
+              ? buildAutoFitColumnWidths()
+              : clampColumnsToContainer(previousColumns, wrapWidth);
+            state.settings.parameterTableColumns = nextColumns;
+            applyColumnWidths();
+            state.initialLayoutDone = true;
+
+            if (!areColumnWidthsSimilar(previousColumns, nextColumns)) {
+              saveSettingsPartial({ parameterTableColumns: nextColumns }).catch(() => {});
+            }
+          });
+        });
+      }
+
+      function applySettings(settings, options = {}) {
+        const deferColumnLayout = options.deferColumnLayout === true;
         state.settings = {
           ...state.settings,
           ...settings,
@@ -5681,7 +5792,9 @@
         document.body.classList.toggle("hide-comment", state.settings.showCommentColumn !== true);
         applyTextTunerSidebarVisibility();
         renderUnitPicker();
-        applyColumnWidths();
+        if (!deferColumnLayout) {
+          applyColumnWidths();
+        }
         refreshBatchActionBar();
       }
 
@@ -5910,7 +6023,11 @@
       function rerenderForTextTuning() {
         renderParameters(state.parameters);
         setParameterSummary(state.parameters);
-        applyColumnWidths();
+        if (!state.initialLayoutDone) {
+          scheduleInitialLayoutPass();
+        } else {
+          applyColumnWidths();
+        }
       }
 
       function applyTextTunerValues(values, options = {}) {
@@ -6202,8 +6319,13 @@
         }
 
         if (payload.settings) {
+          const mergedSettings = { ...payload.settings };
+          if (!state.fusionThemeApplied) {
+            mergedSettings.theme = resolvePreferredTheme(mergedSettings, payload.fusionTheme);
+            state.fusionThemeApplied = true;
+          }
           state.hasLoadedFusionSettings = true;
-          applySettings(payload.settings);
+          applySettings(mergedSettings, { deferColumnLayout: !state.initialLayoutDone });
         }
 
         if (payload.textTunerState && typeof payload.textTunerState === "object") {
@@ -6246,23 +6368,26 @@
           renderParameters(payload.parameters);
           rehydrateRowDraftsFromState();
           setParameterSummary(payload.parameters);
-          const tableWrap = document.querySelector(".table-wrap");
-          const wrapWidth = tableWrap ? tableWrap.offsetWidth : 0;
-          const skipNarrowAutoFit = state.suppressNextNarrowAutoFit === true;
-          state.suppressNextNarrowAutoFit = false;
-          if (!skipNarrowAutoFit && state.settings.autoFitColumns === true && wrapWidth > 0 && wrapWidth < NARROW_NAME_EXPRESSION_ONLY_PX && !document.body.classList.contains("narrow-stack")) {
-            requestAnimationFrame(() => {
-              const nextColumns = buildAutoFitColumnWidths();
-              const currentColumns = state.settings.parameterTableColumns || {};
-              if (areColumnWidthsSimilar(currentColumns, nextColumns)) {
-                return;
-              }
-              state.settings.parameterTableColumns = nextColumns;
-              applyColumnWidths();
-              if (state.settings.autoFitColumns === true) {
-                saveSettingsPartial({ parameterTableColumns: nextColumns }).catch(() => {});
-              }
-            });
+          if (!state.initialLayoutDone) {
+            scheduleInitialLayoutPass();
+          } else {
+            const wrapWidth = getTableWrapInnerWidth();
+            const skipNarrowAutoFit = state.suppressNextNarrowAutoFit === true;
+            state.suppressNextNarrowAutoFit = false;
+            if (!skipNarrowAutoFit && state.settings.autoFitColumns === true && wrapWidth > 0 && wrapWidth < NARROW_NAME_EXPRESSION_ONLY_PX && !document.body.classList.contains("narrow-stack")) {
+              requestAnimationFrame(() => {
+                const nextColumns = buildAutoFitColumnWidths();
+                const currentColumns = state.settings.parameterTableColumns || {};
+                if (areColumnWidthsSimilar(currentColumns, nextColumns)) {
+                  return;
+                }
+                state.settings.parameterTableColumns = nextColumns;
+                applyColumnWidths();
+                if (state.settings.autoFitColumns === true) {
+                  saveSettingsPartial({ parameterTableColumns: nextColumns }).catch(() => {});
+                }
+              });
+            }
           }
         }
 
@@ -6270,6 +6395,10 @@
           state.updateInfo = { ...state.updateInfo, ...payload.updateInfo };
           renderUpdatePill();
           renderUpdateCard();
+        }
+
+        if (!state.initialLayoutDone) {
+          scheduleInitialLayoutPass();
         }
 
         syncDefaultUnit();
@@ -8722,6 +8851,9 @@
         }
         paletteResizeTimer = window.setTimeout(() => {
           savePaletteSize();
+          if (!state.initialLayoutDone) {
+            return;
+          }
           if (state.settings.autoFitColumns === true) {
             const nextColumns = buildAutoFitColumnWidths();
             state.settings.parameterTableColumns = nextColumns;
@@ -8819,7 +8951,7 @@
         const hiddenKeys = getHiddenColumnKeySet();
         const othersPx = COLUMN_KEYS.filter(k => k !== colKey && !hiddenKeys.has(k))
           .reduce((s, k) => s + Math.round(cols[k] || DEFAULT_TABLE_COLUMNS[k]), 0);
-        const containerWidth = document.querySelector(".table-wrap")?.offsetWidth || window.innerWidth;
+        const containerWidth = getTableWrapInnerWidth() || window.innerWidth;
         const maxPx = Math.max(minPx, containerWidth - othersPx);
         state.settings.parameterTableColumns[colKey] = Math.max(minPx, Math.min(maxPx, Math.round(startWidth + deltaX)));
         applyColumnWidths();
@@ -8917,6 +9049,7 @@
         state.settings.showCommentColumn = nextValue;
         renderCommentColumnToggle();
         document.body.classList.toggle("hide-comment", !nextValue);
+        applyColumnWidths();
 
         try {
           await saveSettingsPartial({ showCommentColumn: nextValue });
@@ -8924,6 +9057,7 @@
           state.settings.showCommentColumn = previousValue;
           renderCommentColumnToggle();
           document.body.classList.toggle("hide-comment", !previousValue);
+          applyColumnWidths();
           setGlobalStatus(error.message, "error");
         }
       });
@@ -9492,7 +9626,7 @@
         try {
           renderStatusHistory();
           initializeTextTunerCard();
-          applySettings(state.settings);
+          applySettings(state.settings, { deferColumnLayout: true });
           syncDefaultUnit(true);
           renderUnitPicker();
           autoSizeCommentInputs();
