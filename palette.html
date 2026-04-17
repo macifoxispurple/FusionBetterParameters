@@ -275,15 +275,6 @@
         z-index: 1200;
       }
 
-      .toolbar-brand {
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.04em;
-        color: var(--accent);
-        padding: 0 4px;
-        flex-shrink: 0;
-      }
-
       .toolbar-doc {
         font-size: 11px;
         color: var(--muted);
@@ -1553,6 +1544,13 @@
         padding: 4px 8px;
         min-height: 30px;
         background: color-mix(in srgb, var(--panel) 88%, var(--bg));
+        position: sticky;
+        top: 36px;
+        z-index: 1100;
+      }
+
+      body.inline-status-visible .parameter-rail {
+        top: 56px;
       }
 
       .rail-icons {
@@ -2476,7 +2474,7 @@
         font-size: 0.84rem;
         line-height: 1.55;
         color: var(--ink);
-        max-width: 340px;
+        max-width: min(340px, calc(100vw - 16px));
         width: max-content;
         max-height: 220px;
         overflow-y: auto;
@@ -2632,12 +2630,11 @@
       </div>
       <div class="shell">
         <div class="toolbar">
-          <span class="toolbar-brand">BP</span>
           <span id="docNameLabel" class="toolbar-doc"></span>
           <span class="toolbar-spacer"></span>
           <div id="updatePill" class="update-pill" style="display:none" role="status"></div>
           <button id="settingsGearButton" class="ghost icon-btn" type="button" aria-label="Settings" aria-controls="settingsPanel" aria-expanded="false">
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2"/><path d="M8 1v2m0 10v2M1 8h2m10 0h2M3.05 3.05l1.41 1.41m7.08 7.08 1.41 1.41M3.05 12.95l1.41-1.41m7.08-7.08 1.41-1.41"/></svg>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.08-.98l2.11-1.65a.5.5 0 0 0 .12-.64l-2-3.46a.5.5 0 0 0-.6-.22l-2.49 1a7.22 7.22 0 0 0-1.69-.98l-.38-2.65a.5.5 0 0 0-.49-.42h-4a.5.5 0 0 0-.49.42l-.38 2.65a7.22 7.22 0 0 0-1.69.98l-2.49-1a.5.5 0 0 0-.6.22l-2 3.46a.5.5 0 0 0 .12.64l2.11 1.65c-.05.32-.08.65-.08.98s.03.66.08.98l-2.11 1.65a.5.5 0 0 0-.12.64l2 3.46c.13.23.39.32.6.22l2.49-1c.52.4 1.09.73 1.69.98l.38 2.65c.04.24.25.42.49.42h4c.24 0 .45-.18.49-.42l.38-2.65c.6-.25 1.17-.58 1.69-.98l2.49 1c.22.1.47.01.6-.22l2-3.46a.5.5 0 0 0-.12-.64l-2.11-1.65ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z"/></svg>
           </button>
         </div>
 
@@ -3617,6 +3614,7 @@
         status.className = kind ? `status ${kind}` : "status";
         status.classList.add("global-status");
         status.classList.toggle("is-hidden", !showInline);
+        document.body.classList.toggle("inline-status-visible", showInline);
         appendStatusHistory(message, kind);
       }
 
@@ -8136,14 +8134,75 @@
             tip.textContent = notes;
             pill.appendChild(tip);
 
+            const clampTooltipIntoView = () => {
+              if (!tip.classList.contains("is-visible")) {
+                return;
+              }
+              // Reset to default anchor first so repeated clamping stays stable.
+              tip.style.position = "";
+              tip.style.top = "";
+              tip.style.left = "";
+              tip.style.right = "0px";
+              tip.style.width = "";
+              tip.style.maxWidth = "";
+              tip.style.transform = "translateX(0)";
+              const gutter = 8;
+              const safety = 1;
+              const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+              if (viewportWidth <= 0) {
+                return;
+              }
+              const isNarrowTooltipMode = document.body.classList.contains("narrow-stack") || viewportWidth < NARROW_NAME_EXPRESSION_ONLY_PX;
+              if (isNarrowTooltipMode) {
+                const pillRect = pill.getBoundingClientRect();
+                const topPx = Math.max(gutter, Math.round(pillRect.bottom + 6));
+                tip.style.position = "fixed";
+                tip.style.left = `${gutter}px`;
+                tip.style.right = `${gutter}px`;
+                tip.style.top = `${topPx}px`;
+                tip.style.width = "auto";
+                tip.style.maxWidth = `${Math.max(180, viewportWidth - (gutter * 2) - safety)}px`;
+                tip.style.transform = "none";
+                return;
+              }
+
+              const maxWidth = Math.max(180, viewportWidth - (gutter * 2) - safety);
+              const initialRect = tip.getBoundingClientRect();
+              if (initialRect.width > maxWidth) {
+                tip.style.width = `${maxWidth}px`;
+              }
+
+              const rect = tip.getBoundingClientRect();
+              let shiftX = 0;
+              if (rect.left < gutter) {
+                shiftX += (gutter - rect.left + safety);
+              }
+              if (rect.right > (viewportWidth - gutter - safety)) {
+                shiftX -= (rect.right - (viewportWidth - gutter - safety));
+              }
+              if (shiftX !== 0) {
+                tip.style.transform = `translateX(${Math.round(shiftX)}px)`;
+              }
+            };
+
             const showTip = () => {
               clearTimeout(tooltipHideTimer);
               tooltipHideTimer = null;
               tip.classList.add("is-visible");
+              window.requestAnimationFrame(() => clampTooltipIntoView());
             };
             const schedulehide = () => {
               clearTimeout(tooltipHideTimer);
-              tooltipHideTimer = setTimeout(() => tip.classList.remove("is-visible"), 350);
+              tooltipHideTimer = setTimeout(() => {
+                tip.classList.remove("is-visible");
+                tip.style.left = "";
+                tip.style.right = "";
+                tip.style.top = "";
+                tip.style.position = "";
+                tip.style.width = "";
+                tip.style.maxWidth = "";
+                tip.style.transform = "";
+              }, 350);
             };
 
             pill.addEventListener("mouseenter", showTip);
