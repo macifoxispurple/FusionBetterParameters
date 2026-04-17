@@ -1495,6 +1495,12 @@
         background: var(--panel-hover);
       }
 
+      body.range-selecting #parameterRows,
+      body.range-selecting #parameterRows * {
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
       #parameterRows tr.parameter-row.is-even:hover td,
       #parameterRows tr.parameter-row.is-odd:hover td {
         background: var(--panel-hover);
@@ -5385,6 +5391,55 @@
         return !!target.closest(".param-name-input, .expression-input, .comment-input");
       }
 
+      function shouldIgnoreRowSelectionGestureTarget(target) {
+        if (!target || typeof target.closest !== "function") {
+          return true;
+        }
+        return !!target.closest(
+          "button, a, select, option, [data-reorder-handle], [data-group-toggle], [data-group-rename], [data-group-delete]"
+        );
+      }
+
+      function beginRangeSelectingUiMode() {
+        document.body.classList.add("range-selecting");
+      }
+
+      function endRangeSelectingUiMode() {
+        document.body.classList.remove("range-selecting");
+      }
+
+      function clearDocumentTextSelection() {
+        try {
+          const selection = window.getSelection ? window.getSelection() : null;
+          if (selection && typeof selection.removeAllRanges === "function" && selection.rangeCount > 0) {
+            selection.removeAllRanges();
+          }
+        } catch (_) {}
+      }
+
+      function maybeEndRangeSelectingForEvent(event) {
+        if (!document.body.classList.contains("range-selecting")) {
+          return;
+        }
+        if (!event) {
+          endRangeSelectingUiMode();
+          return;
+        }
+        if (event.type === "keyup") {
+          if (event.key === "Shift" || !event.shiftKey) {
+            endRangeSelectingUiMode();
+          }
+          return;
+        }
+        if (event.type === "visibilitychange") {
+          if (document.visibilityState === "hidden") {
+            endRangeSelectingUiMode();
+          }
+          return;
+        }
+        endRangeSelectingUiMode();
+      }
+
       function wheelDeltaToPixels(event) {
         const mode = Number(event?.deltaMode || 0);
         const linePx = 16;
@@ -8674,20 +8729,33 @@
         if (!(event.ctrlKey || event.metaKey || event.shiftKey)) {
           return;
         }
-        if (!isEditableRowFieldTarget(event.target)) {
-          return;
-        }
         const row = event.target.closest("tr.parameter-row[data-parameter-key]");
         if (!row) {
           return;
         }
+        if (shouldIgnoreRowSelectionGestureTarget(event.target)) {
+          return;
+        }
+        const rowKey = String(row.getAttribute("data-parameter-key") || "");
+        const editableTarget = isEditableRowFieldTarget(event.target);
+        const isRangeGesture = !!event.shiftKey;
+        if (!editableTarget && !isRangeGesture) {
+          return;
+        }
         event.preventDefault();
-        state.suppressNextFieldFocus = true;
-        state.suppressNextRowClickSelectionKey = String(row.getAttribute("data-parameter-key") || "");
+        state.suppressNextFieldFocus = editableTarget;
+        state.suppressNextRowClickSelectionKey = rowKey;
+        if (isRangeGesture) {
+          beginRangeSelectingUiMode();
+          clearDocumentTextSelection();
+        }
         setSelectedParameterRow(row, {
           additive: event.ctrlKey || event.metaKey,
           range: event.shiftKey
         });
+        if (isRangeGesture) {
+          window.requestAnimationFrame(clearDocumentTextSelection);
+        }
       }, true);
 
       parameterRows.addEventListener("wheel", (event) => {
@@ -9488,6 +9556,7 @@
         if (state.activeGroupDrag) {
           finishGroupDrag();
         }
+        maybeEndRangeSelectingForEvent();
       });
 
       window.addEventListener("blur", () => {
@@ -9497,7 +9566,11 @@
         if (state.activeGroupDrag) {
           finishGroupDrag();
         }
+        maybeEndRangeSelectingForEvent();
       });
+
+      document.addEventListener("keyup", maybeEndRangeSelectingForEvent, true);
+      document.addEventListener("visibilitychange", maybeEndRangeSelectingForEvent, true);
 
       document.addEventListener("mousedown", (event) => {
         const resizer = event.target.closest(".column-resizer");
