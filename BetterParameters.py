@@ -12,7 +12,6 @@ import sys
 import threading
 import time
 import traceback
-import urllib.error
 import urllib.request
 import uuid
 import webbrowser
@@ -466,13 +465,9 @@ def _handle_palette_action(action, data):
         _rename_parameter(data)
         return _ok_state(_current_state_payload())
 
-    if action == "validateUnitChange":
-        result = _validate_unit_change_response(data)
-        return {**result, "state": None}
-
-    if action == "updateParameterUnit":
-        new_key = _update_parameter_unit(data)
-        return {**_ok_state(_current_state_payload()), "newKey": new_key}
+    if action == "updateModelParameter":
+        _update_model_parameter(data)
+        return _ok_state(_current_state_payload())
 
     if action == "copyParameter":
         _copy_parameter(data)
@@ -617,6 +612,7 @@ def _current_state_payload(settings=None):
         "documentDefaults": {
             "unit": _default_document_unit(),
         },
+        "modelParameters": _collect_model_parameters(),
         "textTunerState": _load_text_tuner_state(),
         "fusionTheme": _detect_fusion_theme(),
         "updateInfo": _build_update_info_payload(active_settings),
@@ -747,6 +743,70 @@ def _collect_all_parameter_names():
         names.append(param.name)
 
     return sorted(set(names), key=str.casefold)
+
+
+def _created_by_label(param):
+    """Return human-readable name of the Fusion object that created this parameter, or ''."""
+    try:
+        creator = param.createdBy
+        if not creator:
+            return ""
+        name = getattr(creator, "name", None)
+        return str(name) if name else ""
+    except Exception:
+        return ""
+
+
+def _find_model_parameter_by_token(design, token):
+    if not design or not token:
+        return None
+    try:
+        found = design.findEntityByToken(token)
+    except Exception:
+        return None
+
+    param = adsk.fusion.ModelParameter.cast(found)
+    if param:
+        return param
+
+    if isinstance(found, (list, tuple)):
+        for item in found:
+            param = adsk.fusion.ModelParameter.cast(item)
+            if param:
+                return param
+    return None
+
+
+def _collect_model_parameters():
+    """Return serialized model parameters from the active design's root component."""
+    design = _design()
+    if not design:
+        return []
+    try:
+        params = design.rootComponent.modelParameters
+    except Exception:
+        return []
+
+    units_manager = design.unitsManager
+    results = []
+    for index in range(params.count):
+        param = params.item(index)
+        if not param:
+            continue
+        results.append({
+            "key": _parameter_entity_token(param),
+            "name": param.name,
+            "expression": param.expression,
+            "unit": param.unit,
+            "comment": param.comment or "",
+            "isFavorite": param.isFavorite,
+            "valuePreview": _format_parameter_value(param, units_manager),
+            "isDeletable": False,
+            "createdBy": _created_by_label(param),
+        })
+
+    results.sort(key=lambda item: item.get("name", "").casefold())
+    return results
 
 
 def _settings_path():
@@ -1405,9 +1465,6 @@ def _save_settings(data):
             raise ValueError('"autoCheckUpdates" must be a boolean.')
         settings["autoCheckUpdates"] = auto_check
 
-    if "updateCheck" in data:
-        settings["updateCheck"] = _normalized_update_check(data["updateCheck"])
-
     if "autoOpenOnStart" in data:
         auto_open = data.get("autoOpenOnStart")
         if not isinstance(auto_open, bool):
@@ -1713,9 +1770,9 @@ def _set_parameter_favorite(data):
     name = _required_text(data, "name")
     is_favorite = bool(data.get("isFavorite"))
 
-    param = design.userParameters.itemByName(name)
+    param = design.allParameters.itemByName(name)
     if not param:
-        raise ValueError(f'User parameter "{name}" was not found.')
+        raise ValueError(f'Parameter "{name}" was not found.')
 
     param.isFavorite = is_favorite
 
@@ -2030,6 +2087,40 @@ def _rename_parameter(data):
         parameter.name = new_name
     except Exception as exc:
         raise ValueError(f"Fusion could not rename this parameter: {exc}")
+
+
+def _update_model_parameter(data):
+    design = _require_design()
+    key = str(data.get("key") or "").strip()
+    name = str(data.get("name") or "").strip()
+    if not key and not name:
+        raise ValueError('Either "key" or "name" is required.')
+
+    expression = _required_text(data, "expression")
+
+    parameter = _find_model_parameter_by_token(design, key) if key else None
+    if not parameter and name:
+        try:
+            parameter = design.rootComponent.modelParameters.itemByName(name)
+        except Exception:
+            pass
+    if not parameter:
+        raise ValueError("Model parameter was not found.")
+
+    expr_result = _validate_expression_response(expression, parameter.name, parameter.unit)
+    if not expr_result["ok"] and not expr_result.get("isIncomplete"):
+        raise ValueError(expr_result["message"])
+
+    try:
+        parameter.expression = expression
+    except Exception as exc:
+        raise ValueError(f"Fusion could not update model parameter '{parameter.name}': {exc}")
+
+    if "comment" in data:
+        try:
+            parameter.comment = str(data.get("comment") or "")
+        except Exception:
+            pass
 
 
 def _validate_unit_change_response(data):
@@ -3661,6 +3752,8 @@ def _normalized_group_ui_state(value):
             seen = set()
             for raw in incoming_order:
                 name = _normalize_group_name(raw or "")
+                if not name:
+                    continue
                 key = _group_sort_key_for_state(name)
                 if key in seen:
                     continue
@@ -4421,6 +4514,8 @@ def _normalized_release_notes(body_text):
     return '\n'.join(lines).strip()
 
 
+# REVIEW: _release_notes_html is defined but not called anywhere in this file.
+# Remove if no caller exists in a future UI that renders HTML release notes.
 def _release_notes_html(notes_text):
     import html as _html
     text = _normalized_release_notes(notes_text)
@@ -4522,8 +4617,7 @@ def _download_release_asset(asset_url, destination_path):
         }
     )
     with urllib.request.urlopen(request, timeout=20) as response, open(destination_path, 'wb') as handle:
-        import shutil as _shutil
-        _shutil.copyfileobj(response, handle)
+        shutil.copyfileobj(response, handle)
 
 
 def _find_extracted_addin_dir(extract_root):

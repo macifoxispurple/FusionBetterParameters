@@ -1009,6 +1009,53 @@
         font-size: 12px;
       }
 
+      .param-name-editor {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+
+      .param-name-input {
+        width: 100%;
+        min-width: 0;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 3px;
+        font-weight: 600;
+        padding: 2px 4px;
+        line-height: 1.25;
+      }
+
+      .param-name-input:focus {
+        border-color: var(--accent);
+        background: color-mix(in srgb, var(--input-bg) 86%, transparent);
+        outline: none;
+      }
+
+      .param-name-input[aria-invalid="true"] {
+        border-color: var(--error);
+      }
+
+      .name-field-error {
+        min-height: 14px;
+        margin: 0;
+      }
+
+      .selection-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 22px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--pill-bg);
+        color: var(--pill-ink);
+        white-space: nowrap;
+        font-size: 11px;
+      }
+
       .unit-cell {
         white-space: nowrap;
         color: var(--ink);
@@ -2765,6 +2812,7 @@
               </button>
             </div>
             <div class="rail-actions">
+              <span id="selectionCountChip" class="selection-chip" hidden>0 selected</span>
               <button id="newParamButton" class="ghost icon-btn" type="button" title="New Parameter" aria-label="New Parameter" aria-haspopup="dialog" aria-controls="createModal" aria-expanded="false">+</button>
               <button id="refreshButton" class="ghost icon-btn" type="button" title="Refresh" aria-label="Refresh parameters">
                 <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.1-3.3"/><polyline points="13.5 2 13.5 5.5 10 5.5"/></svg>
@@ -3144,35 +3192,68 @@
       const DEFAULT_COMPUTE_MODE = "auto";
       const COMPUTE_MODE_STORAGE_KEY = "bp_compute_mode";
       const ROW_EXPRESSION_PREVIEW_DEBOUNCE_MS = 200;
+      const ROW_NAME_VALIDATION_DEBOUNCE_MS = 180;
       const FIELD_HELPER_CLOSE_DELAY_MS = 120;
       const COMMENTS_MIN_WIDTH_PX = 120;
-      // REVIEW: Action literals are still duplicated across sets and call sites.
-      // A full ACTIONS constant map refactor is intentionally deferred for a dedicated cleanup slice.
       // REVIEW: BACKEND_API.md still lists validateUnitChange/updateParameterUnit as normative; FE intentionally omits them per blocked M2 policy.
+      const ACTION = Object.freeze({
+        READY: "ready",
+        REFRESH: "refresh",
+        CREATE_PARAMETER: "createParameter",
+        DELETE_PARAMETER: "deleteParameter",
+        UPDATE_PARAMETER: "updateParameter",
+        REVERT_PARAMETER: "revertParameter",
+        SET_PARAMETER_FAVORITE: "setParameterFavorite",
+        SET_PARAMETER_GROUP: "setParameterGroup",
+        RENAME_GROUP: "renameGroup",
+        DELETE_GROUP: "deleteGroup",
+        SAVE_PARAMETER_ORDER: "saveParameterOrder",
+        SAVE_GROUP_UI_STATE: "saveGroupUiState",
+        SAVE_SETTINGS: "saveSettings",
+        SAVE_PALETTE_GEOMETRY: "savePaletteGeometry",
+        GET_TEXT_TUNER_STATE: "getTextTunerState",
+        SAVE_TEXT_TUNER_STATE: "saveTextTunerState",
+        VALIDATE_PARAMETER_NAME: "validateParameterName",
+        VALIDATE_EXPRESSION: "validateExpression",
+        PREVIEW_EXPRESSION: "previewExpression",
+        VALIDATE_UNIT: "validateUnit",
+        RENAME_PARAMETER: "renameParameter",
+        COPY_PARAMETER: "copyParameter",
+        DELETE_PARAMETERS: "deleteParameters",
+        SORT_BY_TIMELINE_ORDER: "sortByTimelineOrder",
+        IMPORT_PARAMETERS: "importParameters",
+        EXPORT_PARAMETERS: "exportParameters",
+        OPEN_HELP_URL: "openHelpUrl",
+        CHECK_FOR_UPDATES: "checkForUpdates",
+        DOWNLOAD_AND_STAGE_UPDATE: "downloadAndStageUpdate",
+        SYNC_METADATA_JSON_TO_FUSION: "syncMetadataJsonToFusion",
+        SYNC_METADATA_FUSION_TO_JSON: "syncMetadataFusionToJson",
+        REPAIR_METADATA: "repairMetadata"
+      });
       const NORMATIVE_ACTIONS = new Set([
-        "ready", "refresh", "createParameter", "deleteParameter", "updateParameter", "revertParameter",
-        "setParameterFavorite", "setParameterGroup", "renameGroup", "deleteGroup",
-        "saveParameterOrder", "saveGroupUiState", "saveSettings", "savePaletteGeometry",
-        "getTextTunerState", "saveTextTunerState",
-        "validateParameterName", "validateExpression", "previewExpression", "validateUnit",
-        "renameParameter", "copyParameter", "deleteParameters", "sortByTimelineOrder",
-        "importParameters", "exportParameters",
-        "openHelpUrl",
-        "checkForUpdates", "downloadAndStageUpdate",
-        "syncMetadataJsonToFusion", "syncMetadataFusionToJson", "repairMetadata"
+        ACTION.READY, ACTION.REFRESH, ACTION.CREATE_PARAMETER, ACTION.DELETE_PARAMETER, ACTION.UPDATE_PARAMETER, ACTION.REVERT_PARAMETER,
+        ACTION.SET_PARAMETER_FAVORITE, ACTION.SET_PARAMETER_GROUP, ACTION.RENAME_GROUP, ACTION.DELETE_GROUP,
+        ACTION.SAVE_PARAMETER_ORDER, ACTION.SAVE_GROUP_UI_STATE, ACTION.SAVE_SETTINGS, ACTION.SAVE_PALETTE_GEOMETRY,
+        ACTION.GET_TEXT_TUNER_STATE, ACTION.SAVE_TEXT_TUNER_STATE,
+        ACTION.VALIDATE_PARAMETER_NAME, ACTION.VALIDATE_EXPRESSION, ACTION.PREVIEW_EXPRESSION, ACTION.VALIDATE_UNIT,
+        ACTION.RENAME_PARAMETER, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
+        ACTION.IMPORT_PARAMETERS, ACTION.EXPORT_PARAMETERS,
+        ACTION.OPEN_HELP_URL,
+        ACTION.CHECK_FOR_UPDATES, ACTION.DOWNLOAD_AND_STAGE_UPDATE,
+        ACTION.SYNC_METADATA_JSON_TO_FUSION, ACTION.SYNC_METADATA_FUSION_TO_JSON, ACTION.REPAIR_METADATA
       ]);
       const MUTATING_ACTIONS = new Set([
-        "ready", "refresh", "createParameter", "deleteParameter", "updateParameter", "revertParameter",
-        "setParameterFavorite", "setParameterGroup", "renameGroup", "deleteGroup",
-        "saveParameterOrder", "saveGroupUiState", "saveSettings", "savePaletteGeometry",
-        "renameParameter", "copyParameter", "deleteParameters", "sortByTimelineOrder",
-        "importParameters",
-        "saveTextTunerState", "checkForUpdates", "downloadAndStageUpdate",
-        "syncMetadataJsonToFusion", "syncMetadataFusionToJson", "repairMetadata"
+        ACTION.READY, ACTION.REFRESH, ACTION.CREATE_PARAMETER, ACTION.DELETE_PARAMETER, ACTION.UPDATE_PARAMETER, ACTION.REVERT_PARAMETER,
+        ACTION.SET_PARAMETER_FAVORITE, ACTION.SET_PARAMETER_GROUP, ACTION.RENAME_GROUP, ACTION.DELETE_GROUP,
+        ACTION.SAVE_PARAMETER_ORDER, ACTION.SAVE_GROUP_UI_STATE, ACTION.SAVE_SETTINGS, ACTION.SAVE_PALETTE_GEOMETRY,
+        ACTION.RENAME_PARAMETER, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
+        ACTION.IMPORT_PARAMETERS,
+        ACTION.SAVE_TEXT_TUNER_STATE, ACTION.CHECK_FOR_UPDATES, ACTION.DOWNLOAD_AND_STAGE_UPDATE,
+        ACTION.SYNC_METADATA_JSON_TO_FUSION, ACTION.SYNC_METADATA_FUSION_TO_JSON, ACTION.REPAIR_METADATA
       ]);
       const READ_ONLY_OR_VALIDATION_ACTIONS = new Set([
-        "getTextTunerState", "validateParameterName", "validateExpression", "previewExpression", "validateUnit",
-        "exportParameters", "openHelpUrl"
+        ACTION.GET_TEXT_TUNER_STATE, ACTION.VALIDATE_PARAMETER_NAME, ACTION.VALIDATE_EXPRESSION, ACTION.PREVIEW_EXPRESSION, ACTION.VALIDATE_UNIT,
+        ACTION.EXPORT_PARAMETERS, ACTION.OPEN_HELP_URL
       ]);
       // REVIEW: Mock bridge is intentionally kept behind explicit opt-in for local fixture testing.
       const MOCK_BRIDGE_ENABLED = !!window.__BP_USE_MOCK_BRIDGE;
@@ -3441,6 +3522,8 @@
         localPreviousExpressions: {},
         applyAllRunning: false,
         selectedRow: null,
+        selectedRowKeys: [],
+        selectionAnchorKey: "",
         lastNarrowLayoutMode: null,
         viewportModeAutoFitPending: false,
         rowDraftsByKey: {},
@@ -3520,7 +3603,7 @@
         }, 140);
 
         const expressionPx = bodyRows.reduce((max, row) => {
-          const name = row.querySelector(".param-name-text")?.textContent || "";
+          const name = row.querySelector(".param-name-input")?.value || row.getAttribute("data-parameter-name") || "";
           return Math.max(max, Math.ceil(measureTextWidth(name, strongFont) + 24));
         }, 160);
 
@@ -3821,6 +3904,49 @@
         return Array.from(document.querySelectorAll("#parameterRows tr.parameter-row.is-dirty[data-parameter-key]"));
       }
 
+      function getSelectedParameterKeys() {
+        const keys = Array.isArray(state.selectedRowKeys) ? state.selectedRowKeys : [];
+        return keys.filter((key, index) => key && keys.indexOf(key) === index);
+      }
+
+      function renderSelectionCountChip() {
+        const chip = document.getElementById("selectionCountChip");
+        if (!chip) {
+          return;
+        }
+        const selectedCount = getSelectedParameterKeys().length;
+        chip.hidden = selectedCount <= 0;
+        chip.textContent = `${selectedCount} selected`;
+      }
+
+      function getSelectableRowsUniqueByKey() {
+        const rows = Array.from(document.querySelectorAll("#parameterRows tr.parameter-row[data-parameter-key]"));
+        const seen = new Set();
+        return rows.filter((row) => {
+          const key = String(row.getAttribute("data-parameter-key") || "");
+          if (!key || seen.has(key)) {
+            return false;
+          }
+          seen.add(key);
+          return true;
+        });
+      }
+
+      function pruneSelectionToVisibleRows() {
+        const visibleKeys = new Set(
+          Array.from(document.querySelectorAll("#parameterRows tr.parameter-row[data-parameter-key]"))
+            .map((row) => String(row.getAttribute("data-parameter-key") || ""))
+            .filter(Boolean)
+        );
+        state.selectedRowKeys = getSelectedParameterKeys().filter((key) => visibleKeys.has(key));
+        if (state.selectionAnchorKey && !visibleKeys.has(state.selectionAnchorKey)) {
+          state.selectionAnchorKey = "";
+        }
+        if (state.selectedRow && !visibleKeys.has(String(state.selectedRow.key || ""))) {
+          state.selectedRow = null;
+        }
+      }
+
       function getRowDraftKey(row) {
         if (!row) {
           return "";
@@ -3888,25 +4014,32 @@
           if (!key) {
             return;
           }
+          const nameInput = row.querySelector(".param-name-input");
           const expressionInput = row.querySelector(".expression-input");
           const commentInput = row.querySelector(".comment-input");
           const previewCell = row.querySelector(".preview-cell");
           const errorNode = expressionInput?.parentElement?.querySelector(".expression-field-error");
-          if (!expressionInput || !commentInput || !previewCell) {
+          const nameErrorNode = row.querySelector(".name-field-error");
+          if (!nameInput || !expressionInput || !commentInput || !previewCell) {
             return;
           }
 
+          const savedName = String(nameInput.getAttribute("data-saved-name") || "");
+          const name = String(nameInput.value || "");
           const savedExpression = String(expressionInput.getAttribute("data-saved-expression") || "");
           const savedComment = String(commentInput.getAttribute("data-saved-comment") || "");
           const expression = String(expressionInput.value || "");
           const comment = String(commentInput.value || "");
+          const nameDirty = name !== savedName;
           const expressionDirty = expression !== savedExpression;
           const commentDirty = comment !== savedComment;
-          const isDirty = expressionDirty || commentDirty;
+          const isDirty = nameDirty || expressionDirty || commentDirty;
+          const nameInvalid = nameInput.getAttribute("aria-invalid") === "true";
+          const nameErrorMessage = String(nameErrorNode?.textContent || "").trim();
           const ariaInvalid = expressionInput.getAttribute("aria-invalid") === "true";
           const errorMessage = String(errorNode?.textContent || "").trim();
           const draftPreview = String(previewCell.getAttribute("data-draft-preview") || "");
-          const shouldKeep = isDirty || ariaInvalid || !!errorMessage || !!draftPreview;
+          const shouldKeep = isDirty || nameInvalid || ariaInvalid || !!nameErrorMessage || !!errorMessage || !!draftPreview;
 
           if (!shouldKeep) {
             clearRowDraftByKey(key);
@@ -3914,6 +4047,10 @@
           }
 
           state.rowDraftsByKey[key] = {
+            name,
+            nameDirty,
+            nameInvalid,
+            nameErrorMessage,
             expression,
             comment,
             expressionDirty,
@@ -3930,11 +4067,23 @@
         if (!row || !draft) {
           return;
         }
+        const nameInput = row.querySelector(".param-name-input");
+        const nameErrorNode = row.querySelector(".name-field-error");
         const expressionInput = row.querySelector(".expression-input");
         const commentInput = row.querySelector(".comment-input");
         const previewCell = row.querySelector(".preview-cell");
-        if (!expressionInput || !commentInput || !previewCell) {
+        if (!nameInput || !expressionInput || !commentInput || !previewCell) {
           return;
+        }
+
+        nameInput.value = String(draft.name ?? nameInput.value ?? "");
+        const nameMessage = String(draft.nameErrorMessage || "");
+        const nameHasError = !!(draft.nameInvalid || nameMessage);
+        nameInput.setAttribute("aria-invalid", nameHasError ? "true" : "false");
+        if (nameErrorNode) {
+          nameErrorNode.textContent = nameMessage;
+          nameErrorNode.classList.toggle("has-message", !!nameMessage);
+          nameErrorNode.classList.remove("is-valid");
         }
 
         expressionInput.value = String(draft.expression ?? expressionInput.value ?? "");
@@ -4007,13 +4156,105 @@
         bar.hidden = !showBar;
         dirtyCountNode.textContent = String(dirtyCount);
 
-        const hasInvalidDirty = dirtyRows.some((row) => row.querySelector(".expression-input")?.getAttribute("aria-invalid") === "true");
+        const hasInvalidDirty = dirtyRows.some((row) => (
+          row.querySelector(".expression-input")?.getAttribute("aria-invalid") === "true"
+          || row.querySelector(".param-name-input")?.getAttribute("aria-invalid") === "true"
+        ));
         const disabled = state.applyAllRunning || dirtyCount === 0;
         discardAllButton.disabled = disabled;
         applyAllButton.disabled = disabled || hasInvalidDirty;
         applyAllButton.title = hasInvalidDirty
-          ? "Fix all invalid expression rows before Apply All."
+          ? "Fix all invalid name/expression rows before Apply All."
           : "";
+      }
+
+      function setRowNameValidationState(input, message = "", kind = "error") {
+        if (!input) {
+          return;
+        }
+        const row = input.closest("tr");
+        const errorNode = row ? row.querySelector(".name-field-error") : null;
+        const showError = kind === "error" && !!message;
+        if (errorNode) {
+          const visibleMessage = showError ? message : "";
+          errorNode.textContent = visibleMessage;
+          errorNode.classList.toggle("is-valid", !showError && kind === "success");
+          errorNode.classList.toggle("has-message", !!visibleMessage);
+        }
+        input.setAttribute("aria-invalid", showError ? "true" : "false");
+        updateRowSaveState(row);
+      }
+
+      function validateParameterNameLocallyForRow(name, row) {
+        const localError = validateParameterNameLocally(name);
+        if (localError) {
+          return localError;
+        }
+        const rowKey = String(row?.getAttribute("data-parameter-key") || "");
+        const exactDuplicate = (state.parameters || []).some((param) => {
+          const paramKey = String(param?.key || "");
+          const paramName = String(param?.name || "");
+          if (rowKey && paramKey && paramKey === rowKey) {
+            return false;
+          }
+          return paramName === name;
+        });
+        if (exactDuplicate) {
+          return `A parameter named '${name}' already exists.`;
+        }
+        return "";
+      }
+
+      async function validateRowNameInput(input) {
+        if (!input) {
+          return false;
+        }
+        const row = input.closest("tr.parameter-row[data-parameter-key]");
+        if (!row) {
+          return false;
+        }
+
+        const value = String(input.value || "");
+        const savedName = String(input.getAttribute("data-saved-name") || "");
+        if (value === savedName) {
+          setRowNameValidationState(input, "", "success");
+          return true;
+        }
+
+        const localError = validateParameterNameLocallyForRow(value, row);
+        if (localError) {
+          setRowNameValidationState(input, localError, "error");
+          return false;
+        }
+
+        state.rowValidationRequestNonce += 1;
+        const nonce = String(state.rowValidationRequestNonce);
+        input.setAttribute("data-name-validation-request-nonce", nonce);
+        try {
+          const response = await sendToFusion(ACTION.VALIDATE_PARAMETER_NAME, { name: value });
+          if (input.getAttribute("data-name-validation-request-nonce") !== nonce) {
+            return false;
+          }
+          if (String(input.value || "") !== value) {
+            return false;
+          }
+          if (!response.ok) {
+            setRowNameValidationState(input, response.message || "Invalid parameter name.", "error");
+            return false;
+          }
+        } catch (error) {
+          if (input.getAttribute("data-name-validation-request-nonce") !== nonce) {
+            return false;
+          }
+          if (String(input.value || "") !== value) {
+            return false;
+          }
+          setRowNameValidationState(input, error.message || "Name validation failed.", "error");
+          return false;
+        }
+
+        setRowNameValidationState(input, "", "success");
+        return true;
       }
 
       function shouldShowTextTunerSidebar() {
@@ -4848,6 +5089,7 @@
         if (!state.parameters.length) {
           tbody.innerHTML = `<tr><td colspan="6" class="empty">No user parameters were found in the active design.</td></tr>`;
           renderReorderMenuGroupOptions();
+          applySelectedRowState();
           return;
         }
 
@@ -4855,6 +5097,7 @@
         if (!filteredParameters.length) {
           tbody.innerHTML = `<tr><td colspan="6" class="empty">No parameters match your search.</td></tr>`;
           renderReorderMenuGroupOptions();
+          applySelectedRowState();
           return;
         }
 
@@ -4951,7 +5194,17 @@
                   </div>
                 </td>
                 <td class="param-name-cell">
-                  <strong class="param-name-text">${safeName}</strong>
+                  <div class="param-name-editor">
+                    <input
+                      id="nameRow${renderRowCounter}"
+                      class="param-name-input"
+                      data-parameter-key="${safeKey}"
+                      data-saved-name="${safeName}"
+                      value="${safeName}"
+                      autocomplete="off"
+                    />
+                    <div class="field-error name-field-error" aria-live="polite"></div>
+                  </div>
                 </td>
                 <td class="unit-cell">
                   <span
@@ -5010,27 +5263,19 @@
         };
       }
 
-      function rowMatchesSelection(row, selection) {
-        if (!row || !selection) {
-          return false;
-        }
-        const rowKey = row.getAttribute("data-parameter-key") || "";
-        if (!rowKey || rowKey !== selection.key) {
-          return false;
-        }
-        return (row.getAttribute("data-favorites-row") === "true") === !!selection.favoritesRow;
-      }
-
       function applySelectedRowState() {
+        pruneSelectionToVisibleRows();
         const rows = Array.from(document.querySelectorAll("#parameterRows tr.parameter-row[data-parameter-key]"));
-        rows.forEach((row) => row.classList.remove("is-selected"));
-        if (!state.selectedRow) {
-          return;
+        const selected = new Set(getSelectedParameterKeys());
+        if (!selected.size && state.selectedRow && state.selectedRow.key) {
+          selected.add(String(state.selectedRow.key));
+          state.selectedRowKeys = Array.from(selected);
         }
-        const selectedRowElement = rows.find((row) => rowMatchesSelection(row, state.selectedRow));
-        if (selectedRowElement) {
-          selectedRowElement.classList.add("is-selected");
-        }
+        rows.forEach((row) => {
+          const key = String(row.getAttribute("data-parameter-key") || "");
+          row.classList.toggle("is-selected", !!(key && selected.has(key)));
+        });
+        renderSelectionCountChip();
       }
 
       function narrowRowStateKeyFromRow(row) {
@@ -5061,8 +5306,14 @@
         }
 
         const summaryState = row.querySelector("[data-narrow-summary-state]");
+        const summaryName = row.querySelector(".narrow-summary-name");
+        const nameInput = row.querySelector(".param-name-input");
         if (!summaryState) {
           return;
+        }
+        if (summaryName && nameInput) {
+          const nextName = String(nameInput.value || "").trim();
+          summaryName.textContent = nextName || (row.getAttribute("data-parameter-name") || "");
         }
 
         const previewCell = row.querySelector(".preview-cell");
@@ -5091,15 +5342,53 @@
         }
       }
 
-      function setSelectedParameterRow(row) {
+      function setSelectedParameterRow(row, options = {}) {
         const nextSelection = getRowSelectionFromElement(row);
         if (!nextSelection || !nextSelection.key) {
           return;
         }
-        const current = state.selectedRow;
-        if (current && current.key === nextSelection.key && !!current.favoritesRow === !!nextSelection.favoritesRow) {
-          applySelectedRowState();
-          return;
+
+        const key = nextSelection.key;
+        const additive = options.additive === true;
+        const range = options.range === true;
+        const selected = new Set(getSelectedParameterKeys());
+        const currentAnchor = String(state.selectionAnchorKey || "");
+
+        if (range) {
+          const rows = getSelectableRowsUniqueByKey();
+          const keys = rows.map((entry) => String(entry.getAttribute("data-parameter-key") || "")).filter(Boolean);
+          const anchorKey = currentAnchor && keys.includes(currentAnchor) ? currentAnchor : key;
+          const start = keys.indexOf(anchorKey);
+          const end = keys.indexOf(key);
+          if (start >= 0 && end >= 0) {
+            const [from, to] = start <= end ? [start, end] : [end, start];
+            const rangeKeys = keys.slice(from, to + 1);
+            if (!additive) {
+              selected.clear();
+            }
+            rangeKeys.forEach((item) => selected.add(item));
+          } else if (!additive) {
+            selected.clear();
+            selected.add(key);
+          }
+          state.selectionAnchorKey = anchorKey;
+        } else if (additive) {
+          if (selected.has(key)) {
+            selected.delete(key);
+          } else {
+            selected.add(key);
+          }
+          state.selectionAnchorKey = key;
+        } else {
+          selected.clear();
+          selected.add(key);
+          state.selectionAnchorKey = key;
+        }
+
+        const nextKeys = Array.from(selected).filter(Boolean);
+        state.selectedRowKeys = nextKeys;
+        if (!nextKeys.length) {
+          state.selectionAnchorKey = "";
         }
         state.selectedRow = nextSelection;
         applySelectedRowState();
@@ -5418,7 +5707,7 @@
           return;
         }
 
-        const response = await sendToFusion("saveParameterOrder", { keys });
+        const response = await sendToFusion(ACTION.SAVE_PARAMETER_ORDER, { keys });
         if (!response.ok) {
           throw new Error(response.message || "Parameter order save failed.");
         }
@@ -6037,9 +6326,9 @@
 
       async function persistTextTunerValuesNow(values) {
         try {
-          const response = await sendToFusion("saveTextTunerState", { values });
+          const response = await sendToFusion(ACTION.SAVE_TEXT_TUNER_STATE, { values });
           if (response && response.ok) {
-            applyStateFromFusion(response, { source: "response", action: "saveTextTunerState" });
+            applyStateFromFusion(response, { source: "response", action: ACTION.SAVE_TEXT_TUNER_STATE });
             const persisted = (response.state && response.state.textTunerState && typeof response.state.textTunerState === "object")
               ? response.state.textTunerState
               : (values || {});
@@ -6208,7 +6497,7 @@
           throw new Error("Parameter row is no longer available.");
         }
         const nextGroup = canonicalGroupName(requestedGroupName);
-        const response = await sendToFusion("setParameterGroup", {
+        const response = await sendToFusion(ACTION.SET_PARAMETER_GROUP, {
           key: parameter.key || "",
           name: parameter.name || "",
           group: nextGroup
@@ -6238,7 +6527,7 @@
         if (nextName.toLowerCase() === existing.toLowerCase()) {
           return;
         }
-        const response = await sendToFusion("renameGroup", {
+        const response = await sendToFusion(ACTION.RENAME_GROUP, {
           oldGroup: existing,
           newGroup: nextName
         });
@@ -6258,7 +6547,7 @@
         if (!confirmed) {
           return;
         }
-        const response = await sendToFusion("deleteGroup", { group: existing });
+        const response = await sendToFusion(ACTION.DELETE_GROUP, { group: existing });
         if (!response.ok) {
           throw new Error(response.message || "Failed to delete group.");
         }
@@ -6501,15 +6790,15 @@
             if (fixtureMode === "error_mutating" && MUTATING_ACTIONS.has(action)) {
               return { ok: false, message: `Mock mutating failure: ${action}`, state: null, traceback: "" };
             }
-            if (fixtureMode === "error_readonly" && action === "getTextTunerState") {
+            if (fixtureMode === "error_readonly" && action === ACTION.GET_TEXT_TUNER_STATE) {
               return { ok: false, message: "Mock read-only failure: getTextTunerState", state: null, traceback: "" };
             }
-            if (fixtureMode === "error_validation" && READ_ONLY_OR_VALIDATION_ACTIONS.has(action) && action !== "getTextTunerState") {
+            if (fixtureMode === "error_validation" && READ_ONLY_OR_VALIDATION_ACTIONS.has(action) && action !== ACTION.GET_TEXT_TUNER_STATE) {
               return { ok: false, message: `Mock validation failure: ${action}`, state: null, traceback: "" };
             }
             if (
               fixtureMode === "error_metadata"
-              && (action === "syncMetadataJsonToFusion" || action === "syncMetadataFusionToJson" || action === "repairMetadata")
+              && (action === ACTION.SYNC_METADATA_JSON_TO_FUSION || action === ACTION.SYNC_METADATA_FUSION_TO_JSON || action === ACTION.REPAIR_METADATA)
             ) {
               return { ok: false, message: `Mock metadata failure: ${action}`, state: null, traceback: "" };
             }
@@ -6518,10 +6807,10 @@
             if (MUTATING_ACTIONS.has(action)) {
               return { ok: true, message: "", state: statePayload };
             }
-            if (action === "getTextTunerState") {
+            if (action === ACTION.GET_TEXT_TUNER_STATE) {
               return { ok: true, message: "", state: null, values: statePayload.textTunerState || {} };
             }
-            if (action === "exportParameters") {
+            if (action === ACTION.EXPORT_PARAMETERS) {
               return {
                 ok: true,
                 message: "",
@@ -6530,13 +6819,13 @@
                 filePath: "C:\\mock\\BetterParameters-export.csv"
               };
             }
-            if (action === "openHelpUrl") {
+            if (action === ACTION.OPEN_HELP_URL) {
               return { ok: true, message: "", state: null };
             }
-            if (action === "previewExpression") {
+            if (action === ACTION.PREVIEW_EXPRESSION) {
               return { ok: true, message: "", state: null, preview: "0 mm" };
             }
-            if (action === "validateExpression" || action === "validateParameterName" || action === "validateUnit") {
+            if (action === ACTION.VALIDATE_EXPRESSION || action === ACTION.VALIDATE_PARAMETER_NAME || action === ACTION.VALIDATE_UNIT) {
               return { ok: true, message: "", state: null };
             }
             return { ok: false, message: `Unknown action: ${action}`, state: null, traceback: "" };
@@ -6597,7 +6886,7 @@
           envelope.state
           && typeof envelope.state === "object"
           && context.source === "response"
-          && context.action === "refresh"
+          && context.action === ACTION.REFRESH
           && hasBlockingLocalEdits()
         ) {
           queuePendingStateEnvelope(envelope, context.action || "renderState");
@@ -6650,7 +6939,7 @@
       }
 
       async function saveSettingsPartial(partialSettings, statusMessage = "") {
-        const response = await sendToFusion("saveSettings", partialSettings);
+        const response = await sendToFusion(ACTION.SAVE_SETTINGS, partialSettings);
         if (!response.ok) {
           throw new Error(response.message || "Settings save failed.");
         }
@@ -6664,7 +6953,7 @@
       }
 
       async function saveGroupUiState(statusMessage = "") {
-        const response = await sendToFusion("saveGroupUiState", {
+        const response = await sendToFusion(ACTION.SAVE_GROUP_UI_STATE, {
           groupUi: normalizeGroupUiState(state.groupUi)
         });
         if (!response.ok) {
@@ -6686,11 +6975,11 @@
 
         state.paletteSize = { width, height };
         try {
-          const response = await sendToFusion("savePaletteGeometry", { paletteSize: state.paletteSize });
+          const response = await sendToFusion(ACTION.SAVE_PALETTE_GEOMETRY, { paletteSize: state.paletteSize });
           if (!response.ok) {
             throw new Error(response.message || "Palette geometry save failed.");
           }
-          applyStateFromFusion(response, { source: "response", action: "savePaletteGeometry" });
+          applyStateFromFusion(response, { source: "response", action: ACTION.SAVE_PALETTE_GEOMETRY });
         } catch (error) {
           setGlobalStatus(error.message, "error");
         }
@@ -7193,26 +7482,29 @@
           return;
         }
 
+        const nameInput = row.querySelector(".param-name-input");
         const expressionInput = row.querySelector(".expression-input");
         const commentInput = row.querySelector(".comment-input");
         const saveButton = row.querySelector(".save-button");
         const discardButton = row.querySelector(".discard-button");
         const revertButton = row.querySelector(".revert-button");
         const rowActions = row.querySelector(".row-actions");
-        if (!expressionInput || !commentInput || !saveButton || !discardButton) {
+        if (!nameInput || !expressionInput || !commentInput || !saveButton || !discardButton) {
           return;
         }
 
+        const nameDirty = nameInput.value !== (nameInput.getAttribute("data-saved-name") || "");
         const expressionDirty = expressionInput.value !== (expressionInput.getAttribute("data-saved-expression") || "");
         const commentDirty = commentInput.value !== (commentInput.getAttribute("data-saved-comment") || "");
-        const isDirty = expressionDirty || commentDirty;
+        const isDirty = nameDirty || expressionDirty || commentDirty;
+        const nameHasError = nameInput.getAttribute("aria-invalid") === "true";
         const expressionHasError = expressionInput.getAttribute("aria-invalid") === "true";
-        const canSave = isDirty && !expressionHasError;
+        const canSave = isDirty && !expressionHasError && !nameHasError;
         row.classList.toggle("is-dirty", isDirty);
         saveButton.disabled = !canSave;
         saveButton.classList.toggle("is-dirty", isDirty);
-        saveButton.classList.toggle("is-ready", isDirty && !expressionHasError);
-        saveButton.classList.toggle("is-error", isDirty && expressionHasError);
+        saveButton.classList.toggle("is-ready", isDirty && !expressionHasError && !nameHasError);
+        saveButton.classList.toggle("is-error", isDirty && (expressionHasError || nameHasError));
         discardButton.disabled = !isDirty;
         discardButton.classList.toggle("is-dirty", isDirty);
         if (revertButton) {
@@ -7233,10 +7525,16 @@
           const errorNode = expressionInput.parentElement
             ? expressionInput.parentElement.querySelector(".expression-field-error")
             : null;
+          const nameErrorNode = row.querySelector(".name-field-error");
           const errorMessage = String(errorNode?.textContent || "").trim();
+          const nameErrorMessage = String(nameErrorNode?.textContent || "").trim();
           const draftPreview = String(row.querySelector(".preview-cell")?.getAttribute("data-draft-preview") || "");
-          if (isDirty || expressionHasError || !!errorMessage || !!draftPreview) {
+          if (isDirty || nameHasError || expressionHasError || !!nameErrorMessage || !!errorMessage || !!draftPreview) {
             state.rowDraftsByKey[draftKey] = {
+              name: String(nameInput.value || ""),
+              nameDirty,
+              nameInvalid: nameHasError,
+              nameErrorMessage,
               expression: String(expressionInput.value || ""),
               comment: String(commentInput.value || ""),
               expressionDirty,
@@ -7281,9 +7579,9 @@
         input.setAttribute("data-preview-request-nonce", requestNonce);
 
         try {
-          const response = await sendToFusion("previewExpression", {
+          const response = await sendToFusion(ACTION.PREVIEW_EXPRESSION, {
             expression,
-            currentParameterName: input.getAttribute("data-parameter-name") || "",
+            currentParameterName: (input.closest("tr")?.querySelector(".param-name-input")?.value || input.getAttribute("data-parameter-name") || ""),
             units: input.getAttribute("data-parameter-unit") || "",
             fallbackPreview
           });
@@ -7335,7 +7633,8 @@
           typeof input === "string"
             ? ""
             : (
-                input.getAttribute("data-parameter-name")
+                input.closest("tr")?.querySelector(".param-name-input")?.value
+                || input.getAttribute("data-parameter-name")
                 || input.getAttribute("data-current-parameter-name")
                 || (input.id === "newExpression" ? document.getElementById("newName").value.trim() : "")
               );
@@ -7356,7 +7655,7 @@
         }
 
         try {
-          const response = await sendToFusion("validateExpression", { expression, currentParameterName, units });
+          const response = await sendToFusion(ACTION.VALIDATE_EXPRESSION, { expression, currentParameterName, units });
           if (isRowInput && input.getAttribute("data-validation-request-nonce") !== validationNonce) {
             return false;
           }
@@ -7400,19 +7699,27 @@
           return false;
         }
         const rowKey = getRowDraftKey(row);
+        const nameInput = row.querySelector(".param-name-input");
         const expressionInput = row.querySelector(".expression-input");
         const commentInput = row.querySelector(".comment-input");
-        if (!expressionInput || !commentInput) {
+        if (!nameInput || !expressionInput || !commentInput) {
           return false;
         }
         if (rowExpressionValidationTimer) {
           window.clearTimeout(rowExpressionValidationTimer);
           rowExpressionValidationTimer = null;
         }
+        if (rowNameValidationTimer) {
+          window.clearTimeout(rowNameValidationTimer);
+          rowNameValidationTimer = null;
+        }
         invalidateRowAsyncRequests(expressionInput);
 
+        const savedName = nameInput.getAttribute("data-saved-name") || "";
         const savedExpression = expressionInput.getAttribute("data-saved-expression") || "";
         const savedComment = commentInput.getAttribute("data-saved-comment") || "";
+        nameInput.value = savedName;
+        setRowNameValidationState(nameInput, "", "success");
         expressionInput.value = savedExpression;
         commentInput.value = savedComment;
         setExpressionValidationState(expressionInput, "", "success");
@@ -7439,39 +7746,89 @@
           return { ok: false, message: "Parameter not found for row." };
         }
 
-        const expressionInput = row.querySelector(".expression-input");
+        let nameInput = row.querySelector(".param-name-input");
+        let expressionInput = row.querySelector(".expression-input");
         const commentInput = row.querySelector(".comment-input");
-        if (!expressionInput || !commentInput) {
+        if (!nameInput || !expressionInput || !commentInput) {
           return { ok: false, message: "Row inputs are not available." };
         }
 
-        const expression = expressionInput.value;
+        const nextName = String(nameInput.value || "");
+        const savedName = String(nameInput.getAttribute("data-saved-name") || "");
+        const nameDirty = nextName !== savedName;
+        const expression = String(expressionInput.value || "");
         const comment = commentInput.value;
         const previousSavedExpression = String(expressionInput.getAttribute("data-saved-expression") || "");
         const parameterKey = String(parameter.key || parameter.name || "");
         const expressionDirty = expression !== previousSavedExpression;
         const commentDirty = comment !== (commentInput.getAttribute("data-saved-comment") || "");
-        if (!expressionDirty && !commentDirty) {
+        if (!nameDirty && !expressionDirty && !commentDirty) {
           return { ok: true, skipped: true, key: parameterKey, name: parameter.name };
         }
 
-        const isExpressionValid = await validateExpressionAgainstFusion(expressionInput);
-        if (!isExpressionValid) {
-          return { ok: false, key: parameterKey, name: parameter.name, message: "Expression is invalid." };
-        }
-
         if (showProgress) {
-          setGlobalStatus(`${isManualComputeMode() ? "Applying" : "Saving"} ${parameter.name}...`);
+          setGlobalStatus(`${isManualComputeMode() ? "Applying" : "Saving"} ${parameter.name}${nameDirty ? " (rename pending)" : ""}...`);
         }
 
         try {
-          const response = await sendToFusion("updateParameter", {
-            name: parameter.name,
-            expression,
-            comment
-          });
-          if (!response.ok) {
-            throw new Error(response.message || "Save failed.");
+          let currentName = parameter.name;
+          if (nameDirty) {
+            const validName = await validateRowNameInput(nameInput);
+            if (!validName) {
+              return { ok: false, key: parameterKey, name: parameter.name, message: "Name is invalid.", errorField: "name" };
+            }
+            const renameResponse = await sendToFusion(ACTION.RENAME_PARAMETER, {
+              key: parameter.key || "",
+              name: parameter.name,
+              newName: nextName
+            });
+            if (!renameResponse.ok) {
+              throw new Error(renameResponse.message || "Rename failed.");
+            }
+            applyStateFromFusion(renameResponse, { source: "response", action: ACTION.RENAME_PARAMETER });
+            currentName = nextName;
+            if (parameterKey) {
+              const refreshedRow = getParameterRowByKey(parameterKey);
+              if (refreshedRow) {
+                row = refreshedRow;
+                nameInput = row.querySelector(".param-name-input");
+                expressionInput = row.querySelector(".expression-input");
+              }
+            }
+          }
+
+          if (expressionDirty || commentDirty) {
+            if (expressionInput) {
+              expressionInput.value = expression;
+            }
+            if (expressionDirty) {
+              if (expressionInput) {
+                const isExpressionValid = await validateExpressionAgainstFusion(expressionInput);
+                if (!isExpressionValid) {
+                  return { ok: false, key: parameterKey, name: currentName, message: "Expression is invalid.", errorField: "expression" };
+                }
+              } else {
+                const fallbackValidation = await sendToFusion(ACTION.VALIDATE_EXPRESSION, {
+                  expression,
+                  currentParameterName: currentName,
+                  units: String(parameter.unit || "")
+                });
+                if (!fallbackValidation.ok) {
+                  return { ok: false, key: parameterKey, name: currentName, message: fallbackValidation.message || "Expression is invalid.", errorField: "expression" };
+                }
+              }
+            }
+
+            const response = await sendToFusion(ACTION.UPDATE_PARAMETER, {
+              key: parameter.key || "",
+              name: currentName,
+              expression,
+              comment
+            });
+            if (!response.ok) {
+              throw new Error(response.message || "Save failed.");
+            }
+            applyStateFromFusion(response, { source: "response", action: ACTION.UPDATE_PARAMETER });
           }
 
           if (parameterKey) {
@@ -7483,30 +7840,35 @@
             clearRowDraftByKey(parameterKey);
           }
 
-          applyStateFromFusion(response, { source: "response", action: "updateParameter" });
           if (showSuccess) {
-            setGlobalStatus(`${isManualComputeMode() ? "Applied" : "Saved"} ${parameter.name}.`, "success");
+            setGlobalStatus(`${isManualComputeMode() ? "Applied" : "Saved"} ${currentName}.`, "success");
           }
-          return { ok: true, key: parameterKey, name: parameter.name, response };
+          return { ok: true, key: parameterKey, name: currentName };
         } catch (error) {
           if (showErrors) {
             setGlobalStatus(error.message, "error");
           }
-          setExpressionValidationState(expressionInput, error.message || "Apply failed.", "error");
+          if (nameInput && nameDirty) {
+            setRowNameValidationState(nameInput, error.message || "Apply failed.", "error");
+          } else {
+            setExpressionValidationState(expressionInput, error.message || "Apply failed.", "error");
+          }
           const failureMessage = error.message || "Apply failed.";
           const fatal = /Fusion palette bridge is not available|Backend contract error|API version mismatch/i.test(failureMessage);
-          return { ok: false, key: parameterKey, name: parameter.name, message: failureMessage, fatal };
+          return { ok: false, key: parameterKey, name: parameter.name, message: failureMessage, fatal, errorField: nameDirty ? "name" : "expression" };
         }
       }
 
       function collectDirtyRowOps() {
         return getDirtyParameterRows().map((row) => {
           const parameter = getParameterForRow(row);
+          const nameInput = row.querySelector(".param-name-input");
           const expressionInput = row.querySelector(".expression-input");
           const commentInput = row.querySelector(".comment-input");
           return {
             key: row.getAttribute("data-parameter-key") || "",
             name: parameter?.name || row.getAttribute("data-parameter-name") || "",
+            nextName: nameInput ? String(nameInput.value || "") : "",
             expression: expressionInput ? expressionInput.value : "",
             comment: commentInput ? commentInput.value : ""
           };
@@ -7519,10 +7881,17 @@
           if (!row) {
             return;
           }
+          const nameInput = row.querySelector(".param-name-input");
           const expressionInput = row.querySelector(".expression-input");
           const commentInput = row.querySelector(".comment-input");
-          if (!expressionInput || !commentInput) {
+          if (!nameInput || !expressionInput || !commentInput) {
             return;
+          }
+          nameInput.value = String(draft.name ?? nameInput.value ?? "");
+          if (draft.nameErrorMessage) {
+            setRowNameValidationState(nameInput, draft.nameErrorMessage, "error");
+          } else {
+            setRowNameValidationState(nameInput, "", "success");
           }
           expressionInput.value = draft.expression;
           commentInput.value = draft.comment;
@@ -7548,17 +7917,19 @@
 
         let invalidCount = 0;
         for (const row of dirtyRows) {
+          const nameInput = row.querySelector(".param-name-input");
           const input = row.querySelector(".expression-input");
-          if (!input) {
+          if (!nameInput || !input) {
             continue;
           }
+          const nameValid = await validateRowNameInput(nameInput);
           const valid = await validateExpressionAgainstFusion(input);
-          if (!valid) {
+          if (!nameValid || !valid) {
             invalidCount += 1;
           }
         }
         if (invalidCount > 0) {
-          setGlobalStatus(`Fix ${invalidCount} invalid row(s) before Apply All.`, "error");
+          setGlobalStatus(`Fix ${invalidCount} invalid row(s) before Apply All (name/expression).`, "error");
           refreshBatchActionBar();
           return;
         }
@@ -7567,7 +7938,7 @@
         const pending = new Map();
         ops.forEach((op) => {
           if (op.key) {
-            pending.set(op.key, { expression: op.expression, comment: op.comment, errorMessage: "" });
+            pending.set(op.key, { name: op.nextName, expression: op.expression, comment: op.comment, nameErrorMessage: "", errorMessage: "" });
           }
         });
 
@@ -7614,15 +7985,18 @@
               pending.delete(op.key);
             } else {
               if (result.fatal) {
+                failedCount += 1;
                 stoppedByTransportFailure = true;
                 failedRows.push({
                   name: op.name || op.key,
                   message: result.message || "Transport failure."
                 });
                 pending.set(op.key, {
+                  name: op.nextName,
                   expression: op.expression,
                   comment: op.comment,
-                  errorMessage: result.message || "Transport failure."
+                  nameErrorMessage: result.errorField === "name" ? (result.message || "Transport failure.") : "",
+                  errorMessage: result.errorField === "name" ? "" : (result.message || "Transport failure.")
                 });
                 restorePendingDirtyOps(pending);
                 break;
@@ -7633,9 +8007,11 @@
                 message: result.message || "Apply failed."
               });
               pending.set(op.key, {
+                name: op.nextName,
                 expression: op.expression,
                 comment: op.comment,
-                errorMessage: result.message || "Apply failed."
+                nameErrorMessage: result.errorField === "name" ? (result.message || "Apply failed.") : "",
+                errorMessage: result.errorField === "name" ? "" : (result.message || "Apply failed.")
               });
             }
 
@@ -7723,7 +8099,7 @@
         }
 
         try {
-          const response = await sendToFusion("validateParameterName", { name });
+          const response = await sendToFusion(ACTION.VALIDATE_PARAMETER_NAME, { name });
           if (!response.ok) {
             setNameError(response.message || "Invalid parameter name.");
             return false;
@@ -7740,12 +8116,12 @@
       async function refreshParameters() {
         setGlobalStatus("Refreshing parameters...");
         try {
-          const response = await sendToFusion("refresh");
+          const response = await sendToFusion(ACTION.REFRESH);
           if (!response.ok) {
             throw new Error(response.message || "Refresh failed.");
           }
 
-          applyStateFromFusion(response, { source: "response", action: "refresh" });
+          applyStateFromFusion(response, { source: "response", action: ACTION.REFRESH });
           setGlobalStatus(`Loaded ${state.parameters.length} parameter(s).`, "success");
 
           if (state.settings.autoFitColumns === true) {
@@ -7829,7 +8205,7 @@
       document.getElementById("helpInfoButton").addEventListener("click", async () => {
         const url = "https://help.autodesk.com/view/fusion360/ENU/?guid=GUID-76272551-3275-46C4-AE4D-10D58B408C20";
         try {
-          const response = await sendToFusion("openHelpUrl", { url });
+          const response = await sendToFusion(ACTION.OPEN_HELP_URL, { url });
           if (!response.ok) {
             throw new Error(response.message || "Could not open help URL.");
           }
@@ -7847,17 +8223,17 @@
 
       document.getElementById("debugJsonToFusionButton").addEventListener("click", async () => {
         setGlobalStatus("Syncing JSON metadata to Fusion attributes...");
-        await runMetadataSync("syncMetadataJsonToFusion", "Metadata synced: JSON -> Fusion.");
+        await runMetadataSync(ACTION.SYNC_METADATA_JSON_TO_FUSION, "Metadata synced: JSON -> Fusion.");
       });
 
       document.getElementById("debugFusionToJsonButton").addEventListener("click", async () => {
         setGlobalStatus("Syncing Fusion metadata to JSON...");
-        await runMetadataSync("syncMetadataFusionToJson", "Metadata synced: Fusion -> JSON.");
+        await runMetadataSync(ACTION.SYNC_METADATA_FUSION_TO_JSON, "Metadata synced: Fusion -> JSON.");
       });
 
       document.getElementById("debugRepairButton").addEventListener("click", async () => {
         setGlobalStatus("Repairing metadata drift/corruption...");
-        await runMetadataSync("repairMetadata", "Metadata repair completed.");
+        await runMetadataSync(ACTION.REPAIR_METADATA, "Metadata repair completed.");
       });
 
       const clearStatusHistoryButton = document.getElementById("clearStatusHistoryButton");
@@ -7961,7 +8337,7 @@
         try {
           await saveSettingsPartial({ autoCheckUpdates: nextValue });
           if (nextValue && !state.updateInfo.latestVersion) {
-            const response = await sendToFusion("checkForUpdates");
+            const response = await sendToFusion(ACTION.CHECK_FOR_UPDATES);
             if (response.ok !== false) {
               applyStateFromFusion(response);
             }
@@ -8101,6 +8477,7 @@
 
       const parameterRows = document.getElementById("parameterRows");
       let rowExpressionValidationTimer = null;
+      let rowNameValidationTimer = null;
       let focusRefreshTimer = null;
       const parameterSearchInput = document.getElementById("parameterSearchInput");
       const parameterSearchClear = document.getElementById("parameterSearchClear");
@@ -8148,10 +8525,32 @@
         if (!row) {
           return;
         }
-        setSelectedParameterRow(row);
+        setSelectedParameterRow(row, {
+          additive: event.ctrlKey || event.metaKey,
+          range: event.shiftKey
+        });
       });
 
       parameterRows.addEventListener("input", (event) => {
+        const nameInput = event.target.closest(".param-name-input");
+        if (nameInput) {
+          if (rowNameValidationTimer) {
+            window.clearTimeout(rowNameValidationTimer);
+            rowNameValidationTimer = null;
+          }
+          const row = nameInput.closest("tr.parameter-row[data-parameter-key]");
+          const localMessage = validateParameterNameLocallyForRow(String(nameInput.value || ""), row);
+          if (localMessage) {
+            setRowNameValidationState(nameInput, localMessage, "error");
+          } else {
+            setRowNameValidationState(nameInput, "", "success");
+            rowNameValidationTimer = window.setTimeout(() => {
+              validateRowNameInput(nameInput);
+            }, ROW_NAME_VALIDATION_DEBOUNCE_MS);
+          }
+          return;
+        }
+
         const commentInput = event.target.closest(".comment-input");
         if (commentInput) {
           applyCommentInputPlaceholders(commentInput.closest("tr") || parameterRows);
@@ -8233,6 +8632,34 @@
       });
 
       parameterRows.addEventListener("keydown", async (event) => {
+        const nameInput = event.target.closest(".param-name-input");
+        if (nameInput) {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            const row = nameInput.closest("tr.parameter-row[data-parameter-key]");
+            if (!row) {
+              return;
+            }
+            if (isManualComputeMode()) {
+              const saveButton = row.querySelector(".save-button");
+              if (saveButton && !saveButton.disabled) {
+                saveButton.click();
+              }
+            } else {
+              await autoApplyRowIfNeeded(nameInput, "enter");
+            }
+            return;
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            const row = nameInput.closest("tr.parameter-row[data-parameter-key]");
+            if (row) {
+              discardRowDraft(row, { showStatus: false });
+            }
+            return;
+          }
+        }
+
         const input = event.target.closest(".expression-input");
         if (!input) {
           return;
@@ -8299,9 +8726,10 @@
       });
 
       parameterRows.addEventListener("focusout", async (event) => {
+        const nameInput = event.target.closest(".param-name-input");
         const input = event.target.closest(".expression-input");
         const commentInput = event.target.closest(".comment-input");
-        if (!input && !commentInput) {
+        if (!nameInput && !input && !commentInput) {
           return;
         }
 
@@ -8310,6 +8738,18 @@
         if (rowExpressionValidationTimer) {
           window.clearTimeout(rowExpressionValidationTimer);
           rowExpressionValidationTimer = null;
+        }
+        if (rowNameValidationTimer) {
+          window.clearTimeout(rowNameValidationTimer);
+          rowNameValidationTimer = null;
+        }
+
+        if (nameInput) {
+          const nameIsValid = await validateRowNameInput(nameInput);
+          if (nameIsValid) {
+            await autoApplyRowIfNeeded(nameInput, "blur");
+          }
+          return;
         }
 
         const expressionInput = input
@@ -8326,7 +8766,14 @@
       parameterRows.addEventListener("focusin", (event) => {
         const row = event.target.closest("tr.parameter-row[data-parameter-key]");
         if (row) {
-          setSelectedParameterRow(row);
+          const key = String(row.getAttribute("data-parameter-key") || "");
+          const selected = new Set(getSelectedParameterKeys());
+          if (key && selected.has(key)) {
+            state.selectedRow = getRowSelectionFromElement(row);
+            applySelectedRowState();
+          } else {
+            setSelectedParameterRow(row);
+          }
         }
       });
 
@@ -8648,7 +9095,7 @@
           }
 
           try {
-            const validation = await sendToFusion("validateUnit", { unit: enteredUnit });
+            const validation = await sendToFusion(ACTION.VALIDATE_UNIT, { unit: enteredUnit });
             if (!validation.ok) {
               setFeedback(validation.message || "Invalid unit.");
               return;
@@ -9053,7 +9500,7 @@
         setParameterFileSummary("");
         setGlobalStatus("Importing parameters from CSV...");
         try {
-          const response = await sendToFusion("importParameters", {
+          const response = await sendToFusion(ACTION.IMPORT_PARAMETERS, {
             conflictPolicy: policy
           });
           if (!response.ok && response.message === "Import cancelled.") {
@@ -9063,7 +9510,7 @@
             throw new Error(response.message || "Import failed.");
           }
 
-          applyStateFromFusion(response, { source: "response", action: "importParameters" });
+          applyStateFromFusion(response, { source: "response", action: ACTION.IMPORT_PARAMETERS });
           const imported = Number(response.importedCount || 0);
           const skipped = Number(response.skippedCount || 0);
           const failed = Number(response.failedCount || 0);
@@ -9096,7 +9543,7 @@
         setParameterFileSummary("");
         setGlobalStatus("Exporting parameters to CSV...");
         try {
-          const response = await sendToFusion("exportParameters", {});
+          const response = await sendToFusion(ACTION.EXPORT_PARAMETERS, {});
           if (!response.ok && response.message === "Export cancelled.") {
             return;
           }
@@ -9147,7 +9594,7 @@
 
         setGlobalStatus(`Creating ${data.name}...`);
         try {
-          const response = await sendToFusion("createParameter", data);
+          const response = await sendToFusion(ACTION.CREATE_PARAMETER, data);
           if (!response.ok) {
             throw new Error(response.message || "Create failed.");
           }
@@ -9210,7 +9657,7 @@
           revertButton.disabled = true;
           setGlobalStatus(`Reverting ${parameter.name}...`);
           try {
-            const response = await sendToFusion("revertParameter", {
+            const response = await sendToFusion(ACTION.REVERT_PARAMETER, {
               key: parameter.key || "",
               name: parameter.name,
               comment
@@ -9241,7 +9688,7 @@
 
           favoriteButton.disabled = true;
           try {
-            const response = await sendToFusion("setParameterFavorite", {
+            const response = await sendToFusion(ACTION.SET_PARAMETER_FAVORITE, {
               name: parameter.name,
               isFavorite: !parameter.isFavorite
             });
@@ -9417,7 +9864,7 @@
         if (btn) { btn.disabled = true; btn.textContent = "Checking\u2026"; }
         let flashing = false;
         try {
-          const response = await sendToFusion("checkForUpdates");
+          const response = await sendToFusion(ACTION.CHECK_FOR_UPDATES);
           if (response.ok !== false) {
             applyStateFromFusion(response);
             if (!state.updateInfo.hasUpdate && state.updateInfo.updateState !== "staged") {
@@ -9453,7 +9900,7 @@
         const btn = document.getElementById("updateCardInstallButton");
         if (btn) { btn.disabled = true; btn.textContent = "Downloading\u2026"; }
         try {
-          const response = await sendToFusion("downloadAndStageUpdate");
+          const response = await sendToFusion(ACTION.DOWNLOAD_AND_STAGE_UPDATE);
           if (response.ok !== false) {
             applyStateFromFusion(response);
           } else {
@@ -9579,7 +10026,7 @@
 
           if (TEMP_TEXT_TUNER_ENABLED && !state.textTunerStateLoaded) {
             try {
-              const tunerResponse = await sendToFusion("getTextTunerState");
+              const tunerResponse = await sendToFusion(ACTION.GET_TEXT_TUNER_STATE);
               if (tunerResponse && tunerResponse.ok) {
                 applyPersistedTextTunerValues(tunerResponse.values || {});
               }
@@ -9588,9 +10035,9 @@
             }
           }
 
-          const response = await sendToFusion("ready");
+          const response = await sendToFusion(ACTION.READY);
           if (response.ok) {
-            applyStateFromFusion(response, { source: "response", action: "ready" });
+            applyStateFromFusion(response, { source: "response", action: ACTION.READY });
             if (TEMP_TEXT_TUNER_ENABLED && !state.textTunerStateLoaded) {
               applyPersistedTextTunerValues(state.textTunerState || {});
             }
@@ -9601,9 +10048,9 @@
                 const autoCheck = state.settings.autoCheckUpdates !== false;
                 const hasCached = !!(state.updateInfo && state.updateInfo.latestVersion);
                 if (autoCheck && !hasCached) {
-                  const updateResponse = await sendToFusion("checkForUpdates");
+                  const updateResponse = await sendToFusion(ACTION.CHECK_FOR_UPDATES);
                   if (updateResponse.ok !== false) {
-                    applyStateFromFusion(updateResponse, { source: "response", action: "checkForUpdates" });
+                    applyStateFromFusion(updateResponse, { source: "response", action: ACTION.CHECK_FOR_UPDATES });
                   } else {
                     renderUpdateCard();
                   }
