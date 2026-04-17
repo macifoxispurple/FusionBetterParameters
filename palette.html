@@ -3143,7 +3143,12 @@
       const API_VERSION_EXPECTED = 1;
       const DEFAULT_COMPUTE_MODE = "auto";
       const COMPUTE_MODE_STORAGE_KEY = "bp_compute_mode";
-      const IMPORT_CONFLICT_POLICY_STORAGE_KEY = "bp_import_conflict_policy";
+      const ROW_EXPRESSION_PREVIEW_DEBOUNCE_MS = 200;
+      const FIELD_HELPER_CLOSE_DELAY_MS = 120;
+      const COMMENTS_MIN_WIDTH_PX = 120;
+      // REVIEW: Action literals are still duplicated across sets and call sites.
+      // A full ACTIONS constant map refactor is intentionally deferred for a dedicated cleanup slice.
+      // REVIEW: BACKEND_API.md still lists validateUnitChange/updateParameterUnit as normative; FE intentionally omits them per blocked M2 policy.
       const NORMATIVE_ACTIONS = new Set([
         "ready", "refresh", "createParameter", "deleteParameter", "updateParameter", "revertParameter",
         "setParameterFavorite", "setParameterGroup", "renameGroup", "deleteGroup",
@@ -3169,6 +3174,7 @@
         "getTextTunerState", "validateParameterName", "validateExpression", "previewExpression", "validateUnit",
         "exportParameters", "openHelpUrl"
       ]);
+      // REVIEW: Mock bridge is intentionally kept behind explicit opt-in for local fixture testing.
       const MOCK_BRIDGE_ENABLED = !!window.__BP_USE_MOCK_BRIDGE;
 
       const EXPRESSION_FUNCTIONS = [
@@ -3441,16 +3447,10 @@
         pendingRenderPushEnvelope: null,
         pendingRenderPushAction: "",
         pendingRenderPushNoticeShown: false,
+        bridgeStringCompatWarned: false,
         initialLayoutDone: false,
         initialLayoutPassPending: false,
-        importConflictPolicy: (function () {
-          try {
-            const raw = String(localStorage.getItem(IMPORT_CONFLICT_POLICY_STORAGE_KEY) || "").trim().toLowerCase();
-            return raw === "overwrite" ? "overwrite" : "skip";
-          } catch (_) {
-            return "skip";
-          }
-        }())
+        importConflictPolicy: "skip"
       };
       let textTunerLiveApplyTimer = null;
       let textTunerPersistTimer = null;
@@ -3663,7 +3663,7 @@
         const autoHideParameter = !isNarrowMode && !visibleMainKeys.includes("parameter");
         const autoHideUnit = !isNarrowMode && !visibleMainKeys.includes("unit");
         const autoHideValue = !isNarrowMode && !visibleMainKeys.includes("value");
-        const autoHideComments = !isNarrowMode && (userShowsComments && ((visibleMainPx + 120) > containerWidth));
+        const autoHideComments = !isNarrowMode && (userShowsComments && ((visibleMainPx + COMMENTS_MIN_WIDTH_PX) > containerWidth));
         document.body.classList.toggle("auto-hide-comments", autoHideComments);
         document.body.classList.toggle("auto-hide-unit", autoHideUnit);
         document.body.classList.toggle("auto-hide-parameter", autoHideParameter);
@@ -3712,7 +3712,7 @@
 
           const effectiveSumPx = visibleMainKeys.reduce((sum, key) => sum + (adjustedMainPx[key] || 0), 0);
           const commentsWidth = commentsVisible
-            ? (containerWidth > effectiveSumPx ? containerWidth - effectiveSumPx : 120)
+            ? (containerWidth > effectiveSumPx ? containerWidth - effectiveSumPx : COMMENTS_MIN_WIDTH_PX)
             : 0;
           if (headers[5]) {
             headers[5].style.width = commentsVisible && commentsWidth > 0 ? `${commentsWidth}px` : "";
@@ -3807,13 +3807,6 @@
 
       function normalizeConflictPolicy(value) {
         return String(value || "").trim().toLowerCase() === "overwrite" ? "overwrite" : "skip";
-      }
-
-      function persistImportConflictPolicy(policy) {
-        try {
-          localStorage.setItem(IMPORT_CONFLICT_POLICY_STORAGE_KEY, normalizeConflictPolicy(policy));
-        } catch (_) {
-        }
       }
 
       function renderImportConflictPolicySelect() {
@@ -6052,7 +6045,8 @@
               : (values || {});
             applyPersistedTextTunerValues(persisted);
           }
-        } catch (_error) {
+        } catch (error) {
+          appendStatusHistory(`Text tuner state persist failed: ${String(error?.message || error)}`, "warning");
         }
       }
 
@@ -6273,6 +6267,15 @@
       }
 
       function applyState(payload) {
+        if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+          setGlobalStatus("Ignored invalid state payload from backend.", "warning");
+          return;
+        }
+        if (payload.apiVersion !== API_VERSION_EXPECTED) {
+          setGlobalStatus(`Ignored state payload with unsupported apiVersion (${String(payload.apiVersion)}).`, "warning");
+          return;
+        }
+
         captureRowDraftsFromDom();
 
         if (payload.document) {
@@ -6452,12 +6455,21 @@
           return {};
         }
         if (typeof rawResponse === "string") {
-          return JSON.parse(rawResponse);
+          try {
+            const parsed = JSON.parse(rawResponse);
+            if (!state.bridgeStringCompatWarned) {
+              state.bridgeStringCompatWarned = true;
+              appendStatusHistory("Bridge returned string envelope; parsed for compatibility.", "warning");
+            }
+            return parsed;
+          } catch (error) {
+            throw new Error(`Bridge string response is not valid JSON: ${String(error?.message || error)}`);
+          }
         }
         if (typeof rawResponse === "object") {
           return rawResponse;
         }
-        throw new Error(`Unexpected bridge response type: ${typeof rawResponse}`);
+        throw new Error(`Unexpected bridge response type: ${typeof rawResponse}.`);
       }
 
       function buildMockStatePayload() {
@@ -6551,7 +6563,8 @@
       async function refreshIfDocumentChanged() {
         try {
           await refreshParameters();
-        } catch (_error) {
+        } catch (error) {
+          appendStatusHistory(`Background refresh failed: ${String(error?.message || error)}`, "warning");
         }
       }
 
@@ -7137,12 +7150,14 @@
         return rowKey ? `row:${rowKey}` : "";
       }
 
-      function cancelExpressionStatusClear(input) {
-        return;
-      }
-
-      function scheduleExpressionStatusClear(_input) {
-        return;
+      function invalidateRowAsyncRequests(input) {
+        if (!input || typeof input.setAttribute !== "function") {
+          return;
+        }
+        state.rowPreviewRequestNonce += 1;
+        input.setAttribute("data-preview-request-nonce", String(state.rowPreviewRequestNonce));
+        state.rowValidationRequestNonce += 1;
+        input.setAttribute("data-validation-request-nonce", String(state.rowValidationRequestNonce));
       }
 
       function getRowPreviewCell(input) {
@@ -7390,6 +7405,11 @@
         if (!expressionInput || !commentInput) {
           return false;
         }
+        if (rowExpressionValidationTimer) {
+          window.clearTimeout(rowExpressionValidationTimer);
+          rowExpressionValidationTimer = null;
+        }
+        invalidateRowAsyncRequests(expressionInput);
 
         const savedExpression = expressionInput.getAttribute("data-saved-expression") || "";
         const savedComment = commentInput.getAttribute("data-saved-comment") || "";
@@ -7473,7 +7493,9 @@
             setGlobalStatus(error.message, "error");
           }
           setExpressionValidationState(expressionInput, error.message || "Apply failed.", "error");
-          return { ok: false, key: parameterKey, name: parameter.name, message: error.message || "Apply failed." };
+          const failureMessage = error.message || "Apply failed.";
+          const fatal = /Fusion palette bridge is not available|Backend contract error|API version mismatch/i.test(failureMessage);
+          return { ok: false, key: parameterKey, name: parameter.name, message: failureMessage, fatal };
         }
       }
 
@@ -7555,6 +7577,7 @@
         let appliedCount = 0;
         let failedCount = 0;
         let skippedCount = 0;
+        let stoppedByTransportFailure = false;
         const failedRows = [];
 
         try {
@@ -7590,6 +7613,20 @@
               appliedCount += 1;
               pending.delete(op.key);
             } else {
+              if (result.fatal) {
+                stoppedByTransportFailure = true;
+                failedRows.push({
+                  name: op.name || op.key,
+                  message: result.message || "Transport failure."
+                });
+                pending.set(op.key, {
+                  expression: op.expression,
+                  comment: op.comment,
+                  errorMessage: result.message || "Transport failure."
+                });
+                restorePendingDirtyOps(pending);
+                break;
+              }
               failedCount += 1;
               failedRows.push({
                 name: op.name || op.key,
@@ -7609,8 +7646,10 @@
           refreshBatchActionBar();
         }
 
-        const summary = `Apply All finished. Applied: ${appliedCount}; Failed: ${failedCount}; Skipped: ${skippedCount}.`;
-        setGlobalStatus(summary, failedCount > 0 ? "warning" : "success");
+        const summary = stoppedByTransportFailure
+          ? `Apply All stopped on transport/contract failure. Applied: ${appliedCount}; Failed: ${failedCount}; Skipped: ${skippedCount}.`
+          : `Apply All finished. Applied: ${appliedCount}; Failed: ${failedCount}; Skipped: ${skippedCount}.`;
+        setGlobalStatus(summary, (failedCount > 0 || stoppedByTransportFailure) ? "warning" : "success");
         if (failedRows.length > 0) {
           const detailLines = failedRows.map((item) => `${item.name}: ${item.message}`);
           appendStatusHistory(`Apply All failed rows:\n${detailLines.join("\n")}`, "warning");
@@ -7964,7 +8003,6 @@
 
       let expressionValidationTimer = null;
       document.getElementById("newExpression").addEventListener("input", (event) => {
-        cancelExpressionStatusClear(event.currentTarget);
         updateExpressionSuggestions(event.currentTarget, document.getElementById("newName").value.trim());
         updateFunctionHelper(event.currentTarget);
 
@@ -7981,17 +8019,12 @@
 
         expressionValidationTimer = window.setTimeout(() => {
           validateExpressionAgainstFusion(input);
-        }, 200);
+        }, ROW_EXPRESSION_PREVIEW_DEBOUNCE_MS);
       });
 
       document.getElementById("newExpression").addEventListener("click", (event) => {
-        cancelExpressionStatusClear(event.currentTarget);
         updateExpressionSuggestions(event.currentTarget, document.getElementById("newName").value.trim());
         updateFunctionHelper(event.currentTarget);
-      });
-
-      document.getElementById("newExpression").addEventListener("focus", (event) => {
-        cancelExpressionStatusClear(event.currentTarget);
       });
 
       document.getElementById("newExpression").addEventListener("keydown", (event) => {
@@ -8045,13 +8078,13 @@
       });
 
       document.getElementById("newExpression").addEventListener("blur", async (event) => {
-        window.setTimeout(() => closeExpressionSuggestions(), 120);
-        window.setTimeout(() => closeFunctionHelper(), 120);
+        window.setTimeout(() => closeExpressionSuggestions(), FIELD_HELPER_CLOSE_DELAY_MS);
+        window.setTimeout(() => closeFunctionHelper(), FIELD_HELPER_CLOSE_DELAY_MS);
         if (expressionValidationTimer) {
           window.clearTimeout(expressionValidationTimer);
+          expressionValidationTimer = null;
         }
         await validateExpressionAgainstFusion(event.currentTarget);
-        scheduleExpressionStatusClear(event.currentTarget);
       });
 
       document.getElementById("expressionSuggestions").addEventListener("mousedown", (event) => {
@@ -8131,8 +8164,6 @@
         if (!input) {
           return;
         }
-        cancelExpressionStatusClear(input);
-
         updateExpressionSuggestions(input, input.getAttribute("data-parameter-name") || "");
         updateFunctionHelper(input);
 
@@ -8151,7 +8182,7 @@
         updateRowSaveState(input.closest("tr"));
         rowExpressionValidationTimer = window.setTimeout(() => {
           previewRowExpression(input);
-        }, 200);
+        }, ROW_EXPRESSION_PREVIEW_DEBOUNCE_MS);
       });
 
       document.getElementById("newComment").addEventListener("input", (event) => {
@@ -8197,8 +8228,6 @@
         if (!input) {
           return;
         }
-        cancelExpressionStatusClear(input);
-
         updateExpressionSuggestions(input, input.getAttribute("data-parameter-name") || "");
         updateFunctionHelper(input);
       });
@@ -8208,8 +8237,6 @@
         if (!input) {
           return;
         }
-        cancelExpressionStatusClear(input);
-
         if (
           event.key === "Backspace" &&
           !event.ctrlKey &&
@@ -8278,10 +8305,11 @@
           return;
         }
 
-        window.setTimeout(() => closeExpressionSuggestions(), 120);
-        window.setTimeout(() => closeFunctionHelper(), 120);
+        window.setTimeout(() => closeExpressionSuggestions(), FIELD_HELPER_CLOSE_DELAY_MS);
+        window.setTimeout(() => closeFunctionHelper(), FIELD_HELPER_CLOSE_DELAY_MS);
         if (rowExpressionValidationTimer) {
           window.clearTimeout(rowExpressionValidationTimer);
+          rowExpressionValidationTimer = null;
         }
 
         const expressionInput = input
@@ -8299,10 +8327,6 @@
         const row = event.target.closest("tr.parameter-row[data-parameter-key]");
         if (row) {
           setSelectedParameterRow(row);
-        }
-        const input = event.target.closest(".expression-input");
-        if (input) {
-          cancelExpressionStatusClear(input);
         }
       });
 
@@ -9022,7 +9046,6 @@
 
       document.getElementById("importConflictPolicySelect").addEventListener("change", (event) => {
         state.importConflictPolicy = normalizeConflictPolicy(event.currentTarget.value);
-        persistImportConflictPolicy(state.importConflictPolicy);
       });
 
       document.getElementById("importParametersButton").addEventListener("click", async () => {
@@ -9034,8 +9057,6 @@
             conflictPolicy: policy
           });
           if (!response.ok && response.message === "Import cancelled.") {
-            setGlobalStatus("Import cancelled.");
-            setParameterFileSummary("Import cancelled.");
             return;
           }
           if (!response.ok) {
@@ -9077,8 +9098,6 @@
         try {
           const response = await sendToFusion("exportParameters", {});
           if (!response.ok && response.message === "Export cancelled.") {
-            setGlobalStatus("Export cancelled.");
-            setParameterFileSummary("Export cancelled.");
             return;
           }
           if (!response.ok) {
@@ -9417,7 +9436,8 @@
             renderUpdatePill();
             renderUpdateCard();
           }
-        } catch (_error) {
+        } catch (error) {
+          appendStatusHistory(`Update check failed: ${String(error?.message || error)}`, "warning");
           renderUpdatePill();
           renderUpdateCard();
         } finally {
@@ -9517,25 +9537,31 @@
         }
       });
 
+      function handleFusionPush(action, dataString) {
+        try {
+          const data = dataString ? JSON.parse(dataString) : {};
+          if (action === "renderState" || action === "renderParameters") {
+            if (hasBlockingLocalEdits()) {
+              queuePendingStateEnvelope(data, action);
+              return "OK";
+            }
+            applyStateFromFusion(data, { source: "push", action });
+          }
+        } catch (error) {
+          setGlobalStatus(error.message || "Failed to process backend push payload.", "error");
+          appendStatusHistory(`Push handler failure: ${String(error.message || error)}`, "error");
+          return "FAILED";
+        }
+
+        return "OK";
+      }
+
       window.fusionJavaScriptHandler = {
         handle(action, payload) {
-          try {
-            const data = payload ? JSON.parse(payload) : {};
-            if (action === "renderState" || action === "renderParameters") {
-              if (hasBlockingLocalEdits()) {
-                queuePendingStateEnvelope(data, action);
-                return "OK";
-              }
-              applyStateFromFusion(data, { source: "push", action });
-            }
-          } catch (error) {
-            console.error(error);
-            return "FAILED";
-          }
-
-          return "OK";
+          return handleFusionPush(action, payload);
         }
       };
+      window.fusionReceiveData = handleFusionPush;
 
       window.addEventListener("load", async () => {
         try {
@@ -9557,7 +9583,8 @@
               if (tunerResponse && tunerResponse.ok) {
                 applyPersistedTextTunerValues(tunerResponse.values || {});
               }
-            } catch (_error) {
+            } catch (error) {
+              appendStatusHistory(`Initial text tuner state load failed: ${String(error?.message || error)}`, "warning");
             }
           }
 
@@ -9583,7 +9610,8 @@
                 } else {
                   renderUpdateCard();
                 }
-              } catch (_error) {
+              } catch (error) {
+                appendStatusHistory(`Startup update check failed: ${String(error?.message || error)}`, "warning");
               }
             }, 0);
           }
@@ -9611,6 +9639,45 @@
           }
           refreshIfDocumentChanged();
         }, 120);
+      });
+
+      window.addEventListener("beforeunload", () => {
+        if (nameValidationTimer) {
+          window.clearTimeout(nameValidationTimer);
+          nameValidationTimer = null;
+        }
+        if (expressionValidationTimer) {
+          window.clearTimeout(expressionValidationTimer);
+          expressionValidationTimer = null;
+        }
+        if (rowExpressionValidationTimer) {
+          window.clearTimeout(rowExpressionValidationTimer);
+          rowExpressionValidationTimer = null;
+        }
+        if (paletteResizeTimer) {
+          window.clearTimeout(paletteResizeTimer);
+          paletteResizeTimer = null;
+        }
+        if (focusRefreshTimer) {
+          window.clearTimeout(focusRefreshTimer);
+          focusRefreshTimer = null;
+        }
+        if (tooltipHideTimer) {
+          window.clearTimeout(tooltipHideTimer);
+          tooltipHideTimer = null;
+        }
+        if (pillFlashTimer) {
+          window.clearTimeout(pillFlashTimer);
+          pillFlashTimer = null;
+        }
+        if (textTunerPersistTimer) {
+          window.clearTimeout(textTunerPersistTimer);
+          textTunerPersistTimer = null;
+        }
+        if (textTunerLiveApplyTimer) {
+          window.clearTimeout(textTunerLiveApplyTimer);
+          textTunerLiveApplyTimer = null;
+        }
       });
     </script>
   </body>
