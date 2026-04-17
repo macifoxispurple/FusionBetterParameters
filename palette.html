@@ -1023,6 +1023,29 @@
         white-space: nowrap;
       }
 
+      .unit-inline-button {
+        appearance: none;
+        border: none;
+        background: transparent;
+        padding: 0;
+        margin: 0;
+        cursor: pointer;
+        display: block;
+        width: 100%;
+        text-align: left;
+      }
+
+      .unit-inline-button:hover,
+      .unit-inline-button:focus-visible {
+        color: var(--accent) !important;
+        text-decoration: underline;
+        outline: none;
+      }
+
+      .narrow-expanded-kind {
+        display: none;
+      }
+
       .name-cell-main {
         display: flex;
         align-items: center;
@@ -1578,6 +1601,34 @@
         color: var(--accent);
         border-color: var(--accent);
         background: color-mix(in srgb, var(--accent) 16%, transparent);
+      }
+
+      .sortable-header {
+        cursor: pointer;
+      }
+
+      .sortable-header .header-label {
+        pointer-events: none;
+      }
+
+      .sort-indicator {
+        margin-left: 4px;
+        color: var(--muted);
+        font-size: 10px;
+        line-height: 1;
+        display: inline-block;
+        width: 10px;
+        text-align: center;
+      }
+
+      .sortable-header.is-sorted-asc .sort-indicator::before {
+        content: "\25B4";
+        color: var(--accent);
+      }
+
+      .sortable-header.is-sorted-desc .sort-indicator::before {
+        content: "\25BE";
+        color: var(--accent);
       }
 
       .native-search {
@@ -2709,10 +2760,9 @@
 
         <section class="card table-workspace">
           <div class="parameter-rail">
-            <div class="rail-icons" aria-hidden="true">
-              <button class="native-icon-btn is-on" type="button" tabindex="-1" title="User Parameters">&#402;x</button>
-              <button class="native-icon-btn" type="button" tabindex="-1" title="Model Parameters">&#402;</button>
-              <button class="native-icon-btn star-icon-control" type="button" tabindex="-1" title="Favorites"><span class="star-icon" aria-hidden="true">&#9733;</span></button>
+            <div class="rail-icons">
+              <button id="userParamsFilterButton" class="native-icon-btn is-on" type="button" title="Show user parameters only" aria-label="Show user parameters only" aria-pressed="true">&#402;x</button>
+              <button id="favoritesFilterButton" class="native-icon-btn star-icon-control" type="button" title="Show favorites only" aria-label="Show favorites only" aria-pressed="false"><span class="star-icon" aria-hidden="true">&#9733;</span></button>
             </div>
             <div class="search-shell native-search">
               <span class="search-icon" aria-hidden="true">
@@ -2740,12 +2790,12 @@
             <table>
               <thead>
                 <tr>
-                  <th class="parameter-col"><span class="header-label">Parameter</span><div class="column-resizer" data-col="parameter"></div></th>
-                  <th><span class="header-label">Name</span><div class="column-resizer" data-col="name"></div></th>
-                  <th class="unit-col"><span class="header-label">Unit</span><div class="column-resizer" data-col="unit"></div></th>
-                  <th><span class="header-label">Expression</span><div class="column-resizer" data-col="expression"></div></th>
-                  <th class="value-col"><span class="header-label">Value</span><div class="column-resizer" data-col="value"></div></th>
-                  <th class="comment-col comments-col"><span class="header-label">Comments</span></th>
+                  <th class="parameter-col sortable-header" data-sort-col="parameter"><span class="header-label">Parameter</span><span class="sort-indicator" aria-hidden="true"></span><div class="column-resizer" data-col="parameter"></div></th>
+                  <th class="sortable-header" data-sort-col="name"><span class="header-label">Name</span><span class="sort-indicator" aria-hidden="true"></span><div class="column-resizer" data-col="name"></div></th>
+                  <th class="unit-col sortable-header" data-sort-col="unit"><span class="header-label">Unit</span><span class="sort-indicator" aria-hidden="true"></span><div class="column-resizer" data-col="unit"></div></th>
+                  <th class="sortable-header" data-sort-col="expression"><span class="header-label">Expression</span><span class="sort-indicator" aria-hidden="true"></span><div class="column-resizer" data-col="expression"></div></th>
+                  <th class="value-col sortable-header" data-sort-col="value"><span class="header-label">Value</span><span class="sort-indicator" aria-hidden="true"></span><div class="column-resizer" data-col="value"></div></th>
+                  <th class="comment-col comments-col sortable-header" data-sort-col="comment"><span class="header-label">Comments</span><span class="sort-indicator" aria-hidden="true"></span></th>
                 </tr>
               </thead>
               <tbody id="parameterRows">
@@ -3388,12 +3438,24 @@
         debugMetadataSnapshot: null,
         lastSyncResult: null,
         statusHistory: [],
+        filters: {
+          userOnly: true,
+          favoritesOnly: false
+        },
+        tableSort: {
+          column: "",
+          direction: "asc"
+        },
         expandedRows: {},
         localPreviousExpressions: {},
         applyAllRunning: false,
         selectedRow: null,
         lastNarrowLayoutMode: null,
         viewportModeAutoFitPending: false,
+        rowDraftsByKey: {},
+        pendingRenderPushEnvelope: null,
+        pendingRenderPushAction: "",
+        pendingRenderPushNoticeShown: false,
         importConflictPolicy: (function () {
           try {
             const raw = String(localStorage.getItem(IMPORT_CONFLICT_POLICY_STORAGE_KEY) || "").trim().toLowerCase();
@@ -3403,8 +3465,6 @@
           }
         }())
       };
-      const EXPRESSION_STATUS_CLEAR_DELAY_MS = 5000;
-      const expressionStatusClearTimers = new Map();
       let textTunerLiveApplyTimer = null;
       let textTunerPersistTimer = null;
 
@@ -3717,6 +3777,177 @@
         return Array.from(document.querySelectorAll("#parameterRows tr.parameter-row.is-dirty[data-parameter-key]"));
       }
 
+      function getRowDraftKey(row) {
+        if (!row) {
+          return "";
+        }
+        return String(row.getAttribute("data-parameter-key") || row.getAttribute("data-parameter-name") || "");
+      }
+
+      function hasLocalDirtyRowsInDom() {
+        return !!document.querySelector("#parameterRows tr.parameter-row.is-dirty[data-parameter-key]");
+      }
+
+      function hasBlockingLocalEdits() {
+        if (hasLocalDirtyRowsInDom()) {
+          return true;
+        }
+        return Object.keys(state.rowDraftsByKey || {}).length > 0;
+      }
+
+      function clearRowDraftByKey(key) {
+        const token = String(key || "");
+        if (!token) {
+          return;
+        }
+        delete state.rowDraftsByKey[token];
+      }
+
+      function remapAndPruneRowDrafts(parameterList = []) {
+        const params = Array.isArray(parameterList) ? parameterList : [];
+        const byKey = new Map();
+        const byName = new Map();
+        params.forEach((param) => {
+          const key = String(param?.key || "");
+          const name = String(param?.name || "");
+          if (key) {
+            byKey.set(key, param);
+          }
+          if (name) {
+            byName.set(name, param);
+          }
+        });
+
+        const nextDrafts = {};
+        Object.entries(state.rowDraftsByKey || {}).forEach(([draftKey, draft]) => {
+          const token = String(draftKey || "");
+          const draftName = String(draft?.parameterName || "");
+
+          if (token && byKey.has(token)) {
+            nextDrafts[token] = { ...draft, parameterName: String(byKey.get(token)?.name || draftName || "") };
+            return;
+          }
+
+          if (draftName && byName.has(draftName)) {
+            const resolved = byName.get(draftName) || {};
+            const resolvedKey = String(resolved.key || draftName);
+            nextDrafts[resolvedKey] = { ...draft, parameterName: String(resolved.name || draftName) };
+          }
+        });
+        state.rowDraftsByKey = nextDrafts;
+      }
+
+      function captureRowDraftsFromDom() {
+        const rows = Array.from(document.querySelectorAll("#parameterRows tr.parameter-row[data-parameter-key]"));
+        rows.forEach((row) => {
+          const key = getRowDraftKey(row);
+          if (!key) {
+            return;
+          }
+          const expressionInput = row.querySelector(".expression-input");
+          const commentInput = row.querySelector(".comment-input");
+          const previewCell = row.querySelector(".preview-cell");
+          const errorNode = expressionInput?.parentElement?.querySelector(".expression-field-error");
+          if (!expressionInput || !commentInput || !previewCell) {
+            return;
+          }
+
+          const savedExpression = String(expressionInput.getAttribute("data-saved-expression") || "");
+          const savedComment = String(commentInput.getAttribute("data-saved-comment") || "");
+          const expression = String(expressionInput.value || "");
+          const comment = String(commentInput.value || "");
+          const expressionDirty = expression !== savedExpression;
+          const commentDirty = comment !== savedComment;
+          const isDirty = expressionDirty || commentDirty;
+          const ariaInvalid = expressionInput.getAttribute("aria-invalid") === "true";
+          const errorMessage = String(errorNode?.textContent || "").trim();
+          const draftPreview = String(previewCell.getAttribute("data-draft-preview") || "");
+          const shouldKeep = isDirty || ariaInvalid || !!errorMessage || !!draftPreview;
+
+          if (!shouldKeep) {
+            clearRowDraftByKey(key);
+            return;
+          }
+
+          state.rowDraftsByKey[key] = {
+            expression,
+            comment,
+            expressionDirty,
+            commentDirty,
+            ariaInvalid,
+            errorMessage,
+            draftPreview,
+            parameterName: String(row.getAttribute("data-parameter-name") || "")
+          };
+        });
+      }
+
+      function applyDraftToRow(row, draft) {
+        if (!row || !draft) {
+          return;
+        }
+        const expressionInput = row.querySelector(".expression-input");
+        const commentInput = row.querySelector(".comment-input");
+        const previewCell = row.querySelector(".preview-cell");
+        if (!expressionInput || !commentInput || !previewCell) {
+          return;
+        }
+
+        expressionInput.value = String(draft.expression ?? expressionInput.value ?? "");
+        commentInput.value = String(draft.comment ?? commentInput.value ?? "");
+        previewCell.setAttribute("data-draft-preview", String(draft.draftPreview || ""));
+
+        const errorNode = expressionInput.parentElement
+          ? expressionInput.parentElement.querySelector(".expression-field-error")
+          : null;
+        const message = String(draft.errorMessage || "");
+        const hasError = !!(draft.ariaInvalid || message);
+        expressionInput.setAttribute("aria-invalid", hasError ? "true" : "false");
+        if (errorNode) {
+          errorNode.textContent = message;
+          errorNode.classList.toggle("has-message", !!message);
+          errorNode.classList.remove("is-valid");
+        }
+
+        autoSizeTextarea(commentInput);
+        updateRowSaveState(row);
+      }
+
+      function rehydrateRowDraftsFromState() {
+        Object.entries(state.rowDraftsByKey || {}).forEach(([key, draft]) => {
+          const row = getParameterRowByKey(key);
+          if (!row) {
+            return;
+          }
+          applyDraftToRow(row, draft);
+        });
+      }
+
+      function flushQueuedRenderPushIfReady(force = false) {
+        if (!state.pendingRenderPushEnvelope) {
+          return;
+        }
+        if (!force && hasBlockingLocalEdits()) {
+          return;
+        }
+
+        const pendingEnvelope = state.pendingRenderPushEnvelope;
+        const pendingAction = state.pendingRenderPushAction || "renderState";
+        state.pendingRenderPushEnvelope = null;
+        state.pendingRenderPushAction = "";
+        state.pendingRenderPushNoticeShown = false;
+        applyStateFromFusion(pendingEnvelope, { source: "push", action: pendingAction });
+      }
+
+      function queuePendingStateEnvelope(envelope, action = "renderState") {
+        state.pendingRenderPushEnvelope = envelope;
+        state.pendingRenderPushAction = action;
+        if (!state.pendingRenderPushNoticeShown) {
+          state.pendingRenderPushNoticeShown = true;
+          setGlobalStatus("Background update queued while editing. It will apply after edits are saved or discarded.", "warning");
+        }
+      }
+
       function refreshBatchActionBar() {
         const bar = document.getElementById("batchActionBar");
         const dirtyCountNode = document.getElementById("batchActionDirtyCount");
@@ -3946,11 +4177,26 @@
       function getFilteredParameters(parameters) {
         const needle = getParameterSearchNeedle();
         const items = Array.isArray(parameters) ? parameters : [];
+        const withScope = items.filter((param) => {
+          if (state.filters.userOnly === true) {
+            const kindText = String(
+              param?.parameterKind ?? param?.kind ?? ""
+            ).trim().toLowerCase();
+            const isUserParam = (param?.isUserParameter !== false) && (kindText !== "model parameter" && kindText !== "model");
+            if (!isUserParam) {
+              return false;
+            }
+          }
+          if (state.filters.favoritesOnly === true && !param.isFavorite) {
+            return false;
+          }
+          return true;
+        });
         if (!needle) {
-          return items;
+          return withScope;
         }
 
-        return items.filter((param) => {
+        return withScope.filter((param) => {
           const haystack = [
             param.name,
             param.expression,
@@ -3960,6 +4206,33 @@
           ].map((value) => String(value || "").toLowerCase()).join("\n");
           return haystack.includes(needle);
         });
+      }
+
+      function getSortValueForParam(param, column) {
+        const col = String(column || "").trim().toLowerCase();
+        if (col === "name" || col === "parameter") return String(param?.name || "");
+        if (col === "unit") return String(param?.unit || "");
+        if (col === "expression") return String(param?.expression || "");
+        if (col === "value") return String(param?.valuePreview || "");
+        if (col === "comment") return String(param?.comment || "");
+        return "";
+      }
+
+      function sortParametersForColumn(parameters, column, direction) {
+        const list = Array.isArray(parameters) ? parameters.slice() : [];
+        const sign = String(direction || "asc").toLowerCase() === "desc" ? -1 : 1;
+        list.sort((a, b) => {
+          const av = getSortValueForParam(a, column).trim();
+          const bv = getSortValueForParam(b, column).trim();
+          const cmp = av.localeCompare(bv, undefined, { numeric: true, sensitivity: "base" });
+          if (cmp !== 0) {
+            return cmp * sign;
+          }
+          const an = String(a?.name || "");
+          const bn = String(b?.name || "");
+          return an.localeCompare(bn, undefined, { numeric: true, sensitivity: "base" }) * sign;
+        });
+        return list;
       }
 
       function normalizeGroupName(value) {
@@ -4102,9 +4375,13 @@
 
         const labels = orderedLabels.filter((label) => groups.has(label));
 
+        const activeSortColumn = String(state.tableSort?.column || "");
+        const activeSortDirection = String(state.tableSort?.direction || "asc");
         const result = labels.map((label) => ({
           label,
-          parameters: groups.get(label) || [],
+          parameters: activeSortColumn
+            ? sortParametersForColumn(groups.get(label) || [], activeSortColumn, activeSortDirection)
+            : (groups.get(label) || []),
           allCount: allCounts.get(label) || 0,
           filteredCount: filteredCounts.get(label) || 0,
           isFavoritesGroup: false
@@ -4113,7 +4390,9 @@
         if (favorites.length) {
           result.unshift({
             label: FAVORITES_GROUP_LABEL,
-            parameters: favorites,
+            parameters: activeSortColumn
+              ? sortParametersForColumn(favorites, activeSortColumn, activeSortDirection)
+              : favorites,
             allCount: favorites.length,
             filteredCount: favorites.length,
             isFavoritesGroup: true
@@ -4134,12 +4413,75 @@
         clearButton.hidden = !String(state.searchQuery || "").trim();
       }
 
+      function renderRailFilters() {
+        const userButton = document.getElementById("userParamsFilterButton");
+        const favoritesButton = document.getElementById("favoritesFilterButton");
+        if (userButton) {
+          const on = state.filters.userOnly === true;
+          userButton.classList.toggle("is-on", on);
+          userButton.setAttribute("aria-pressed", on ? "true" : "false");
+          userButton.title = on ? "User parameters filter on" : "User parameters filter off";
+        }
+        if (favoritesButton) {
+          const on = state.filters.favoritesOnly === true;
+          favoritesButton.classList.toggle("is-on", on);
+          favoritesButton.setAttribute("aria-pressed", on ? "true" : "false");
+          favoritesButton.title = on ? "Favorites-only filter on" : "Show favorites only";
+        }
+      }
+
+      function renderSortIndicators() {
+        const headers = Array.from(document.querySelectorAll(".table-wrap thead th.sortable-header"));
+        headers.forEach((th) => {
+          th.classList.remove("is-sorted-asc", "is-sorted-desc");
+          const col = String(th.getAttribute("data-sort-col") || "");
+          if (!col || col !== state.tableSort.column) {
+            return;
+          }
+          th.classList.add(state.tableSort.direction === "desc" ? "is-sorted-desc" : "is-sorted-asc");
+        });
+      }
+
       function setSearchQuery(value) {
         state.searchQuery = String(value || "");
         renderSearchControls();
         renderParameters(state.parameters);
         setParameterSummary(state.parameters);
         setReorderMenuMode();
+      }
+
+      function setFavoritesOnlyFilter(nextValue) {
+        state.filters.favoritesOnly = !!nextValue;
+        renderRailFilters();
+        renderParameters(state.parameters);
+        setParameterSummary(state.parameters);
+        setReorderMenuMode();
+      }
+
+      function setUserOnlyFilter(nextValue) {
+        state.filters.userOnly = !!nextValue;
+        renderRailFilters();
+        renderParameters(state.parameters);
+        setParameterSummary(state.parameters);
+        setReorderMenuMode();
+      }
+
+      function toggleTableSortForColumn(column) {
+        const col = String(column || "").trim().toLowerCase();
+        if (!col) {
+          return;
+        }
+        if (state.tableSort.column !== col) {
+          state.tableSort.column = col;
+          state.tableSort.direction = "asc";
+        } else if (state.tableSort.direction === "asc") {
+          state.tableSort.direction = "desc";
+        } else {
+          state.tableSort.column = "";
+          state.tableSort.direction = "asc";
+        }
+        renderSortIndicators();
+        renderParameters(state.parameters);
       }
 
       function autoSizeTextarea(textarea) {
@@ -4456,6 +4798,8 @@
         state.parameters = parameters || [];
         const tbody = document.getElementById("parameterRows");
         renderSearchControls();
+        renderRailFilters();
+        renderSortIndicators();
 
         if (!state.parameters.length) {
           tbody.innerHTML = `<tr><td colspan="6" class="empty">No user parameters were found in the active design.</td></tr>`;
@@ -4566,7 +4910,7 @@
                   <strong class="param-name-text">${safeName}</strong>
                 </td>
                 <td class="unit-cell">
-                  <span class="unit-text">${unitLabel}</span>
+                  <button class="unit-text unit-inline-button" type="button" data-row-unit-edit="true" title="Edit unit">${unitLabel}</button>
                 </td>
                 <td>
                   <div class="field-shell">
@@ -5824,6 +6168,8 @@
       }
 
       function applyState(payload) {
+        captureRowDraftsFromDom();
+
         if (payload.document) {
           state.document = { ...state.document, ...payload.document };
           const docLabel = document.getElementById("docNameLabel");
@@ -5895,8 +6241,10 @@
               delete state.localPreviousExpressions[key];
             }
           });
+          remapAndPruneRowDrafts(parameterList);
 
           renderParameters(payload.parameters);
+          rehydrateRowDraftsFromState();
           setParameterSummary(payload.parameters);
           const tableWrap = document.querySelector(".table-wrap");
           const wrapWidth = tableWrap ? tableWrap.offsetWidth : 0;
@@ -5925,6 +6273,7 @@
         }
 
         syncDefaultUnit();
+        flushQueuedRenderPushIfReady();
       }
 
       function hardFailContract(message) {
@@ -6111,6 +6460,17 @@
           if (state.debugMetadataSnapshot) {
             renderMetadataDebug(state.debugMetadataSnapshot, state.lastSyncResult);
           }
+          return envelope;
+        }
+
+        if (
+          envelope.state
+          && typeof envelope.state === "object"
+          && context.source === "response"
+          && context.action === "refresh"
+          && hasBlockingLocalEdits()
+        ) {
+          queuePendingStateEnvelope(envelope, context.action || "renderState");
           return envelope;
         }
 
@@ -6661,42 +7021,11 @@
       }
 
       function cancelExpressionStatusClear(input) {
-        const key = getExpressionInputTimerKey(input);
-        if (!key) {
-          return;
-        }
-
-        const timerId = expressionStatusClearTimers.get(key);
-        if (!timerId) {
-          return;
-        }
-
-        window.clearTimeout(timerId);
-        expressionStatusClearTimers.delete(key);
+        return;
       }
 
-      function scheduleExpressionStatusClear(input, delayMs = EXPRESSION_STATUS_CLEAR_DELAY_MS) {
-        const key = getExpressionInputTimerKey(input);
-        if (!key) {
-          return;
-        }
-
-        cancelExpressionStatusClear(input);
-        const timerId = window.setTimeout(() => {
-          expressionStatusClearTimers.delete(key);
-          if (!input || document.activeElement === input) {
-            return;
-          }
-
-          if (input.id === "newExpression") {
-            setExpressionError("");
-            return;
-          }
-
-          setExpressionValidationState(input, "", "success");
-        }, delayMs);
-
-        expressionStatusClearTimers.set(key, timerId);
+      function scheduleExpressionStatusClear(_input) {
+        return;
       }
 
       function getRowPreviewCell(input) {
@@ -6767,9 +7096,31 @@
         const hasVisibleSave = saveButton.classList.contains("is-dirty");
         const hasVisibleRevert = !!revertButton;
         row.classList.toggle("has-visible-actions", hasVisibleSave || hasVisibleRevert);
+        const draftKey = getRowDraftKey(row);
+        if (draftKey) {
+          const errorNode = expressionInput.parentElement
+            ? expressionInput.parentElement.querySelector(".expression-field-error")
+            : null;
+          const errorMessage = String(errorNode?.textContent || "").trim();
+          const draftPreview = String(row.querySelector(".preview-cell")?.getAttribute("data-draft-preview") || "");
+          if (isDirty || expressionHasError || !!errorMessage || !!draftPreview) {
+            state.rowDraftsByKey[draftKey] = {
+              expression: String(expressionInput.value || ""),
+              comment: String(commentInput.value || ""),
+              expressionDirty,
+              commentDirty,
+              ariaInvalid: expressionHasError,
+              errorMessage,
+              draftPreview
+            };
+          } else {
+            clearRowDraftByKey(draftKey);
+          }
+        }
         renderRowPreview(row);
         renderNarrowValueSummary(row);
         refreshBatchActionBar();
+        flushQueuedRenderPushIfReady();
       }
 
       function restoreRowPreview(input) {
@@ -6784,6 +7135,7 @@
 
       async function previewRowExpression(input) {
         const expression = input.value;
+        const expressionAtRequest = String(expression || "");
         if (!expression || !expression.trim()) {
           setExpressionValidationState(input, "Expression is required.");
           restoreRowPreview(input);
@@ -6807,6 +7159,9 @@
           if (input.getAttribute("data-preview-request-nonce") !== requestNonce) {
             return false;
           }
+          if (String(input.value || "") !== expressionAtRequest) {
+            return false;
+          }
 
           if (!response.ok) {
             setExpressionValidationState(input, response.message || "Invalid expression.");
@@ -6824,6 +7179,9 @@
           if (input.getAttribute("data-preview-request-nonce") !== requestNonce) {
             return false;
           }
+          if (String(input.value || "") !== expressionAtRequest) {
+            return false;
+          }
 
           setExpressionValidationState(input, error.message, "error");
           restoreRowPreview(input);
@@ -6833,6 +7191,7 @@
 
       async function validateExpressionAgainstFusion(input) {
         const expression = typeof input === "string" ? input : input.value;
+        const expressionAtRequest = String(expression || "");
         const isRowInput = typeof input !== "string" && input && input.id !== "newExpression";
         let validationNonce = "";
         if (isRowInput) {
@@ -6869,6 +7228,9 @@
           if (isRowInput && input.getAttribute("data-validation-request-nonce") !== validationNonce) {
             return false;
           }
+          if (typeof input !== "string" && String(input.value || "") !== expressionAtRequest) {
+            return false;
+          }
           if (!response.ok) {
             if (typeof input === "string") {
               setExpressionError(response.message || "Invalid expression.");
@@ -6879,6 +7241,9 @@
           }
         } catch (error) {
           if (isRowInput && input.getAttribute("data-validation-request-nonce") !== validationNonce) {
+            return false;
+          }
+          if (typeof input !== "string" && String(input.value || "") !== expressionAtRequest) {
             return false;
           }
           if (typeof input === "string") {
@@ -6902,6 +7267,7 @@
         if (!row) {
           return false;
         }
+        const rowKey = getRowDraftKey(row);
         const expressionInput = row.querySelector(".expression-input");
         const commentInput = row.querySelector(".comment-input");
         if (!expressionInput || !commentInput) {
@@ -6916,6 +7282,7 @@
         restoreRowPreview(expressionInput);
         updateRowSaveState(row);
         autoSizeTextarea(commentInput);
+        clearRowDraftByKey(rowKey);
         if (showStatus) {
           setGlobalStatus("Discarded unsaved row changes.", "success");
         }
@@ -6976,6 +7343,7 @@
             } else {
               delete state.localPreviousExpressions[parameterKey];
             }
+            clearRowDraftByKey(parameterKey);
           }
 
           applyStateFromFusion(response, { source: "response", action: "updateParameter" });
@@ -6989,6 +7357,72 @@
           }
           setExpressionValidationState(expressionInput, error.message || "Apply failed.", "error");
           return { ok: false, key: parameterKey, name: parameter.name, message: error.message || "Apply failed." };
+        }
+      }
+
+      async function editRowUnit(row) {
+        if (!row) {
+          return;
+        }
+
+        const parameter = getParameterForRow(row);
+        if (!parameter) {
+          setGlobalStatus("Parameter not found for unit edit.", "error");
+          return;
+        }
+
+        const expressionInput = row.querySelector(".expression-input");
+        const commentInput = row.querySelector(".comment-input");
+        if (!expressionInput || !commentInput) {
+          setGlobalStatus("Row inputs are not available for unit edit.", "error");
+          return;
+        }
+
+        const currentUnit = String(parameter.unit || "").trim();
+        const currentExpression = String(expressionInput.value || "").trim();
+        const promptLabel = parameter.name || "parameter";
+        const entered = window.prompt(`Set unit for ${promptLabel}:`, currentUnit);
+        if (entered === null) {
+          return;
+        }
+
+        const requestedUnit = String(entered || "").trim();
+        if (!requestedUnit || requestedUnit.toLowerCase() === currentUnit.toLowerCase()) {
+          return;
+        }
+        if (!currentExpression) {
+          setGlobalStatus("Expression is required before changing unit.", "error");
+          return;
+        }
+
+        try {
+          setGlobalStatus(`Validating unit change for ${parameter.name}...`);
+          const validateResponse = await sendToFusion("validateUnitChange", {
+            key: parameter.key || "",
+            name: parameter.name,
+            newUnit: requestedUnit,
+            newExpression: currentExpression
+          });
+          if (!validateResponse.ok) {
+            throw new Error(validateResponse.message || "Invalid unit change.");
+          }
+
+          setGlobalStatus(`Applying unit change for ${parameter.name}...`);
+          const updateResponse = await sendToFusion("updateParameterUnit", {
+            key: parameter.key || "",
+            name: parameter.name,
+            newUnit: requestedUnit,
+            newExpression: currentExpression,
+            comment: commentInput.value || ""
+          });
+          if (!updateResponse.ok) {
+            throw new Error(updateResponse.message || "Unit update failed.");
+          }
+
+          applyStateFromFusion(updateResponse, { source: "response", action: "updateParameterUnit" });
+          setGlobalStatus(`Updated unit for ${parameter.name} to ${requestedUnit}.`, "success");
+        } catch (error) {
+          setGlobalStatus(error.message || "Unit update failed.", "error");
         }
       }
 
@@ -7602,6 +8036,27 @@
       parameterSearchClear.addEventListener("click", () => {
         setSearchQuery("");
         parameterSearchInput.focus();
+      });
+
+      document.getElementById("favoritesFilterButton").addEventListener("click", () => {
+        setFavoritesOnlyFilter(!(state.filters.favoritesOnly === true));
+      });
+
+      document.getElementById("userParamsFilterButton").addEventListener("click", () => {
+        const next = !(state.filters.userOnly === true);
+        setUserOnlyFilter(next);
+      });
+
+      document.querySelector(".table-wrap thead").addEventListener("click", (event) => {
+        if (event.target.closest(".column-resizer")) {
+          return;
+        }
+        const sortableHeader = event.target.closest("th.sortable-header[data-sort-col]");
+        if (!sortableHeader) {
+          return;
+        }
+        const sortColumn = sortableHeader.getAttribute("data-sort-col") || "";
+        toggleTableSortForColumn(sortColumn);
       });
 
       parameterRows.addEventListener("click", (event) => {
@@ -8690,6 +9145,7 @@
             }
             if (parameterKey) {
               delete state.localPreviousExpressions[parameterKey];
+              clearRowDraftByKey(parameterKey);
             }
             applyStateFromFusion(response);
             setGlobalStatus(`Reverted ${parameter.name}.`, "success");
@@ -8724,6 +9180,13 @@
             favoriteButton.disabled = false;
             setGlobalStatus(error.message, "error");
           }
+          return;
+        }
+
+        const unitEditButton = event.target.closest("[data-row-unit-edit]");
+        if (unitEditButton) {
+          const row = unitEditButton.closest("tr.parameter-row[data-parameter-key]");
+          await editRowUnit(row);
           return;
         }
 
@@ -9010,6 +9473,10 @@
           try {
             const data = payload ? JSON.parse(payload) : {};
             if (action === "renderState" || action === "renderParameters") {
+              if (hasBlockingLocalEdits()) {
+                queuePendingStateEnvelope(data, action);
+                return "OK";
+              }
               applyStateFromFusion(data, { source: "push", action });
             }
           } catch (error) {
