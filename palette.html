@@ -763,8 +763,23 @@
 
       .header-label {
         display: block;
-        padding-right: 8px;
         font-weight: 400;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .header-main {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 4px;
+        min-width: 0;
+      }
+
+      .sortable-header.has-resizer .header-main {
+        padding-right: 10px;
       }
 
       .column-resizer {
@@ -1012,8 +1027,10 @@
       .param-name-editor {
         display: flex;
         flex-direction: column;
+        justify-content: center;
         gap: 2px;
         min-width: 0;
+        height: 100%;
       }
 
       .param-name-input {
@@ -1038,8 +1055,13 @@
       }
 
       .name-field-error {
-        min-height: 14px;
+        display: none;
+        min-height: 0;
         margin: 0;
+      }
+
+      #parameterRows .name-field-error.has-message {
+        display: block;
       }
 
       .selection-chip {
@@ -1651,6 +1673,7 @@
         display: inline-block;
         width: 10px;
         text-align: center;
+        flex: 0 0 auto;
       }
 
       .sortable-header.is-sorted-asc .sort-indicator::before {
@@ -2823,12 +2846,12 @@
             <table>
               <thead>
                 <tr>
-                  <th class="parameter-col sortable-header" data-sort-col="parameter"><span class="header-label">Parameter</span><span class="sort-indicator" aria-hidden="true"></span><div class="column-resizer" data-col="parameter"></div></th>
-                  <th class="sortable-header" data-sort-col="name"><span class="header-label">Name</span><span class="sort-indicator" aria-hidden="true"></span><div class="column-resizer" data-col="name"></div></th>
-                  <th class="unit-col sortable-header" data-sort-col="unit"><span class="header-label">Unit</span><span class="sort-indicator" aria-hidden="true"></span><div class="column-resizer" data-col="unit"></div></th>
-                  <th class="sortable-header" data-sort-col="expression"><span class="header-label">Expression</span><span class="sort-indicator" aria-hidden="true"></span><div class="column-resizer" data-col="expression"></div></th>
-                  <th class="value-col sortable-header" data-sort-col="value"><span class="header-label">Value</span><span class="sort-indicator" aria-hidden="true"></span><div class="column-resizer" data-col="value"></div></th>
-                  <th class="comment-col comments-col sortable-header" data-sort-col="comment"><span class="header-label">Comments</span><span class="sort-indicator" aria-hidden="true"></span></th>
+                  <th class="parameter-col sortable-header has-resizer" data-sort-col="parameter"><span class="header-main"><span class="header-label">Parameter</span><span class="sort-indicator" aria-hidden="true"></span></span><div class="column-resizer" data-col="parameter"></div></th>
+                  <th class="sortable-header has-resizer" data-sort-col="name"><span class="header-main"><span class="header-label">Name</span><span class="sort-indicator" aria-hidden="true"></span></span><div class="column-resizer" data-col="name"></div></th>
+                  <th class="unit-col sortable-header has-resizer" data-sort-col="unit"><span class="header-main"><span class="header-label">Unit</span><span class="sort-indicator" aria-hidden="true"></span></span><div class="column-resizer" data-col="unit"></div></th>
+                  <th class="sortable-header has-resizer" data-sort-col="expression"><span class="header-main"><span class="header-label">Expression</span><span class="sort-indicator" aria-hidden="true"></span></span><div class="column-resizer" data-col="expression"></div></th>
+                  <th class="value-col sortable-header has-resizer" data-sort-col="value"><span class="header-main"><span class="header-label">Value</span><span class="sort-indicator" aria-hidden="true"></span></span><div class="column-resizer" data-col="value"></div></th>
+                  <th class="comment-col comments-col sortable-header" data-sort-col="comment"><span class="header-main"><span class="header-label">Comments</span><span class="sort-indicator" aria-hidden="true"></span></span></th>
                 </tr>
               </thead>
               <tbody id="parameterRows">
