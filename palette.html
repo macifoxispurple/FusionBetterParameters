@@ -246,6 +246,31 @@
         border-bottom: none;
       }
 
+      .debug-sidebar {
+        width: 280px;
+        flex-shrink: 0;
+        height: 100vh;
+        overflow-y: auto;
+        border-right: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      body.hide-layout-debug-sidebar .debug-sidebar {
+        display: none;
+      }
+
+      .debug-sidebar-card {
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        border-bottom: none;
+      }
+
+      .debug-sidebar-body {
+        display: flex;
+        flex-direction: column;
+      }
+
       .shell {
         display: flex;
         flex-direction: column;
@@ -809,6 +834,10 @@
         background: var(--accent);
       }
 
+      .sortable-header.has-resizer.is-last-visible-col .column-resizer {
+        right: 0;
+      }
+
       tr:last-child td {
         border-bottom: 0;
       }
@@ -1232,7 +1261,15 @@
         display: none;
       }
 
+      .hide-comment td.comments-cell {
+        display: none;
+      }
+
       body.auto-hide-comments .comment-col {
+        display: none;
+      }
+
+      body.auto-hide-comments td.comments-cell {
         display: none;
       }
 
@@ -1977,6 +2014,17 @@
         font-size: 12px;
       }
 
+      .toggle-row.toggle-row-inline-select {
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        align-items: center;
+      }
+
+      .toggle-row.toggle-row-inline-select select {
+        width: 100%;
+        min-width: 0;
+      }
+
       .toggle {
         position: relative;
         width: 36px;
@@ -2015,6 +2063,49 @@
         min-width: 0;
         white-space: nowrap;
         font-size: 12px;
+      }
+
+      .settings-subheading {
+        margin: 2px 0 0;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .settings-divider {
+        border: 0;
+        border-top: 1px solid var(--line-subtle);
+        margin: 2px 0;
+      }
+
+      .package-options-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 6px 12px;
+      }
+
+      .package-option {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        color: var(--ink);
+        font-size: 12px;
+      }
+
+      .package-option input[type="checkbox"] {
+        margin: 0;
+        width: 14px;
+        height: 14px;
+        flex: 0 0 14px;
+      }
+
+      @media (max-width: 560px) {
+        .package-options-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
       }
 
       .theme-toggle::after {
@@ -2735,6 +2826,33 @@
         color: var(--ink);
       }
 
+      .layout-debug-title {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        flex: 1;
+      }
+
+      .layout-debug-close {
+        font-size: 10px !important;
+        padding: 3px 7px !important;
+        white-space: nowrap;
+      }
+
+      .layout-debug-body {
+        margin: 0;
+        padding: 8px;
+        overflow: auto;
+        white-space: pre-wrap;
+        font-family: Consolas, "SFMono-Regular", monospace !important;
+        font-size: 11px !important;
+        line-height: 1.25 !important;
+        color: var(--ink) !important;
+        border-top: 1px solid var(--line-subtle);
+      }
+
       @media (max-width: 720px) {
         .create-top-row {
           grid-template-columns: 1fr;
@@ -2749,6 +2867,22 @@
     <script>
       (function () {
         try {
+          var params = new URLSearchParams(window.location.search || "");
+          var getFlag = function (name) {
+            var raw = String(params.get(name) || "").trim().toLowerCase();
+            return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+          };
+          if (getFlag("mock")) {
+            window.__BP_USE_MOCK_BRIDGE = true;
+          }
+          var fixture = String(params.get("fixture") || "").trim();
+          if (fixture) {
+            window.__BP_MOCK_FIXTURE_MODE = fixture;
+          }
+          if (getFlag("layoutdebug")) {
+            window.__BP_LAYOUT_DEBUG_START = true;
+            try { localStorage.setItem("bp_layout_debug", "1"); } catch (_) {}
+          }
           var t = localStorage.getItem("bp_theme");
           if (t === "dark" || t === "light") {
             document.documentElement.dataset.theme = t;
@@ -2757,7 +2891,7 @@
       })();
     </script>
   </head>
-  <body class="hide-text-tuner-sidebar">
+  <body class="hide-text-tuner-sidebar hide-layout-debug-sidebar">
     <div class="page">
       <div id="tunerSidebar" class="tuner-sidebar" hidden>
         <section id="textTunerCard" class="card text-tuner-card" hidden>
@@ -2800,6 +2934,48 @@
           </details>
         </section>
       </div>
+      <aside id="layoutDebugSidebar" class="debug-sidebar" hidden aria-hidden="true">
+        <section class="card debug-sidebar-card">
+          <div class="tuner-header">
+            <span class="layout-debug-title">Debug Hub</span>
+            <div class="tuner-header-actions">
+              <button id="layoutDebugCloseButton" class="ghost layout-debug-close" type="button" title="Hide debug sidebar">Close</button>
+            </div>
+          </div>
+          <div class="debug-sidebar-body">
+            <details class="tuner-section" open>
+              <summary>Layout</summary>
+              <pre id="layoutDebugBody" class="layout-debug-body">Layout debug inactive.</pre>
+            </details>
+            <details class="tuner-section">
+              <summary>Metadata</summary>
+              <div class="settings-collapsible-body">
+                <p>Inspect JSON and Fusion attribute metadata sources, then force sync either direction for testing.</p>
+                <div class="actions">
+                  <button id="debugRefreshButton" class="ghost" type="button">Refresh Debug</button>
+                  <button id="debugJsonToFusionButton" class="ghost" type="button">JSON -> Fusion</button>
+                  <button id="debugFusionToJsonButton" class="ghost" type="button">Fusion -> JSON</button>
+                  <button id="debugRepairButton" class="ghost" type="button">Repair Metadata</button>
+                </div>
+                <div id="debugSummary" class="section-meta"></div>
+                <pre id="debugOutput" class="release-notes-body">Debug data not loaded yet.</pre>
+              </div>
+            </details>
+            <details class="tuner-section">
+              <summary>Status History (Session)</summary>
+              <div class="settings-collapsible-body">
+                <p>Transient status messages from this running session.</p>
+                <div class="actions">
+                  <button id="clearStatusHistoryButton" class="ghost" type="button">Clear History</button>
+                </div>
+                <ul id="statusHistoryList" class="status-history" aria-live="polite">
+                  <li class="status-history-item"><span class="status-history-time">--:--:--</span><span class="status-history-text">No status messages yet.</span></li>
+                </ul>
+              </div>
+            </details>
+          </div>
+        </section>
+      </aside>
       <div class="shell">
         <div class="toolbar">
           <span id="docNameLabel" class="toolbar-doc"></span>
@@ -2989,10 +3165,11 @@
             <div class="section-header">
               <div>
                 <h2>Parameter Files</h2>
-                <p>CSV import/export for user parameters.</p>
+                <p>CSV and BP package import/export for user parameters.</p>
               </div>
             </div>
-            <div class="toggle-row">
+            <div class="settings-subheading">CSV</div>
+            <div class="toggle-row toggle-row-inline-select">
               <span class="toggle-label">Import Conflict Policy</span>
               <select id="importConflictPolicySelect" aria-label="Import conflict policy">
                 <option value="skip">Skip existing</option>
@@ -3000,39 +3177,44 @@
               </select>
             </div>
             <div class="actions">
-              <button id="importParametersButton" class="ghost" type="button">Import CSV</button>
               <button id="exportParametersButton" class="ghost" type="button">Export CSV</button>
+              <button id="importParametersButton" class="ghost" type="button">Import CSV</button>
+            </div>
+            <hr class="settings-divider" />
+            <div class="settings-subheading">BP Package (.bpmeta.json)</div>
+            <div class="settings-subheading">Package Export Includes</div>
+            <div class="package-options-grid" aria-label="Package export include options">
+              <label class="package-option"><input id="packageIncludeComments" type="checkbox" checked />Include comments</label>
+              <label class="package-option"><input id="packageIncludeGroups" type="checkbox" checked />Include groups</label>
+              <label class="package-option"><input id="packageIncludeFavorites" type="checkbox" checked />Include favorites</label>
+              <label class="package-option"><input id="packageIncludeOrder" type="checkbox" checked />Include order</label>
+            </div>
+            <div class="actions">
+              <button id="exportParametersPackageButton" class="ghost" type="button">Export Package</button>
+            </div>
+            <hr class="settings-divider" />
+            <div class="settings-subheading">Package Import</div>
+            <div class="toggle-row toggle-row-inline-select">
+              <span class="toggle-label">Package Conflict Policy</span>
+              <select id="packageConflictPolicySelect" aria-label="Package import conflict policy">
+                <option value="skip">Skip existing</option>
+                <option value="overwrite">Overwrite existing</option>
+                <option value="merge-safe">Merge safe</option>
+              </select>
+            </div>
+            <div class="package-options-grid" aria-label="Package import options">
+              <label class="package-option"><input id="packageApplyExpressionsUnits" type="checkbox" checked />Apply expressions/units</label>
+              <label class="package-option"><input id="packageApplyComments" type="checkbox" checked />Apply comments</label>
+              <label class="package-option"><input id="packageApplyGroups" type="checkbox" checked />Apply groups</label>
+              <label class="package-option"><input id="packageApplyFavorites" type="checkbox" checked />Apply favorites</label>
+              <label class="package-option"><input id="packageApplyOrder" type="checkbox" checked />Apply order</label>
+            </div>
+            <div class="actions">
+              <button id="importParametersPackageButton" class="ghost" type="button">Import Package</button>
             </div>
             <pre id="parameterFileSummary" class="release-notes-body" style="display:none"></pre>
           </section>
 
-          <details class="settings-collapsible">
-            <summary>Metadata Debug</summary>
-            <div class="settings-collapsible-body">
-              <p>Inspect JSON and Fusion attribute metadata sources, then force sync either direction for testing.</p>
-              <div class="actions">
-                <button id="debugRefreshButton" class="ghost" type="button">Refresh Debug</button>
-                <button id="debugJsonToFusionButton" class="ghost" type="button">JSON -> Fusion</button>
-                <button id="debugFusionToJsonButton" class="ghost" type="button">Fusion -> JSON</button>
-                <button id="debugRepairButton" class="ghost" type="button">Repair Metadata</button>
-              </div>
-              <div id="debugSummary" class="section-meta"></div>
-              <pre id="debugOutput" class="release-notes-body">Debug data not loaded yet.</pre>
-            </div>
-          </details>
-
-          <details class="settings-collapsible">
-            <summary>Status History (Session)</summary>
-            <div class="settings-collapsible-body">
-              <p>Transient status messages from this running session.</p>
-              <div class="actions">
-                <button id="clearStatusHistoryButton" class="ghost" type="button">Clear History</button>
-              </div>
-              <ul id="statusHistoryList" class="status-history" aria-live="polite">
-                <li class="status-history-item"><span class="status-history-time">--:--:--</span><span class="status-history-text">No status messages yet.</span></li>
-              </ul>
-            </div>
-          </details>
         </div>
       </aside>
       <div id="overlayRoot" class="overlay-root"></div>
@@ -3224,6 +3406,8 @@
       const ROW_NAME_VALIDATION_DEBOUNCE_MS = 180;
       const FIELD_HELPER_CLOSE_DELAY_MS = 120;
       const COMMENTS_MIN_WIDTH_PX = 120;
+      const PACKAGE_PREFS_STORAGE_KEY = "bp_package_ui_prefs";
+      const LAYOUT_DEBUG_STORAGE_KEY = "bp_layout_debug";
       // REVIEW: BACKEND_API.md still lists validateUnitChange/updateParameterUnit as normative; FE intentionally omits them per blocked M2 policy.
       const ACTION = Object.freeze({
         READY: "ready",
@@ -3252,6 +3436,9 @@
         SORT_BY_TIMELINE_ORDER: "sortByTimelineOrder",
         IMPORT_PARAMETERS: "importParameters",
         EXPORT_PARAMETERS: "exportParameters",
+        EXPORT_PARAMETERS_PACKAGE: "exportParametersPackage",
+        VALIDATE_PARAMETERS_PACKAGE_IMPORT: "validateParametersPackageImport",
+        IMPORT_PARAMETERS_PACKAGE: "importParametersPackage",
         OPEN_HELP_URL: "openHelpUrl",
         CHECK_FOR_UPDATES: "checkForUpdates",
         DOWNLOAD_AND_STAGE_UPDATE: "downloadAndStageUpdate",
@@ -3267,6 +3454,7 @@
         ACTION.VALIDATE_PARAMETER_NAME, ACTION.VALIDATE_EXPRESSION, ACTION.PREVIEW_EXPRESSION, ACTION.VALIDATE_UNIT,
         ACTION.RENAME_PARAMETER, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
         ACTION.IMPORT_PARAMETERS, ACTION.EXPORT_PARAMETERS,
+        ACTION.EXPORT_PARAMETERS_PACKAGE, ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, ACTION.IMPORT_PARAMETERS_PACKAGE,
         ACTION.OPEN_HELP_URL,
         ACTION.CHECK_FOR_UPDATES, ACTION.DOWNLOAD_AND_STAGE_UPDATE,
         ACTION.SYNC_METADATA_JSON_TO_FUSION, ACTION.SYNC_METADATA_FUSION_TO_JSON, ACTION.REPAIR_METADATA
@@ -3276,16 +3464,112 @@
         ACTION.SET_PARAMETER_FAVORITE, ACTION.SET_PARAMETER_GROUP, ACTION.RENAME_GROUP, ACTION.DELETE_GROUP,
         ACTION.SAVE_PARAMETER_ORDER, ACTION.SAVE_GROUP_UI_STATE, ACTION.SAVE_SETTINGS, ACTION.SAVE_PALETTE_GEOMETRY,
         ACTION.RENAME_PARAMETER, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
-        ACTION.IMPORT_PARAMETERS,
+        ACTION.IMPORT_PARAMETERS, ACTION.IMPORT_PARAMETERS_PACKAGE,
         ACTION.SAVE_TEXT_TUNER_STATE, ACTION.CHECK_FOR_UPDATES, ACTION.DOWNLOAD_AND_STAGE_UPDATE,
         ACTION.SYNC_METADATA_JSON_TO_FUSION, ACTION.SYNC_METADATA_FUSION_TO_JSON, ACTION.REPAIR_METADATA
       ]);
       const READ_ONLY_OR_VALIDATION_ACTIONS = new Set([
         ACTION.GET_TEXT_TUNER_STATE, ACTION.VALIDATE_PARAMETER_NAME, ACTION.VALIDATE_EXPRESSION, ACTION.PREVIEW_EXPRESSION, ACTION.VALIDATE_UNIT,
-        ACTION.EXPORT_PARAMETERS, ACTION.OPEN_HELP_URL
+        ACTION.EXPORT_PARAMETERS, ACTION.EXPORT_PARAMETERS_PACKAGE, ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, ACTION.OPEN_HELP_URL
       ]);
       // REVIEW: Mock bridge is intentionally kept behind explicit opt-in for local fixture testing.
       const MOCK_BRIDGE_ENABLED = !!window.__BP_USE_MOCK_BRIDGE;
+      const BOOTSTRAP_LAYOUT_DEBUG_ENABLED = window.__BP_LAYOUT_DEBUG_START === true;
+
+      function getDefaultPackageImportOptions() {
+        return {
+          applyExpressionsUnits: true,
+          applyComments: true,
+          applyGroups: true,
+          applyFavorites: true,
+          applyOrder: true
+        };
+      }
+
+      function getDefaultPackageExportOptions() {
+        return {
+          includeComments: true,
+          includeGroups: true,
+          includeFavorites: true,
+          includeOrder: true
+        };
+      }
+
+      function normalizePackageImportOptions(raw, fallback = null) {
+        const source = raw && typeof raw === "object" ? raw : {};
+        const defaults = fallback && typeof fallback === "object" ? fallback : getDefaultPackageImportOptions();
+        const has = (key) => Object.prototype.hasOwnProperty.call(source, key);
+        return {
+          applyExpressionsUnits: has("applyExpressionsUnits")
+            ? source.applyExpressionsUnits === true
+            : defaults.applyExpressionsUnits === true,
+          applyComments: has("applyComments")
+            ? source.applyComments === true
+            : defaults.applyComments === true,
+          applyGroups: has("applyGroups")
+            ? source.applyGroups === true
+            : defaults.applyGroups === true,
+          applyFavorites: has("applyFavorites")
+            ? source.applyFavorites === true
+            : defaults.applyFavorites === true,
+          applyOrder: has("applyOrder")
+            ? source.applyOrder === true
+            : defaults.applyOrder === true
+        };
+      }
+
+      function normalizePackageExportOptions(raw, fallback = null) {
+        const source = raw && typeof raw === "object" ? raw : {};
+        const defaults = fallback && typeof fallback === "object" ? fallback : getDefaultPackageExportOptions();
+        const has = (key) => Object.prototype.hasOwnProperty.call(source, key);
+        return {
+          includeComments: has("includeComments")
+            ? source.includeComments === true
+            : defaults.includeComments === true,
+          includeGroups: has("includeGroups")
+            ? source.includeGroups === true
+            : defaults.includeGroups === true,
+          includeFavorites: has("includeFavorites")
+            ? source.includeFavorites === true
+            : defaults.includeFavorites === true,
+          includeOrder: has("includeOrder")
+            ? source.includeOrder === true
+            : defaults.includeOrder === true
+        };
+      }
+
+      function loadPackagePrefsFromLocal() {
+        try {
+          const raw = localStorage.getItem(PACKAGE_PREFS_STORAGE_KEY);
+          if (!raw) {
+            return null;
+          }
+          const parsed = JSON.parse(raw);
+          if (!parsed || typeof parsed !== "object") {
+            return null;
+          }
+          return {
+            packageConflictPolicy: normalizePackageConflictPolicy(parsed.packageConflictPolicy),
+            packageImportOptions: normalizePackageImportOptions(parsed.packageImportOptions),
+            packageExportOptions: normalizePackageExportOptions(parsed.packageExportOptions)
+          };
+        } catch (_) {
+          return null;
+        }
+      }
+
+      function savePackagePrefsToLocal() {
+        try {
+          const payload = {
+            packageConflictPolicy: normalizePackageConflictPolicy(state.settings.packageConflictPolicy),
+            packageImportOptions: normalizePackageImportOptions(state.settings.packageImportOptions),
+            packageExportOptions: normalizePackageExportOptions(state.settings.packageExportOptions)
+          };
+          localStorage.setItem(PACKAGE_PREFS_STORAGE_KEY, JSON.stringify(payload));
+        } catch (_) {}
+      }
+
+      const localPackagePrefs = loadPackagePrefsFromLocal();
 
       const EXPRESSION_FUNCTIONS = [
         "abs", "acos", "acosh", "and", "asin", "asinh", "atan", "atanh",
@@ -3459,6 +3743,9 @@
           showTextTunerSidebar: DEFAULT_SHOW_TEXT_TUNER_SIDEBAR,
           autoFitColumns: true,
           pinnedUnits: [],
+          packageConflictPolicy: normalizePackageConflictPolicy(localPackagePrefs?.packageConflictPolicy),
+          packageImportOptions: normalizePackageImportOptions(localPackagePrefs?.packageImportOptions),
+          packageExportOptions: normalizePackageExportOptions(localPackagePrefs?.packageExportOptions),
           computeMode: (function () {
             try {
               const raw = String(localStorage.getItem(COMPUTE_MODE_STORAGE_KEY) || "").trim().toLowerCase();
@@ -3565,6 +3852,17 @@
         bridgeStringCompatWarned: false,
         initialLayoutDone: false,
         initialLayoutPassPending: false,
+        layoutDebugEnabled: (function () {
+          if (BOOTSTRAP_LAYOUT_DEBUG_ENABLED) {
+            return true;
+          }
+          try {
+            return localStorage.getItem(LAYOUT_DEBUG_STORAGE_KEY) === "1";
+          } catch (_) {
+            return false;
+          }
+        }()),
+        layoutDebugUpdatePending: false,
         importConflictPolicy: "skip"
       };
       let textTunerLiveApplyTimer = null;
@@ -3760,6 +4058,33 @@
         COLUMN_KEYS.forEach((key) => {
           columnPx[key] = Math.round(cols[key] || DEFAULT_TABLE_COLUMNS[key]);
         });
+        if (!isNarrowMode) {
+          // In medium-width (non-narrow) view, Name + Expression stay visible.
+          // Clamp them to the current container so explicit header widths cannot
+          // force horizontal overflow when persisted/autofit widths are too large.
+          let requiredTotal = (columnPx.name || 0) + (columnPx.expression || 0);
+          if (requiredTotal > containerWidth) {
+            let deficit = requiredTotal - containerWidth;
+            const expressionHeadroom = Math.max(0, (columnPx.expression || 0) - COLUMN_MIN_PX.expression);
+            const expressionTrim = Math.min(deficit, expressionHeadroom);
+            if (expressionTrim > 0) {
+              columnPx.expression -= expressionTrim;
+              deficit -= expressionTrim;
+            }
+            if (deficit > 0) {
+              const nameHeadroom = Math.max(0, (columnPx.name || 0) - COLUMN_MIN_PX.name);
+              const nameTrim = Math.min(deficit, nameHeadroom);
+              if (nameTrim > 0) {
+                columnPx.name -= nameTrim;
+                deficit -= nameTrim;
+              }
+            }
+            // Safety: never render widths below minimums.
+            columnPx.name = Math.max(COLUMN_MIN_PX.name, columnPx.name || 0);
+            columnPx.expression = Math.max(COLUMN_MIN_PX.expression, columnPx.expression || 0);
+            requiredTotal = (columnPx.name || 0) + (columnPx.expression || 0);
+          }
+        }
         const requiredKeys = ["name", "expression"]; // Keep Name + Expression visible.
         const optionalKeysByPriority = ["value", "parameter", "unit"]; // Value -> Parameter -> Unit
         const visibleMainKeys = [...requiredKeys];
@@ -3783,6 +4108,7 @@
         document.body.classList.toggle("auto-hide-unit", autoHideUnit);
         document.body.classList.toggle("auto-hide-parameter", autoHideParameter);
         document.body.classList.toggle("auto-hide-value", autoHideValue);
+        syncBodyColspansToVisibleColumns();
 
         const modeChanged = state.lastNarrowLayoutMode !== isNarrowMode;
         state.lastNarrowLayoutMode = isNarrowMode;
@@ -3804,6 +4130,9 @@
 
         const commentsVisible = userShowsComments && !autoHideComments;
         const adjustedMainPx = { ...columnPx };
+        if (autoHideParameter) adjustedMainPx.parameter = 0;
+        if (autoHideUnit) adjustedMainPx.unit = 0;
+        if (autoHideValue) adjustedMainPx.value = 0;
         if (!commentsVisible && containerWidth > visibleMainPx) {
           const slackPx = containerWidth - visibleMainPx;
           const fillPriority = ["expression", "name", "value", "unit", "parameter"];
@@ -3813,15 +4142,36 @@
           }
         }
 
+        const hiddenMainKeys = new Set();
+        if (autoHideParameter) hiddenMainKeys.add("parameter");
+        if (autoHideUnit) hiddenMainKeys.add("unit");
+        if (autoHideValue) hiddenMainKeys.add("value");
+        headers.forEach((header) => header.classList.remove("is-last-visible-col"));
         COLUMN_KEYS.forEach((key, i) => {
-          if (headers[i]) headers[i].style.width = `${adjustedMainPx[key]}px`;
+          if (!headers[i]) {
+            return;
+          }
+          if (hiddenMainKeys.has(key)) {
+            headers[i].style.width = "0px";
+            return;
+          }
+          headers[i].style.width = `${adjustedMainPx[key]}px`;
         });
+        const visibleResizableHeaders = Array.from(headers).filter((header) => (
+          header.classList.contains("has-resizer")
+          && window.getComputedStyle(header).display !== "none"
+        ));
+        const lastVisibleResizableHeader = visibleResizableHeaders[visibleResizableHeaders.length - 1] || null;
+        if (lastVisibleResizableHeader) {
+          lastVisibleResizableHeader.classList.add("is-last-visible-col");
+        }
 
         if (table) {
           table.style.width = "";
           if (isNarrowMode) {
             table.style.width = `${containerWidth}px`;
             if (headers[5]) headers[5].style.width = "";
+            scheduleLayoutDebugPanelUpdate();
             return;
           }
 
@@ -3830,10 +4180,151 @@
             ? (containerWidth > effectiveSumPx ? containerWidth - effectiveSumPx : COMMENTS_MIN_WIDTH_PX)
             : 0;
           if (headers[5]) {
-            headers[5].style.width = commentsVisible && commentsWidth > 0 ? `${commentsWidth}px` : "";
+            headers[5].style.width = commentsVisible && commentsWidth > 0 ? `${commentsWidth}px` : "0px";
           }
           table.style.width = `${containerWidth}px`;
         }
+        scheduleLayoutDebugPanelUpdate();
+      }
+
+      function getVisibleTableColumnCount() {
+        let visibleCount = 6;
+        if (document.body.classList.contains("hide-comment") || document.body.classList.contains("auto-hide-comments")) {
+          visibleCount -= 1;
+        }
+        if (document.body.classList.contains("auto-hide-parameter")) {
+          visibleCount -= 1;
+        }
+        if (document.body.classList.contains("auto-hide-unit")) {
+          visibleCount -= 1;
+        }
+        if (document.body.classList.contains("auto-hide-value")) {
+          visibleCount -= 1;
+        }
+        return Math.max(1, visibleCount);
+      }
+
+      function syncBodyColspansToVisibleColumns() {
+        const visibleColumnCount = getVisibleTableColumnCount();
+        const colspanCells = document.querySelectorAll("#parameterRows td[colspan]");
+        colspanCells.forEach((cell) => {
+          const current = Number(cell.getAttribute("colspan") || 0);
+          if (current !== visibleColumnCount) {
+            cell.setAttribute("colspan", String(visibleColumnCount));
+          }
+        });
+      }
+
+      function ensureLayoutDebugPanel() {
+        const panel = document.getElementById("layoutDebugSidebar");
+        if (!panel) {
+          return null;
+        }
+        const closeButton = panel.querySelector("#layoutDebugCloseButton");
+        if (closeButton && closeButton.dataset.bound !== "true") {
+          closeButton.dataset.bound = "true";
+          closeButton.addEventListener("click", () => setLayoutDebugEnabled(false));
+        }
+        return panel;
+      }
+
+      function collectLayoutDebugLines() {
+        const wrap = document.querySelector(".table-wrap");
+        const table = document.querySelector(".table-wrap table");
+        const allHeaders = Array.from(document.querySelectorAll(".table-wrap table thead th"));
+        const visibleHeaders = allHeaders.filter((th) => {
+          const style = window.getComputedStyle(th);
+          return style.display !== "none" && style.visibility !== "hidden";
+        });
+        const hiddenFlags = [
+          `hide-comment=${document.body.classList.contains("hide-comment")}`,
+          `auto-hide-comments=${document.body.classList.contains("auto-hide-comments")}`,
+          `auto-hide-parameter=${document.body.classList.contains("auto-hide-parameter")}`,
+          `auto-hide-unit=${document.body.classList.contains("auto-hide-unit")}`,
+          `auto-hide-value=${document.body.classList.contains("auto-hide-value")}`,
+          `narrow-stack=${document.body.classList.contains("narrow-stack")}`
+        ];
+        const colspans = Array.from(document.querySelectorAll("#parameterRows td[colspan]"))
+          .map((cell) => Number(cell.getAttribute("colspan") || 0))
+          .filter((value) => Number.isFinite(value) && value > 0);
+        const uniqueColspans = Array.from(new Set(colspans)).sort((a, b) => a - b);
+        const expectedVisibleColumns = getVisibleTableColumnCount();
+        const wrapClient = wrap ? Math.round(Number(wrap.clientWidth || 0)) : 0;
+        const wrapScroll = wrap ? Math.round(Number(wrap.scrollWidth || 0)) : 0;
+        const tableClient = table ? Math.round(Number(table.clientWidth || 0)) : 0;
+        const tableScroll = table ? Math.round(Number(table.scrollWidth || 0)) : 0;
+        const overflowDelta = wrap ? (wrapScroll - wrapClient) : 0;
+        const tableOverflowDelta = wrap ? (tableScroll - wrapClient) : 0;
+        const headerWidths = visibleHeaders.map((th, index) => {
+          const label = th.querySelector(".header-label")?.textContent?.trim() || th.getAttribute("data-sort-col") || `col${index + 1}`;
+          const width = Math.round(Number(th.getBoundingClientRect().width || 0));
+          return `${label}:${width}`;
+        });
+        const rowCount = document.querySelectorAll("#parameterRows tr.parameter-row").length;
+        const groupCount = document.querySelectorAll("#parameterRows tr.group-header-row").length;
+        return [
+          `timestamp: ${new Date().toLocaleTimeString()}`,
+          `wrap client/scroll: ${wrapClient}/${wrapScroll}`,
+          `table client/scroll: ${tableClient}/${tableScroll}`,
+          `overflow delta (wrap): ${overflowDelta}`,
+          `overflow delta (table-vs-wrap): ${tableOverflowDelta}`,
+          `visible headers: ${visibleHeaders.length} expected: ${expectedVisibleColumns}`,
+          `header widths: ${headerWidths.join(" | ") || "(none)"}`,
+          `body colspans: ${uniqueColspans.join(", ") || "(none)"}`,
+          `rows/groups: ${rowCount}/${groupCount}`,
+          `flags: ${hiddenFlags.join(" | ")}`
+        ];
+      }
+
+      function refreshLayoutDebugPanelNow() {
+        if (!state.layoutDebugEnabled) {
+          return;
+        }
+        const panel = ensureLayoutDebugPanel();
+        if (!panel) {
+          return;
+        }
+        panel.hidden = false;
+        const body = panel.querySelector("#layoutDebugBody");
+        if (body) {
+          body.textContent = collectLayoutDebugLines().join("\n");
+        }
+      }
+
+      function scheduleLayoutDebugPanelUpdate() {
+        if (!state.layoutDebugEnabled || state.layoutDebugUpdatePending) {
+          return;
+        }
+        state.layoutDebugUpdatePending = true;
+        window.requestAnimationFrame(() => {
+          state.layoutDebugUpdatePending = false;
+          refreshLayoutDebugPanelNow();
+        });
+      }
+
+      function setLayoutDebugEnabled(enabled) {
+        const next = enabled === true;
+        state.layoutDebugEnabled = next;
+        try {
+          localStorage.setItem(LAYOUT_DEBUG_STORAGE_KEY, next ? "1" : "0");
+        } catch (_) {}
+        const panel = ensureLayoutDebugPanel();
+        if (panel) {
+          panel.hidden = !next;
+          panel.setAttribute("aria-hidden", next ? "false" : "true");
+        }
+        document.body.classList.toggle("hide-layout-debug-sidebar", !next);
+        if (state.settings.autoFitColumns === true) {
+          const nextColumns = buildAutoFitColumnWidths();
+          state.settings.parameterTableColumns = nextColumns;
+        }
+        applyColumnWidths();
+        if (next) {
+          scheduleLayoutDebugPanelUpdate();
+          setGlobalStatus("Debug sidebar enabled (Ctrl+Alt+D to toggle).");
+          return;
+        }
+        setGlobalStatus("Debug sidebar disabled.");
       }
 
       function getHiddenColumnKeySet() {
@@ -3877,7 +4368,7 @@
           return;
         }
         button.disabled = false;
-        const isOn = state.settings.showTextTunerSidebar !== false;
+        const isOn = shouldShowTextTunerSidebar();
         button.textContent = `Text Tuner: ${isOn ? "On" : "Off"}`;
       }
 
@@ -3924,12 +4415,151 @@
         return String(value || "").trim().toLowerCase() === "overwrite" ? "overwrite" : "skip";
       }
 
+      function normalizePackageConflictPolicy(value) {
+        const normalized = String(value || "").trim().toLowerCase();
+        if (normalized === "overwrite" || normalized === "merge-safe") {
+          return normalized;
+        }
+        return "skip";
+      }
+
       function renderImportConflictPolicySelect() {
         const select = document.getElementById("importConflictPolicySelect");
         if (!select) {
           return;
         }
         select.value = normalizeConflictPolicy(state.importConflictPolicy);
+      }
+
+      function renderPackageImportExportControls() {
+        const conflictSelect = document.getElementById("packageConflictPolicySelect");
+        if (conflictSelect) {
+          conflictSelect.value = normalizePackageConflictPolicy(state.settings.packageConflictPolicy);
+        }
+
+        const importOptions = state.settings.packageImportOptions || {};
+        const exportOptions = state.settings.packageExportOptions || {};
+        const setChecked = (id, value) => {
+          const node = document.getElementById(id);
+          if (node) {
+            node.checked = value === true;
+          }
+        };
+
+        setChecked("packageApplyExpressionsUnits", importOptions.applyExpressionsUnits === true);
+        setChecked("packageApplyComments", importOptions.applyComments !== false);
+        setChecked("packageApplyGroups", importOptions.applyGroups !== false);
+        setChecked("packageApplyFavorites", importOptions.applyFavorites !== false);
+        setChecked("packageApplyOrder", importOptions.applyOrder === true);
+
+        setChecked("packageIncludeComments", exportOptions.includeComments !== false);
+        setChecked("packageIncludeGroups", exportOptions.includeGroups !== false);
+        setChecked("packageIncludeFavorites", exportOptions.includeFavorites !== false);
+        setChecked("packageIncludeOrder", exportOptions.includeOrder === true);
+      }
+
+      function buildPackageImportRequest(filePath = "") {
+        const options = state.settings.packageImportOptions || {};
+        return {
+          filePath: String(filePath || ""),
+          conflictPolicy: normalizePackageConflictPolicy(state.settings.packageConflictPolicy),
+          applyExpressionsUnits: options.applyExpressionsUnits === true,
+          applyComments: options.applyComments !== false,
+          applyGroups: options.applyGroups !== false,
+          applyFavorites: options.applyFavorites !== false,
+          applyOrder: options.applyOrder === true
+        };
+      }
+
+      function buildPackageExportRequest(filePath = "") {
+        const options = state.settings.packageExportOptions || {};
+        return {
+          filePath: String(filePath || ""),
+          includeComments: options.includeComments !== false,
+          includeGroups: options.includeGroups !== false,
+          includeFavorites: options.includeFavorites !== false,
+          includeOrder: options.includeOrder === true
+        };
+      }
+
+      function buildRowsNeedingAttentionLines(failedRows, limit = 50) {
+        const rows = Array.isArray(failedRows) ? failedRows : [];
+        if (!rows.length) {
+          return [];
+        }
+        const lines = ["Rows needing attention:"];
+        rows.slice(0, limit).forEach((item) => {
+          const rowLabel = Number.isFinite(Number(item?.row)) ? `Row ${Number(item.row)}` : "Row ?";
+          const name = String(item?.name || "").trim();
+          const message = String(item?.message || "Unknown import error.");
+          lines.push(`- ${rowLabel}${name ? ` (${name})` : ""}: ${message}`);
+        });
+        return lines;
+      }
+
+      function buildPackageImportConfirmationMessage(preview, requestPayload) {
+        const data = preview && typeof preview === "object" ? preview : {};
+        const addCount = Number(data.addCount || 0);
+        const updateCount = Number(data.updateCount || 0);
+        const skipCount = Number(data.skipCount || 0);
+        const potentialFailCount = Number(data.potentialFailCount || 0);
+        const warnings = Array.isArray(data.warnings) ? data.warnings : [];
+        const failedRows = Array.isArray(data.failedRows) ? data.failedRows : [];
+        const policy = normalizePackageConflictPolicy(requestPayload?.conflictPolicy);
+        const applyExpressionsUnits = requestPayload?.applyExpressionsUnits === true;
+
+        const lines = [
+          "Import package?",
+          "",
+          `Will add ${addCount}, update ${updateCount}, skip ${skipCount}.`
+        ];
+
+        if (skipCount > 0) {
+          if (policy === "skip") {
+            lines.push('- Skip reason: conflict policy is "Skip existing", so existing parameters with matching names are left unchanged.');
+          } else {
+            lines.push("- Skip reason: some rows may result in no effective change based on selected apply options or already-matching values.");
+          }
+        }
+
+        if (potentialFailCount > 0 || warnings.length > 0 || failedRows.length > 0) {
+          lines.push("");
+          lines.push("Potential issues:");
+          if (potentialFailCount > 0) {
+            lines.push(`- ${potentialFailCount} row(s) flagged by preflight as possible apply failures.`);
+          }
+          if (!applyExpressionsUnits) {
+            lines.push("- Expression updates for existing parameters are OFF (new parameters still use package expressions).");
+          }
+          if (warnings.length > 0) {
+            warnings.slice(0, 3).forEach((warning) => {
+              lines.push(`- Warning: ${String(warning || "").trim()}`);
+            });
+            if (warnings.length > 3) {
+              lines.push(`- Additional warnings: ${warnings.length - 3}`);
+            }
+          }
+          if (failedRows.length > 0) {
+            lines.push(`- Definite row issues already identified: ${failedRows.length}.`);
+            failedRows.slice(0, 3).forEach((item) => {
+              const rowLabel = Number.isFinite(Number(item?.row)) ? `Row ${Number(item.row)}` : "Row ?";
+              const name = String(item?.name || "").trim();
+              const message = String(item?.message || "Unknown issue.");
+              lines.push(`  • ${rowLabel}${name ? ` (${name})` : ""}: ${message}`);
+            });
+            if (failedRows.length > 3) {
+              lines.push(`  • Additional failed rows: ${failedRows.length - 3}`);
+            }
+          }
+        }
+
+        lines.push("");
+        lines.push("Continue with import?");
+        return lines.join("\n");
+      }
+
+      function isExpectedCancelResponse(response, expectedMessage) {
+        return !response?.ok && String(response?.message || "") === expectedMessage;
       }
 
       function getDirtyParameterRows() {
@@ -4308,6 +4938,42 @@
         }
         if (card) {
           card.hidden = !showSidebar;
+        }
+      }
+
+      function applyTextTunerSidebarLayoutReflow() {
+        if (state.settings.autoFitColumns === true) {
+          const nextColumns = buildAutoFitColumnWidths();
+          state.settings.parameterTableColumns = nextColumns;
+        }
+        applyColumnWidths();
+      }
+
+      async function setTextTunerSidebarPreferenceVisible(visible) {
+        if (!TEMP_TEXT_TUNER_ENABLED) {
+          return;
+        }
+        const previousValue = state.settings.showTextTunerSidebar !== false;
+        state.settings.showTextTunerSidebar = visible === true;
+        renderTextTunerSidebarToggle();
+        applyTextTunerSidebarVisibility();
+
+        const partialSettings = { showTextTunerSidebar: state.settings.showTextTunerSidebar === true };
+        if (state.settings.autoFitColumns === true) {
+          const nextColumns = buildAutoFitColumnWidths();
+          state.settings.parameterTableColumns = nextColumns;
+          partialSettings.parameterTableColumns = nextColumns;
+        }
+        applyColumnWidths();
+
+        try {
+          await saveSettingsPartial(partialSettings);
+        } catch (error) {
+          state.settings.showTextTunerSidebar = previousValue;
+          renderTextTunerSidebarToggle();
+          applyTextTunerSidebarVisibility();
+          applyTextTunerSidebarLayoutReflow();
+          setGlobalStatus(error.message, "error");
         }
       }
 
@@ -5114,24 +5780,27 @@
       function renderParameters(parameters) {
         state.parameters = parameters || [];
         const tbody = document.getElementById("parameterRows");
+        const visibleColspan = getVisibleTableColumnCount();
         renderSearchControls();
         renderRailFilters();
         renderSortIndicators();
 
         if (!state.parameters.length) {
-          tbody.innerHTML = `<tr><td colspan="6" class="empty">No user parameters were found in the active design.</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="${visibleColspan}" class="empty">No user parameters were found in the active design.</td></tr>`;
           renderReorderMenuGroupOptions();
           applySelectedRowState();
           restorePendingTableScrollAnchor();
+          scheduleLayoutDebugPanelUpdate();
           return;
         }
 
         const filteredParameters = getFilteredParameters(state.parameters);
         if (!filteredParameters.length) {
-          tbody.innerHTML = `<tr><td colspan="6" class="empty">No parameters match your search.</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="${visibleColspan}" class="empty">No parameters match your search.</td></tr>`;
           renderReorderMenuGroupOptions();
           applySelectedRowState();
           restorePendingTableScrollAnchor();
+          scheduleLayoutDebugPanelUpdate();
           return;
         }
 
@@ -5153,7 +5822,7 @@
           const toggleGlyph = groupCollapsed ? "▸" : "▾";
           pieces.push(`
             <tr class="group-header-row" data-group-header="${safeGroupLabel}"${isFavoritesGroup ? ' data-favorites-group="true"' : ' data-group-draggable="true"'}>
-              <td colspan="6">
+              <td colspan="${visibleColspan}">
                 <div class="group-header${isFavoritesGroup ? "" : " is-draggable"}">
                   <div class="group-header-left">
                     <button class="group-toggle" type="button" data-group-toggle="${safeGroupLabel}" aria-expanded="${groupCollapsed ? "false" : "true"}">${toggleGlyph}</button>
@@ -5293,6 +5962,7 @@
         }
 
         tbody.innerHTML = pieces.join("");
+        syncBodyColspansToVisibleColumns();
         renderReorderMenuGroupOptions();
 
         autoSizeCommentInputs(tbody);
@@ -5305,6 +5975,7 @@
         applySelectedRowState();
         refreshBatchActionBar();
         restorePendingTableScrollAnchor();
+        scheduleLayoutDebugPanelUpdate();
       }
 
       function getTableWrapElement() {
@@ -5952,7 +6623,7 @@
 
         const indicator = document.createElement("tr");
         indicator.className = "drag-indicator-row";
-        indicator.innerHTML = `<td colspan="6"></td>`;
+        indicator.innerHTML = `<td colspan="${getVisibleTableColumnCount()}"></td>`;
         row.parentNode.insertBefore(indicator, row);
 
         state.activeRowDrag = {
@@ -6233,9 +6904,23 @@
           showTextTunerSidebar: typeof settings.showTextTunerSidebar === "boolean"
             ? settings.showTextTunerSidebar
             : (state.settings.showTextTunerSidebar !== false),
+          packageConflictPolicy: normalizePackageConflictPolicy(
+            Object.prototype.hasOwnProperty.call(settings, "packageConflictPolicy")
+              ? settings.packageConflictPolicy
+              : state.settings.packageConflictPolicy
+          ),
+          packageImportOptions: normalizePackageImportOptions(
+            settings.packageImportOptions,
+            state.settings.packageImportOptions
+          ),
+          packageExportOptions: normalizePackageExportOptions(
+            settings.packageExportOptions,
+            state.settings.packageExportOptions
+          ),
           computeMode: normalizeComputeMode(state.settings.computeMode)
         };
 
+        savePackagePrefsToLocal();
         applyTheme(state.settings.theme);
         persistComputeMode(state.settings.computeMode);
         renderToggle("rememberUnitToggle", !!state.settings.rememberUnit);
@@ -6247,6 +6932,7 @@
         renderTextTunerSidebarToggle();
         renderComputeModeButton();
         renderImportConflictPolicySelect();
+        renderPackageImportExportControls();
         document.body.classList.toggle("hide-comment", state.settings.showCommentColumn !== true);
         applyTextTunerSidebarVisibility();
         renderUnitPicker();
@@ -6990,8 +7676,128 @@
             ) {
               return { ok: false, message: `Mock metadata failure: ${action}`, state: null, traceback: "" };
             }
-
             const statePayload = buildMockStatePayload();
+
+            if (action === ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT) {
+              if (fixtureMode === "m6_validate_cancel") {
+                return { ok: false, message: "Import cancelled.", state: null, preview: null, filePath: "" };
+              }
+              if (fixtureMode === "m6_validate_success_with_warnings") {
+                return {
+                  ok: true,
+                  message: "",
+                  state: null,
+                  filePath: "C:\\mock\\BetterParameters-import.bpmeta.json",
+                  preview: {
+                    addCount: 2,
+                    updateCount: 3,
+                    skipCount: 1,
+                    potentialFailCount: 1,
+                    warnings: ["1 row may fail because expression validation is uncertain until apply."],
+                    failedRows: []
+                  }
+                };
+              }
+              if (fixtureMode === "m6_validate_success_with_fail_rows") {
+                return {
+                  ok: true,
+                  message: "",
+                  state: null,
+                  filePath: "C:\\mock\\BetterParameters-import.bpmeta.json",
+                  preview: {
+                    addCount: 1,
+                    updateCount: 2,
+                    skipCount: 0,
+                    potentialFailCount: 1,
+                    warnings: [],
+                    failedRows: [{ row: 4, name: "bad", message: "Expression is required to create a new parameter." }]
+                  }
+                };
+              }
+              return {
+                ok: true,
+                message: "",
+                state: null,
+                filePath: "C:\\mock\\BetterParameters-import.bpmeta.json",
+                preview: {
+                  addCount: 2,
+                  updateCount: 3,
+                  skipCount: 1,
+                  potentialFailCount: 0,
+                  warnings: [],
+                  failedRows: []
+                }
+              };
+            }
+
+            if (action === ACTION.EXPORT_PARAMETERS_PACKAGE) {
+              if (fixtureMode === "m6_export_cancel") {
+                return { ok: false, message: "Export cancelled.", state: null, exportedCount: 0, filePath: "", format: "bpmeta.json" };
+              }
+              return {
+                ok: true,
+                message: "",
+                state: null,
+                exportedCount: Array.isArray(statePayload.parameters) ? statePayload.parameters.length : 0,
+                filePath: "C:\\mock\\BetterParameters-export.bpmeta.json",
+                format: "bpmeta.json"
+              };
+            }
+
+            if (action === ACTION.IMPORT_PARAMETERS_PACKAGE) {
+              if (fixtureMode === "m6_import_cancel") {
+                return { ok: false, message: "Import cancelled.", state: null, importedCount: 0, updatedCount: 0, skippedCount: 0, failedCount: 0, failedRows: [] };
+              }
+              if (fixtureMode === "m6_import_all_fail") {
+                return {
+                  ok: false,
+                  message: "No parameters were imported.",
+                  state: null,
+                  importedCount: 0,
+                  updatedCount: 0,
+                  skippedCount: 0,
+                  failedCount: 2,
+                  failedRows: [
+                    { row: 3, name: "badA", message: "Invalid expression." },
+                    { row: 4, name: "badB", message: "Name is required." }
+                  ]
+                };
+              }
+              if (fixtureMode === "m6_import_partial_fail") {
+                return {
+                  ok: true,
+                  message: "",
+                  state: statePayload,
+                  importedCount: 2,
+                  updatedCount: 1,
+                  skippedCount: 0,
+                  failedCount: 1,
+                  failedRows: [{ row: 5, name: "bad", message: "Invalid expression." }]
+                };
+              }
+              if (fixtureMode === "m6_import_all_skipped") {
+                return {
+                  ok: true,
+                  message: "",
+                  state: statePayload,
+                  importedCount: 0,
+                  updatedCount: 0,
+                  skippedCount: 3,
+                  failedCount: 0,
+                  failedRows: []
+                };
+              }
+              return {
+                ok: true,
+                message: "",
+                state: statePayload,
+                importedCount: 2,
+                updatedCount: 3,
+                skippedCount: 1,
+                failedCount: 0,
+                failedRows: []
+              };
+            }
             if (MUTATING_ACTIONS.has(action)) {
               return { ok: true, message: "", state: statePayload };
             }
@@ -8211,12 +9017,12 @@
         }
 
         const summary = stoppedByTransportFailure
-          ? `Apply All stopped on transport/contract failure. Applied: ${appliedCount}; Failed: ${failedCount}; Skipped: ${skippedCount}.`
-          : `Apply All finished. Applied: ${appliedCount}; Failed: ${failedCount}; Skipped: ${skippedCount}.`;
+          ? `Apply All stopped on transport/contract failure. Applied ${appliedCount}, failed ${failedCount}, skipped ${skippedCount}.`
+          : `Apply All finished. Applied ${appliedCount}, failed ${failedCount}, skipped ${skippedCount}.`;
         setGlobalStatus(summary, (failedCount > 0 || stoppedByTransportFailure) ? "warning" : "success");
         if (failedRows.length > 0) {
           const detailLines = failedRows.map((item) => `${item.name}: ${item.message}`);
-          appendStatusHistory(`Apply All failed rows:\n${detailLines.join("\n")}`, "warning");
+          appendStatusHistory(`Rows needing attention:\n${detailLines.join("\n")}`, "warning");
         }
       }
 
@@ -9496,6 +10302,7 @@
             positionFunctionHelper(activeInput);
           }
         }
+        scheduleLayoutDebugPanelUpdate();
       });
 
       let paletteResizeTimer = null;
@@ -9725,30 +10532,8 @@
         if (!TEMP_TEXT_TUNER_ENABLED) {
           return;
         }
-
-        const previousValue = state.settings.showTextTunerSidebar !== false;
-        const nextValue = !previousValue;
-        state.settings.showTextTunerSidebar = nextValue;
-        renderTextTunerSidebarToggle();
-        applyTextTunerSidebarVisibility();
-
-        const partialSettings = { showTextTunerSidebar: nextValue };
-        if (state.settings.autoFitColumns === true) {
-          const nextColumns = buildAutoFitColumnWidths();
-          state.settings.parameterTableColumns = nextColumns;
-          partialSettings.parameterTableColumns = nextColumns;
-        }
-        applyColumnWidths();
-
-        try {
-          await saveSettingsPartial(partialSettings);
-        } catch (error) {
-          state.settings.showTextTunerSidebar = previousValue;
-          renderTextTunerSidebarToggle();
-          applyTextTunerSidebarVisibility();
-          applyColumnWidths();
-          setGlobalStatus(error.message, "error");
-        }
+        const nextValue = !shouldShowTextTunerSidebar();
+        await setTextTunerSidebarPreferenceVisible(nextValue);
       });
 
       document.getElementById("computeModeButton").addEventListener("click", () => {
@@ -9759,6 +10544,114 @@
 
       document.getElementById("importConflictPolicySelect").addEventListener("change", (event) => {
         state.importConflictPolicy = normalizeConflictPolicy(event.currentTarget.value);
+      });
+
+      function persistPackageUiSettings(partial, contextLabel) {
+        savePackagePrefsToLocal();
+        return saveSettingsPartial(partial).catch((error) => {
+          const reason = String(error?.message || "Settings save failed.");
+          appendStatusHistory(`${contextLabel}: backend settings save failed (${reason}). Using local UI preference fallback.`, "warning");
+        });
+      }
+
+      document.getElementById("packageConflictPolicySelect").addEventListener("change", (event) => {
+        state.settings.packageConflictPolicy = normalizePackageConflictPolicy(event.currentTarget.value);
+        persistPackageUiSettings(
+          { packageConflictPolicy: state.settings.packageConflictPolicy },
+          "Package conflict policy"
+        );
+      });
+
+      document.getElementById("packageApplyExpressionsUnits").addEventListener("change", (event) => {
+        state.settings.packageImportOptions = {
+          ...normalizePackageImportOptions(state.settings.packageImportOptions),
+          applyExpressionsUnits: event.currentTarget.checked === true
+        };
+        persistPackageUiSettings(
+          { packageImportOptions: state.settings.packageImportOptions },
+          "Package import options"
+        );
+      });
+      document.getElementById("packageApplyComments").addEventListener("change", (event) => {
+        state.settings.packageImportOptions = {
+          ...normalizePackageImportOptions(state.settings.packageImportOptions),
+          applyComments: event.currentTarget.checked === true
+        };
+        persistPackageUiSettings(
+          { packageImportOptions: state.settings.packageImportOptions },
+          "Package import options"
+        );
+      });
+      document.getElementById("packageApplyGroups").addEventListener("change", (event) => {
+        state.settings.packageImportOptions = {
+          ...normalizePackageImportOptions(state.settings.packageImportOptions),
+          applyGroups: event.currentTarget.checked === true
+        };
+        persistPackageUiSettings(
+          { packageImportOptions: state.settings.packageImportOptions },
+          "Package import options"
+        );
+      });
+      document.getElementById("packageApplyFavorites").addEventListener("change", (event) => {
+        state.settings.packageImportOptions = {
+          ...normalizePackageImportOptions(state.settings.packageImportOptions),
+          applyFavorites: event.currentTarget.checked === true
+        };
+        persistPackageUiSettings(
+          { packageImportOptions: state.settings.packageImportOptions },
+          "Package import options"
+        );
+      });
+      document.getElementById("packageApplyOrder").addEventListener("change", (event) => {
+        state.settings.packageImportOptions = {
+          ...normalizePackageImportOptions(state.settings.packageImportOptions),
+          applyOrder: event.currentTarget.checked === true
+        };
+        persistPackageUiSettings(
+          { packageImportOptions: state.settings.packageImportOptions },
+          "Package import options"
+        );
+      });
+
+      document.getElementById("packageIncludeComments").addEventListener("change", (event) => {
+        state.settings.packageExportOptions = {
+          ...normalizePackageExportOptions(state.settings.packageExportOptions),
+          includeComments: event.currentTarget.checked === true
+        };
+        persistPackageUiSettings(
+          { packageExportOptions: state.settings.packageExportOptions },
+          "Package export options"
+        );
+      });
+      document.getElementById("packageIncludeGroups").addEventListener("change", (event) => {
+        state.settings.packageExportOptions = {
+          ...normalizePackageExportOptions(state.settings.packageExportOptions),
+          includeGroups: event.currentTarget.checked === true
+        };
+        persistPackageUiSettings(
+          { packageExportOptions: state.settings.packageExportOptions },
+          "Package export options"
+        );
+      });
+      document.getElementById("packageIncludeFavorites").addEventListener("change", (event) => {
+        state.settings.packageExportOptions = {
+          ...normalizePackageExportOptions(state.settings.packageExportOptions),
+          includeFavorites: event.currentTarget.checked === true
+        };
+        persistPackageUiSettings(
+          { packageExportOptions: state.settings.packageExportOptions },
+          "Package export options"
+        );
+      });
+      document.getElementById("packageIncludeOrder").addEventListener("change", (event) => {
+        state.settings.packageExportOptions = {
+          ...normalizePackageExportOptions(state.settings.packageExportOptions),
+          includeOrder: event.currentTarget.checked === true
+        };
+        persistPackageUiSettings(
+          { packageExportOptions: state.settings.packageExportOptions },
+          "Package export options"
+        );
       });
 
       document.getElementById("importParametersButton").addEventListener("click", async () => {
@@ -9782,21 +10675,16 @@
           const failed = Number(response.failedCount || 0);
           const failedRows = Array.isArray(response.failedRows) ? response.failedRows : [];
           const lines = [
-            `Imported: ${imported}`,
+            `Added/Updated: ${imported}`,
             `Skipped: ${skipped}`,
             `Failed: ${failed}`
           ];
-          if (failedRows.length) {
+          const rowDetailLines = buildRowsNeedingAttentionLines(failedRows);
+          if (rowDetailLines.length) {
             lines.push("");
-            lines.push("Failed rows:");
-            failedRows.slice(0, 50).forEach((item) => {
-              const rowLabel = Number.isFinite(Number(item?.row)) ? `Row ${Number(item.row)}` : "Row ?";
-              const name = String(item?.name || "").trim();
-              const message = String(item?.message || "Unknown import error.");
-              lines.push(`- ${rowLabel}${name ? ` (${name})` : ""}: ${message}`);
-            });
+            lines.push(...rowDetailLines);
           }
-          const summary = `Import complete. Imported ${imported}, skipped ${skipped}, failed ${failed}.`;
+          const summary = `Import complete. Added/updated ${imported}, skipped ${skipped}, failed ${failed}.`;
           setGlobalStatus(summary, failed > 0 ? "warning" : "success");
           setParameterFileSummary(lines.join("\n"), failed > 0 ? "warning" : "success");
         } catch (error) {
@@ -9819,14 +10707,153 @@
           const exported = Number(response.exportedCount || 0);
           const path = String(response.filePath || "").trim();
           const lines = [
-            `Exported: ${exported}`,
+            `Wrote: ${exported}`,
             path ? `Path: ${path}` : ""
           ].filter(Boolean);
-          setGlobalStatus(`Exported ${exported} parameter(s).`, "success");
+          setGlobalStatus(`Export complete. Wrote ${exported} parameters.`, "success");
           setParameterFileSummary(lines.join("\n"), "success");
         } catch (error) {
           setGlobalStatus(error.message, "error");
           setParameterFileSummary(String(error.message || "Export failed."), "error");
+        }
+      });
+
+      document.getElementById("importParametersPackageButton").addEventListener("click", async () => {
+        setParameterFileSummary("");
+        setGlobalStatus("Previewing BP package import...");
+        try {
+          const validatePayload = buildPackageImportRequest("");
+          const previewResponse = await sendToFusion(ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, validatePayload);
+          if (isExpectedCancelResponse(previewResponse, "Import cancelled.")) {
+            return;
+          }
+          if (!previewResponse.ok) {
+            throw new Error(previewResponse.message || "Package preflight failed.");
+          }
+
+          const preview = previewResponse.preview && typeof previewResponse.preview === "object"
+            ? previewResponse.preview
+            : {};
+          const filePath = String(previewResponse.filePath || "").trim();
+          const addCount = Number(preview.addCount || 0);
+          const updateCount = Number(preview.updateCount || 0);
+          const skipCount = Number(preview.skipCount || 0);
+          const potentialFailCount = Number(preview.potentialFailCount || 0);
+          const previewWarnings = Array.isArray(preview.warnings) ? preview.warnings : [];
+          const previewFailedRows = Array.isArray(preview.failedRows) ? preview.failedRows : [];
+          const previewLines = [
+            `Will add: ${addCount}`,
+            `Will update: ${updateCount}`,
+            `Will skip: ${skipCount}`,
+            `Potential issues: ${potentialFailCount}`
+          ];
+          if (filePath) {
+            previewLines.push(`File: ${filePath}`);
+          }
+          if (previewWarnings.length) {
+            previewLines.push("");
+            previewLines.push("Caution notes:");
+            previewWarnings.slice(0, 20).forEach((warning) => {
+              previewLines.push(`- ${String(warning || "").trim()}`);
+            });
+          }
+          if (skipCount > 0) {
+            const policy = normalizePackageConflictPolicy(validatePayload.conflictPolicy);
+            previewLines.push("");
+            if (policy === "skip") {
+              previewLines.push('Skip reason: conflict policy is "Skip existing" for matching parameter names.');
+            } else {
+              previewLines.push("Skip reason: no-op rows can occur when selected apply options do not change destination values.");
+            }
+          }
+          if (potentialFailCount > 0) {
+            previewLines.push("");
+            previewLines.push("Potential issue meaning: preflight sees rows that may fail during actual apply.");
+          }
+          const previewFailedLines = buildRowsNeedingAttentionLines(previewFailedRows);
+          if (previewFailedLines.length) {
+            previewLines.push("");
+            previewLines.push(...previewFailedLines);
+          }
+          const hasPreviewCaution = potentialFailCount > 0 || previewWarnings.length > 0 || previewFailedRows.length > 0;
+          setParameterFileSummary(previewLines.join("\n"), hasPreviewCaution ? "warning" : "success");
+
+          const confirmSummary = buildPackageImportConfirmationMessage(preview, validatePayload);
+          const confirmed = window.confirm(confirmSummary);
+          if (!confirmed) {
+            return;
+          }
+
+          setGlobalStatus("Importing BP package...");
+          const importPayload = buildPackageImportRequest(filePath);
+          const importResponse = await sendToFusion(ACTION.IMPORT_PARAMETERS_PACKAGE, importPayload);
+          if (isExpectedCancelResponse(importResponse, "Import cancelled.")) {
+            return;
+          }
+          if (!importResponse.ok) {
+            const failedRows = Array.isArray(importResponse.failedRows) ? importResponse.failedRows : [];
+            const detailLines = buildRowsNeedingAttentionLines(failedRows);
+            if (detailLines.length) {
+              const lines = [
+                String(importResponse.message || "Package import failed."),
+                "",
+                ...detailLines
+              ];
+              setParameterFileSummary(lines.join("\n"), "error");
+            }
+            throw new Error(importResponse.message || "Package import failed.");
+          }
+
+          applyStateFromFusion(importResponse, { source: "response", action: ACTION.IMPORT_PARAMETERS_PACKAGE });
+          const imported = Number(importResponse.importedCount || 0);
+          const updated = Number(importResponse.updatedCount || 0);
+          const skipped = Number(importResponse.skippedCount || 0);
+          const failed = Number(importResponse.failedCount || 0);
+          const failedRows = Array.isArray(importResponse.failedRows) ? importResponse.failedRows : [];
+          const summary = `Import complete. Added ${imported}, updated ${updated}, skipped ${skipped}.${failed > 0 ? ` Failed: ${failed}.` : ""}`;
+          setGlobalStatus(summary, failed > 0 ? "warning" : "success");
+
+          const lines = [
+            `Added: ${imported}`,
+            `Updated: ${updated}`,
+            `Skipped: ${skipped}`,
+            `Failed: ${failed}`
+          ];
+          const rowDetailLines = buildRowsNeedingAttentionLines(failedRows);
+          if (rowDetailLines.length) {
+            lines.push("");
+            lines.push(...rowDetailLines);
+          }
+          setParameterFileSummary(lines.join("\n"), failed > 0 ? "warning" : "success");
+        } catch (error) {
+          setGlobalStatus(error.message, "error");
+          setParameterFileSummary(String(error.message || "Package import failed."), "error");
+        }
+      });
+
+      document.getElementById("exportParametersPackageButton").addEventListener("click", async () => {
+        setParameterFileSummary("");
+        setGlobalStatus("Exporting BP package...");
+        try {
+          const response = await sendToFusion(ACTION.EXPORT_PARAMETERS_PACKAGE, buildPackageExportRequest(""));
+          if (isExpectedCancelResponse(response, "Export cancelled.")) {
+            return;
+          }
+          if (!response.ok) {
+            throw new Error(response.message || "Package export failed.");
+          }
+          const exported = Number(response.exportedCount || 0);
+          const path = String(response.filePath || "").trim();
+          const lines = [
+            `Wrote: ${exported}`,
+            path ? `Path: ${path}` : "",
+            "Format: bpmeta.json"
+          ].filter(Boolean);
+          setGlobalStatus(`Export complete. Wrote ${exported} parameters.`, "success");
+          setParameterFileSummary(lines.join("\n"), "success");
+        } catch (error) {
+          setGlobalStatus(error.message, "error");
+          setParameterFileSummary(String(error.message || "Package export failed."), "error");
         }
       });
 
@@ -10239,6 +11266,22 @@
       document.getElementById("updateCardInstallButton").addEventListener("click", () => handleInstallUpdate());
 
       document.addEventListener("keydown", (event) => {
+        const keyLower = String(event.key || "").toLowerCase();
+        const isLayoutDebugToggle = keyLower === "d" && (
+          (event.ctrlKey && event.altKey && !event.metaKey)
+          || (event.ctrlKey && event.shiftKey && !event.metaKey)
+        );
+        const isTextTunerToggle = keyLower === "t" && event.ctrlKey && event.altKey && !event.metaKey && !event.shiftKey;
+        if (isLayoutDebugToggle) {
+          event.preventDefault();
+          setLayoutDebugEnabled(!state.layoutDebugEnabled);
+          return;
+        }
+        if (isTextTunerToggle) {
+          event.preventDefault();
+          void setTextTunerSidebarPreferenceVisible(!shouldShowTextTunerSidebar());
+          return;
+        }
         if (event.key !== "Escape") {
           return;
         }
@@ -10249,6 +11292,13 @@
         }
         if (isSettingsPanelOpen()) {
           setSettingsPanelOpen(false);
+          return;
+        }
+        if (shouldShowTextTunerSidebar()) {
+          void setTextTunerSidebarPreferenceVisible(false);
+        }
+        if (state.layoutDebugEnabled) {
+          setLayoutDebugEnabled(false);
         }
       });
 
@@ -10280,6 +11330,9 @@
 
       window.addEventListener("load", async () => {
         try {
+          if (state.layoutDebugEnabled) {
+            setLayoutDebugEnabled(true);
+          }
           renderStatusHistory();
           initializeTextTunerCard();
           applySettings(state.settings, { deferColumnLayout: true });

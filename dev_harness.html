@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BetterParameters FE Harness</title>
+    <style>
+      :root {
+        --bg: #1f2633;
+        --panel: #2a3446;
+        --line: #43506a;
+        --ink: #dce6f5;
+        --muted: #a5b6cf;
+        --btn: #3a4a64;
+        --btn-hover: #496184;
+        --accent: #59a8ff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+        background: var(--bg);
+        color: var(--ink);
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 12px;
+        align-items: center;
+        padding: 10px;
+        border-bottom: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      .toolbar label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .toolbar input,
+      .toolbar select {
+        height: 28px;
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        background: #202b3d;
+        color: var(--ink);
+        padding: 0 8px;
+      }
+
+      .toolbar button {
+        height: 28px;
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        background: var(--btn);
+        color: var(--ink);
+        cursor: pointer;
+        padding: 0 10px;
+      }
+
+      .toolbar button:hover {
+        background: var(--btn-hover);
+      }
+
+      .toolbar .accent {
+        border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+        color: var(--accent);
+      }
+
+      .stage {
+        min-height: 0;
+        display: grid;
+        place-items: start center;
+        padding: 12px;
+        overflow: auto;
+      }
+
+      .frame-shell {
+        border: 1px solid var(--line);
+        background: #0f1724;
+        width: 980px;
+        max-width: calc(100vw - 28px);
+        height: calc(100vh - 84px);
+        min-height: 420px;
+        resize: horizontal;
+        overflow: hidden;
+      }
+
+      #paletteFrame {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #252525;
+      }
+
+      .note {
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="toolbar">
+      <label>Width
+        <input id="frameWidthInput" type="number" min="420" step="10" value="980" />
+      </label>
+      <button data-width="1200" type="button">1200</button>
+      <button data-width="980" type="button">980</button>
+      <button data-width="860" type="button">860</button>
+      <button data-width="760" type="button">760</button>
+      <button data-width="680" type="button">680</button>
+      <button data-width="600" type="button">600</button>
+      <label>Fixture
+        <select id="fixtureSelect">
+          <option value="">default</option>
+          <option value="m6_validate_success_with_warnings">m6 warnings</option>
+          <option value="m6_validate_success_with_fail_rows">m6 fail rows</option>
+          <option value="m6_import_partial_fail">m6 import partial fail</option>
+          <option value="m6_import_all_skipped">m6 import all skipped</option>
+        </select>
+      </label>
+      <button id="reloadButton" class="accent" type="button">Reload Palette</button>
+      <span class="note">Mock bridge + debug sidebar enabled. In palette: Ctrl+Alt+D (or Ctrl+Shift+D) toggles sidebar.</span>
+    </div>
+    <div class="stage">
+      <div id="frameShell" class="frame-shell">
+        <iframe id="paletteFrame" title="BetterParameters palette test harness"></iframe>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        const frame = document.getElementById("paletteFrame");
+        const shell = document.getElementById("frameShell");
+        const widthInput = document.getElementById("frameWidthInput");
+        const fixtureSelect = document.getElementById("fixtureSelect");
+        const reloadButton = document.getElementById("reloadButton");
+        const widthButtons = Array.from(document.querySelectorAll("button[data-width]"));
+
+        function clampWidth(value) {
+          const n = Number(value);
+          if (!Number.isFinite(n)) {
+            return 980;
+          }
+          return Math.max(420, Math.round(n));
+        }
+
+        function applyWidth(value) {
+          const next = clampWidth(value);
+          shell.style.width = `${next}px`;
+          widthInput.value = String(next);
+        }
+
+        function buildFrameSrc() {
+          const fixture = String(fixtureSelect.value || "").trim();
+          const params = new URLSearchParams();
+          params.set("mock", "1");
+          params.set("layoutdebug", "1");
+          if (fixture) {
+            params.set("fixture", fixture);
+          }
+          return `./palette.html?${params.toString()}`;
+        }
+
+        function loadFrame() {
+          frame.src = buildFrameSrc();
+        }
+
+        widthInput.addEventListener("change", () => applyWidth(widthInput.value));
+        widthButtons.forEach((button) => {
+          button.addEventListener("click", () => applyWidth(button.getAttribute("data-width")));
+        });
+        fixtureSelect.addEventListener("change", loadFrame);
+        reloadButton.addEventListener("click", loadFrame);
+
+        applyWidth(widthInput.value);
+        loadFrame();
+      })();
+    </script>
+  </body>
+</html>

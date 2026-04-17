@@ -66,6 +66,7 @@ METADATA_REVISION_RECORD_KEY = "metadata_revision"
 METADATA_WRITER_ID_RECORD_KEY = "metadata_writer_id"
 METADATA_WRITER_VERSION_RECORD_KEY = "metadata_writer_version"
 METADATA_SCHEMA_VERSION = 2
+BPMETA_SCHEMA_VERSION = 1
 UI_STATE_RECORD_KEY = "uiState"
 UI_STATE_REVISION_KEY = "revision"
 UI_STATE_CHANGED_AT_KEY = "changedAt"
@@ -491,6 +492,37 @@ def _handle_palette_action(action, data):
             "message": result["message"],
             "state": state,
             "importedCount": result["importedCount"],
+            "skippedCount": result["skippedCount"],
+            "failedCount": result["failedCount"],
+            "failedRows": result["failedRows"],
+        }
+
+    if action == "exportParametersPackage":
+        result = _export_parameters_package(data)
+        if result.get("cancelled"):
+            return {"ok": False, "message": "Export cancelled.", "state": None, "exportedCount": 0, "filePath": "", "format": "bpmeta.json"}
+        return _ok_data(exportedCount=result["exportedCount"], filePath=result["filePath"], format="bpmeta.json")
+
+    if action == "validateParametersPackageImport":
+        result = _validate_parameters_package_import(data)
+        if result.get("cancelled"):
+            return {"ok": False, "message": "Import cancelled.", "state": None, "filePath": "", "preview": None}
+        return {"ok": True, "message": "", "state": None, "filePath": result["filePath"], "preview": result["preview"]}
+
+    if action == "importParametersPackage":
+        result = _import_parameters_package(data)
+        if result.get("cancelled"):
+            return {
+                "ok": False, "message": "Import cancelled.", "state": None,
+                "importedCount": 0, "updatedCount": 0, "skippedCount": 0, "failedCount": 0, "failedRows": [],
+            }
+        state = _current_state_payload() if result["ok"] else None
+        return {
+            "ok": result["ok"],
+            "message": result["message"],
+            "state": state,
+            "importedCount": result["importedCount"],
+            "updatedCount": result["updatedCount"],
             "skippedCount": result["skippedCount"],
             "failedCount": result["failedCount"],
             "failedRows": result["failedRows"],
@@ -2652,6 +2684,447 @@ def _import_parameters(data):
         "ok": ok,
         "message": message,
         "importedCount": imported_count,
+        "skippedCount": skipped_count,
+        "failedCount": failed_count,
+        "failedRows": failed_rows,
+    }
+
+
+def _normalized_conflict_policy(data):
+    """Normalize conflictPolicy from request data. Returns 'skip', 'overwrite', or 'merge-safe'."""
+    value = str(data.get("conflictPolicy") or "skip").strip().lower()
+    if value not in ("skip", "overwrite", "merge-safe"):
+        value = "skip"
+    return value
+
+
+def _extract_apply_knobs(data):
+    """Extract and normalize the apply* boolean knobs from a package import request."""
+    return {
+        "applyExpressionsUnits": bool(data.get("applyExpressionsUnits", False)),
+        "applyComments": bool(data.get("applyComments", True)),
+        "applyGroups": bool(data.get("applyGroups", True)),
+        "applyFavorites": bool(data.get("applyFavorites", True)),
+        "applyOrder": bool(data.get("applyOrder", False)),
+    }
+
+
+def _parse_bpmeta_package(raw_text):
+    """Parse a .bpmeta.json package string.
+
+    Returns (package_dict, error_message). package_dict is None on failure.
+    """
+    try:
+        package = json.loads(raw_text)
+    except Exception as exc:
+        return None, f"JSON parse error: {exc}"
+    if not isinstance(package, dict):
+        return None, "Invalid package format: expected a JSON object."
+    schema_version = package.get("schemaVersion")
+    if schema_version is None:
+        return None, 'Invalid package: missing "schemaVersion".'
+    if not isinstance(schema_version, int) or schema_version < 1:
+        return None, f'Invalid package: "schemaVersion" must be a positive integer.'
+    if schema_version > BPMETA_SCHEMA_VERSION:
+        return None, (
+            f"Package schema version {schema_version} is newer than supported "
+            f"({BPMETA_SCHEMA_VERSION}). Update BetterParameters and try again."
+        )
+    if not isinstance(package.get("parameters"), list):
+        return None, 'Invalid package: "parameters" must be an array.'
+    return package, ""
+
+
+def _open_package_save_dialog(file_path):
+    """Open OS save dialog for .bpmeta.json if file_path is empty.
+
+    Returns resolved file_path string, or '' on cancel/failure.
+    Raises RuntimeError if UI is unavailable.
+    """
+    if file_path:
+        if not file_path.lower().endswith(".bpmeta.json"):
+            file_path += ".bpmeta.json"
+        return file_path
+    if not ui:
+        raise RuntimeError("UI is not available to open a save dialog.")
+    dialog = ui.createFileDialog()
+    dialog.isMultiSelectEnabled = False
+    dialog.title = "Export Parameters Package — Better Parameters"
+    dialog.filter = "BP Meta Package (*.bpmeta.json)"
+    dialog.filterIndex = 0
+    result = dialog.showSave()
+    if result != adsk.core.DialogResults.DialogOK:
+        return ""
+    resolved = str(dialog.filename or "").strip()
+    if resolved and not resolved.lower().endswith(".bpmeta.json"):
+        resolved += ".bpmeta.json"
+    return resolved
+
+
+def _open_package_open_dialog(file_path):
+    """Open OS file-open dialog for .bpmeta.json if file_path is empty.
+
+    Returns resolved file_path string, or '' on cancel/failure.
+    Raises RuntimeError if UI is unavailable.
+    """
+    if file_path:
+        return file_path
+    if not ui:
+        raise RuntimeError("UI is not available to open a file dialog.")
+    dialog = ui.createFileDialog()
+    dialog.isMultiSelectEnabled = False
+    dialog.title = "Import Parameters Package — Better Parameters"
+    dialog.filter = "BP Meta Package (*.bpmeta.json)"
+    dialog.filterIndex = 0
+    result = dialog.showOpen()
+    if result != adsk.core.DialogResults.DialogOK:
+        return ""
+    return str(dialog.filename or "").strip()
+
+
+def _apply_package_display_order(design, order_updates, previous_state=None):
+    """Apply displayOrder indices from a bpmeta package to the current document order state.
+
+    order_updates: list of (displayOrder_int, name_str) tuples.
+    Parameters in order_updates are placed first (sorted by displayOrder),
+    followed by all other design parameters in their existing relative order.
+    """
+    if not order_updates:
+        return
+    if previous_state is None:
+        previous_state = _read_document_order_state()
+
+    params = design.userParameters
+    name_to_key = {}
+    all_keys_in_order = []
+    for i in range(params.count):
+        param = params.item(i)
+        if not param:
+            continue
+        key = _parameter_entity_token(param)
+        name_to_key[param.name] = key
+        all_keys_in_order.append(key)
+
+    sorted_updates = sorted(order_updates, key=lambda x: x[0])
+    ordered_keys = []
+    seen_keys = set()
+    for _, name in sorted_updates:
+        key = name_to_key.get(name)
+        if key and key not in seen_keys:
+            ordered_keys.append(key)
+            seen_keys.add(key)
+
+    remaining_keys = [k for k in all_keys_in_order if k not in seen_keys]
+    final_key_order = ordered_keys + remaining_keys
+
+    key_to_name = {v: k for k, v in name_to_key.items()}
+    merged = [{"key": k, "name": key_to_name.get(k, "")} for k in final_key_order]
+
+    _persist_document_order_snapshot(merged, previous_state)
+    next_state = _read_document_order_state()
+    next_state[UI_STATE_RECORD_KEY] = _bump_ui_state_record(next_state.get(UI_STATE_RECORD_KEY))
+    _write_document_order_state(next_state)
+    _write_fusion_ui_snapshot(design, _local_ui_snapshot(next_state))
+
+
+def _export_parameters_package(data):
+    """Export user parameters with BP metadata to a .bpmeta.json file.
+
+    Returns dict with: cancelled, filePath, exportedCount.
+    """
+    include_comments = bool(data.get("includeComments", True))
+    include_groups = bool(data.get("includeGroups", True))
+    include_favorites = bool(data.get("includeFavorites", True))
+    include_order = bool(data.get("includeOrder", False))
+
+    file_path = _open_package_save_dialog(str(data.get("filePath") or "").strip())
+    if not file_path:
+        return {"cancelled": True, "filePath": "", "exportedCount": 0}
+
+    parameters = _collect_user_parameters()
+
+    design = _design()
+    doc_name = ""
+    if design:
+        try:
+            doc_name = str(design.parentDocument.name or "")
+        except Exception:
+            pass
+
+    records = []
+    for idx, p in enumerate(parameters):
+        record = {
+            "name": p.get("name", ""),
+            "expression": p.get("expression", ""),
+            "unit": p.get("unit", ""),
+        }
+        if include_comments:
+            record["comment"] = p.get("comment", "")
+        if include_groups:
+            record["group"] = p.get("group", "")
+        if include_favorites:
+            record["isFavorite"] = bool(p.get("isFavorite", False))
+        if include_order:
+            record["displayOrder"] = idx
+        # Advisory metadata — always included for round-trip traceability.
+        record["metadataRevision"] = int(p.get("metadataRevision") or 0)
+        record["metadataChangedAt"] = int(p.get("metadataChangedAt") or 0)
+        records.append(record)
+
+    package = {
+        "schemaVersion": BPMETA_SCHEMA_VERSION,
+        "exportedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "sourceDocument": {"name": doc_name},
+        "parameters": records,
+    }
+
+    Path(file_path).write_text(json.dumps(package, indent=2, ensure_ascii=False), encoding="utf-8")
+    return {"cancelled": False, "filePath": file_path, "exportedCount": len(records)}
+
+
+def _validate_parameters_package_import(data):
+    """Preflight check for importing a .bpmeta.json package. No mutations applied.
+
+    Opens OS dialog if data['filePath'] is absent.
+    Returns dict with: cancelled, ok, message, filePath, preview.
+    preview contains: addCount, updateCount, skipCount, potentialFailCount, warnings[], failedRows[].
+    """
+    # Require design before opening dialog so we fail fast on no-document condition.
+    design = _require_design()
+
+    conflict_policy = _normalized_conflict_policy(data)
+    apply_knobs = _extract_apply_knobs(data)
+
+    file_path = _open_package_open_dialog(str(data.get("filePath") or "").strip())
+    if not file_path:
+        return {"cancelled": True, "ok": False, "message": "Import cancelled.", "filePath": "", "preview": None}
+
+    try:
+        raw = Path(file_path).read_text(encoding="utf-8")
+    except Exception as exc:
+        raise ValueError(f"Could not read file: {exc}")
+
+    package, parse_error = _parse_bpmeta_package(raw)
+    if package is None:
+        raise ValueError(parse_error)
+
+    records = package.get("parameters", [])
+    seen_names = set()
+    failed_rows = []
+    add_count = 0
+    update_count = 0
+    skip_count = 0
+    potential_fail_count = 0
+    warnings = []
+
+    for idx, record in enumerate(records):
+        name = str(record.get("name") or "").strip()
+
+        if not name:
+            failed_rows.append({"row": idx + 1, "name": "", "message": "Name is required."})
+            continue
+
+        name_folded = name.casefold()
+        if name_folded in seen_names:
+            failed_rows.append({"row": idx + 1, "name": name, "message": f'Duplicate name "{name}" in package.'})
+            continue
+        seen_names.add(name_folded)
+
+        existing = design.userParameters.itemByName(name)
+        if existing:
+            if conflict_policy == "skip":
+                skip_count += 1
+            else:
+                update_count += 1
+                if apply_knobs["applyExpressionsUnits"]:
+                    expression = str(record.get("expression") or "").strip()
+                    if expression:
+                        unit = str(record.get("unit") or existing.unit or "").strip()
+                        expr_check = _validate_expression_response(expression, name, unit)
+                        if not expr_check["ok"] and not expr_check.get("isIncomplete"):
+                            potential_fail_count += 1
+                            warnings.append(f'"{name}": expression may fail — {expr_check["message"]}')
+                    else:
+                        potential_fail_count += 1
+                        warnings.append(f'"{name}": applyExpressionsUnits is set but expression is missing in package.')
+        else:
+            expression = str(record.get("expression") or "").strip()
+            if not expression:
+                failed_rows.append({"row": idx + 1, "name": name, "message": "Expression is required to create a new parameter."})
+                continue
+            name_check = _validate_parameter_name_response(name)
+            if not name_check["ok"]:
+                failed_rows.append({"row": idx + 1, "name": name, "message": name_check["message"]})
+                continue
+            unit = str(record.get("unit") or "").strip()
+            expr_check = _validate_expression_response(expression, name, unit)
+            if not expr_check["ok"] and not expr_check.get("isIncomplete"):
+                potential_fail_count += 1
+                warnings.append(f'"{name}": expression may fail — {expr_check["message"]}')
+            add_count += 1
+
+    return {
+        "cancelled": False,
+        "ok": True,
+        "message": "",
+        "filePath": file_path,
+        "preview": {
+            "addCount": add_count,
+            "updateCount": update_count,
+            "skipCount": skip_count,
+            "potentialFailCount": potential_fail_count,
+            "warnings": warnings,
+            "failedRows": failed_rows,
+        },
+    }
+
+
+def _import_parameters_package(data):
+    """Import user parameters from a .bpmeta.json package.
+
+    Opens OS dialog if data['filePath'] is absent.
+    Returns dict with: cancelled, ok, message, importedCount, updatedCount, skippedCount, failedCount, failedRows.
+    Does NOT return state — the action handler adds it.
+    """
+    design = _require_design()
+
+    conflict_policy = _normalized_conflict_policy(data)
+    apply_knobs = _extract_apply_knobs(data)
+
+    file_path = _open_package_open_dialog(str(data.get("filePath") or "").strip())
+    if not file_path:
+        return {
+            "cancelled": True,
+            "ok": False, "message": "Import cancelled.",
+            "importedCount": 0, "updatedCount": 0, "skippedCount": 0,
+            "failedCount": 0, "failedRows": [],
+        }
+
+    try:
+        raw = Path(file_path).read_text(encoding="utf-8")
+    except Exception as exc:
+        raise ValueError(f"Could not read file: {exc}")
+
+    package, parse_error = _parse_bpmeta_package(raw)
+    if package is None:
+        raise ValueError(parse_error)
+
+    records = package.get("parameters", [])
+    previous_state = _read_document_order_state()
+
+    seen_names = set()
+    failed_rows = []
+    imported_count = 0
+    updated_count = 0
+    skipped_count = 0
+    order_updates = []  # (displayOrder, name) pairs, collected if applyOrder is enabled
+
+    for idx, record in enumerate(records):
+        name = str(record.get("name") or "").strip()
+
+        if not name:
+            failed_rows.append({"row": idx + 1, "name": "", "message": "Name is required."})
+            continue
+
+        name_folded = name.casefold()
+        if name_folded in seen_names:
+            failed_rows.append({"row": idx + 1, "name": name, "message": f'Duplicate name "{name}" in package.'})
+            continue
+        seen_names.add(name_folded)
+
+        expression = str(record.get("expression") or "").strip()
+        unit = str(record.get("unit") or "").strip()
+        comment = str(record.get("comment") or "")
+        group = _normalize_group_name(str(record.get("group") or ""))
+        is_favorite = bool(record.get("isFavorite", False))
+        display_order = record.get("displayOrder")
+
+        existing = design.userParameters.itemByName(name)
+        if existing:
+            if conflict_policy == "skip":
+                skipped_count += 1
+                continue
+            # overwrite or merge-safe: apply each checked field independently.
+            try:
+                if apply_knobs["applyExpressionsUnits"] and expression:
+                    existing.expression = expression
+                if apply_knobs["applyComments"]:
+                    existing.comment = comment
+                if apply_knobs["applyFavorites"]:
+                    try:
+                        existing.isFavorite = is_favorite
+                    except Exception:
+                        pass
+                if apply_knobs["applyGroups"] and group:
+                    _set_parameter_group({"name": name, "group": group})
+                updated_count += 1
+                if apply_knobs["applyOrder"] and display_order is not None:
+                    order_updates.append((int(display_order), name))
+            except Exception as exc:
+                failed_rows.append({"row": idx + 1, "name": name, "message": str(exc)})
+        else:
+            # New parameter: expression is always required.
+            if not expression:
+                failed_rows.append({"row": idx + 1, "name": name, "message": "Expression is required to create a new parameter."})
+                continue
+            name_check = _validate_parameter_name_response(name)
+            if not name_check["ok"]:
+                failed_rows.append({"row": idx + 1, "name": name, "message": name_check["message"]})
+                continue
+            try:
+                value_input = adsk.core.ValueInput.createByString(expression)
+                created = design.userParameters.add(
+                    name,
+                    value_input,
+                    unit,
+                    comment if apply_knobs["applyComments"] else "",
+                )
+                if not created:
+                    raise ValueError("Fusion rejected the parameter.")
+                if apply_knobs["applyFavorites"]:
+                    try:
+                        created.isFavorite = is_favorite
+                    except Exception:
+                        pass
+                if apply_knobs["applyGroups"] and group:
+                    _set_parameter_group({"name": name, "group": group})
+                imported_count += 1
+                if apply_knobs["applyOrder"] and display_order is not None:
+                    order_updates.append((int(display_order), name))
+            except Exception as exc:
+                failed_rows.append({"row": idx + 1, "name": name, "message": str(exc)})
+
+    if apply_knobs["applyOrder"] and order_updates:
+        try:
+            _apply_package_display_order(design, order_updates, previous_state)
+        except Exception:
+            pass  # Order application failure is non-fatal.
+
+    failed_count = len(failed_rows)
+    total_touched = imported_count + updated_count
+    if total_touched == 0 and failed_count > 0:
+        ok = False
+        message = (
+            failed_rows[0]["message"]
+            if len(failed_rows) == 1
+            else f"No parameters were imported. {failed_count} rows failed."
+        )
+    elif total_touched == 0 and skipped_count > 0:
+        ok = True
+        message = f"{skipped_count} parameter(s) already exist and were skipped (conflictPolicy: skip)."
+    elif failed_count > 0:
+        ok = True
+        message = f"{failed_count} row(s) could not be imported."
+    else:
+        ok = True
+        message = ""
+
+    return {
+        "cancelled": False,
+        "ok": ok,
+        "message": message,
+        "importedCount": imported_count,
+        "updatedCount": updated_count,
         "skippedCount": skipped_count,
         "failedCount": failed_count,
         "failedRows": failed_rows,
