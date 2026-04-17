@@ -306,12 +306,13 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        max-width: 160px;
-        flex-shrink: 1;
+        max-width: none;
+        min-width: 0;
+        flex: 1 1 auto;
       }
 
       .toolbar-spacer {
-        flex: 1;
+        flex: 0 0 auto;
       }
 
       .icon-btn {
@@ -628,11 +629,17 @@
         padding: 1px 10px;
         border-bottom: 1px solid var(--line-subtle);
         background: color-mix(in srgb, var(--panel) 94%, var(--bg));
+        color: var(--error) !important;
+        text-align: right;
         flex-shrink: 0;
         position: sticky;
         top: 36px;
         z-index: 1190;
         font-size: 11px;
+      }
+
+      .global-status * {
+        color: var(--error) !important;
       }
 
       .global-status.is-hidden {
@@ -930,36 +937,6 @@
         pointer-events: none;
       }
 
-      .discard-button {
-        background: var(--btn-bg);
-        color: var(--ink);
-        cursor: pointer;
-        display: none;
-        margin-left: auto;
-        width: 58px;
-        min-width: 58px;
-        max-width: 58px;
-        text-align: center;
-        white-space: nowrap;
-        border-color: var(--line);
-        font-size: 11px;
-        padding: 2px 6px;
-        visibility: hidden;
-        opacity: 0;
-        pointer-events: none;
-      }
-
-      .discard-button.is-dirty {
-        display: inline-block;
-        visibility: visible;
-        opacity: 1;
-        pointer-events: auto;
-      }
-
-      .discard-button:hover {
-        background: var(--btn-hover);
-      }
-
       .save-button.is-dirty {
         visibility: visible;
         opacity: 1;
@@ -986,6 +963,10 @@
         pointer-events: none;
       }
 
+      body.compute-mode-auto #parameterRows tr.parameter-row .row-actions .save-button {
+        display: none;
+      }
+
       .row-actions {
         display: grid;
         justify-items: end;
@@ -994,6 +975,45 @@
         min-width: 48px;
         max-width: 48px;
         margin-left: auto;
+      }
+
+      .dirty-field-shell {
+        position: relative;
+      }
+
+      .field-discard-button {
+        position: absolute;
+        right: 3px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 16px;
+        height: 16px;
+        min-width: 16px;
+        max-width: 16px;
+        border-radius: 2px;
+        border: 1px solid var(--line);
+        background: var(--btn-bg);
+        color: var(--ink);
+        padding: 0;
+        font-size: 10px;
+        line-height: 1;
+        display: none;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .field-discard-button.is-dirty {
+        display: inline-flex;
+      }
+
+      .field-discard-button:hover {
+        background: var(--btn-hover);
+      }
+
+      #parameterRows .param-name-input,
+      #parameterRows .expression-input,
+      #parameterRows .comment-input {
+        padding-right: 24px;
       }
 
       .revert-button {
@@ -1466,7 +1486,7 @@
         display: flex;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td.comments-cell .row-actions:not(.has-revert-action):not(.has-discard-action)::before {
+      body.narrow-stack #parameterRows tr.parameter-row td.comments-cell .row-actions:not(.has-revert-action)::before {
         content: "";
         display: inline-block;
         width: 74px;
@@ -1503,7 +1523,6 @@
       }
 
       body.narrow-stack #parameterRows tr.parameter-row .row-actions .revert-button,
-      body.narrow-stack #parameterRows tr.parameter-row .row-actions .discard-button,
       body.narrow-stack #parameterRows tr.parameter-row .row-actions .save-button {
         width: 74px;
         min-width: 74px;
@@ -3019,6 +3038,14 @@
             <div class="rail-actions">
               <span id="selectionCountChip" class="selection-chip" hidden>0 selected</span>
               <button id="newParamButton" class="ghost icon-btn" type="button" title="New Parameter" aria-label="New Parameter" aria-haspopup="dialog" aria-controls="createModal" aria-expanded="false">+</button>
+              <button id="timelineSortButton" class="ghost icon-btn" type="button" title="Sort by Timeline Order" aria-label="Sort by timeline order">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="3" y1="4" x2="11" y2="4"></line>
+                  <polyline points="10 2.7 11.8 4 10 5.3"></polyline>
+                  <line x1="5" y1="12" x2="13" y2="12"></line>
+                  <polyline points="6 10.7 4.2 12 6 13.3"></polyline>
+                </svg>
+              </button>
               <button id="refreshButton" class="ghost icon-btn" type="button" title="Refresh" aria-label="Refresh parameters">
                 <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.1-3.3"/><polyline points="13.5 2 13.5 5.5 10 5.5"/></svg>
               </button>
@@ -3849,6 +3876,7 @@
         pendingTableScrollAnchor: null,
         suppressNextFieldFocus: false,
         suppressNextRowClickSelectionKey: "",
+        pendingFieldDiscardRowKey: "",
         bridgeStringCompatWarned: false,
         initialLayoutDone: false,
         initialLayoutPassPending: false,
@@ -4396,6 +4424,12 @@
         button.textContent = `Compute: ${manual ? "Manual" : "Auto"}`;
       }
 
+      function applyComputeModeClasses() {
+        const manual = isManualComputeMode();
+        document.body.classList.toggle("compute-mode-manual", manual);
+        document.body.classList.toggle("compute-mode-auto", !manual);
+      }
+
       function syncRowCommitButtonLabels() {
         const label = isManualComputeMode() ? "Apply" : "Save";
         document.querySelectorAll("#parameterRows .save-button").forEach((button) => {
@@ -4406,6 +4440,7 @@
       function setComputeMode(mode) {
         state.settings.computeMode = normalizeComputeMode(mode);
         persistComputeMode(state.settings.computeMode);
+        applyComputeModeClasses();
         renderComputeModeButton();
         syncRowCommitButtonLabels();
         refreshBatchActionBar();
@@ -5467,6 +5502,39 @@
         renderParameters(state.parameters);
       }
 
+      async function sortByTimelineOrder() {
+        if (hasBlockingLocalEdits()) {
+          setGlobalStatus("Save or discard local edits before sorting by timeline.", "error");
+          return;
+        }
+
+        const previousSort = {
+          column: String(state.tableSort?.column || ""),
+          direction: String(state.tableSort?.direction || "asc")
+        };
+
+        // Timeline sort should be visible as-is, not overridden by header lexical sort.
+        state.tableSort.column = "";
+        state.tableSort.direction = "asc";
+        renderSortIndicators();
+
+        try {
+          setGlobalStatus("Sorting parameters by timeline order...");
+          const response = await sendToFusion(ACTION.SORT_BY_TIMELINE_ORDER, {});
+          if (!response.ok) {
+            throw new Error(response.message || "Timeline sort failed.");
+          }
+          applyStateFromFusion(response, { source: "response", action: ACTION.SORT_BY_TIMELINE_ORDER });
+          setGlobalStatus("Sorted parameters by timeline order.", "success");
+        } catch (error) {
+          state.tableSort.column = previousSort.column;
+          state.tableSort.direction = previousSort.direction === "desc" ? "desc" : "asc";
+          renderSortIndicators();
+          renderParameters(state.parameters);
+          setGlobalStatus(error.message || "Timeline sort failed.", "error");
+        }
+      }
+
       function autoSizeTextarea(textarea) {
         if (!textarea) {
           return;
@@ -5913,14 +5981,17 @@
                 </td>
                 <td class="param-name-cell">
                   <div class="param-name-editor">
-                    <input
-                      id="nameRow${renderRowCounter}"
-                      class="param-name-input"
-                      data-parameter-key="${safeKey}"
-                      data-saved-name="${safeName}"
-                      value="${safeName}"
-                      autocomplete="off"
-                    />
+                    <div class="dirty-field-shell">
+                      <input
+                        id="nameRow${renderRowCounter}"
+                        class="param-name-input"
+                        data-parameter-key="${safeKey}"
+                        data-saved-name="${safeName}"
+                        value="${safeName}"
+                        autocomplete="off"
+                      />
+                      <button class="field-discard-button" type="button" data-discard-field="name" title="Discard unsaved name edit." aria-label="Discard unsaved name edit.">&#8630;</button>
+                    </div>
                     <div class="field-error name-field-error" aria-live="polite"></div>
                   </div>
                 </td>
@@ -5931,8 +6002,9 @@
                   >${unitLabel}</span>
                 </td>
                 <td>
-                  <div class="field-shell">
+                  <div class="field-shell dirty-field-shell">
                     <input id="expressionRow${renderRowCounter}" class="mono expression-input" data-parameter-name="${safeName}" data-parameter-unit="${escapeHtml(param.unit || "")}" data-saved-expression="${safeExpression}" value="${safeExpression}" autocomplete="off" />
+                    <button class="field-discard-button" type="button" data-discard-field="expression" title="Discard unsaved expression edit." aria-label="Discard unsaved expression edit.">&#8630;</button>
                     <div class="field-error expression-field-error" aria-live="polite"></div>
                   </div>
                 </td>
@@ -5941,10 +6013,12 @@
                 </td>
                 <td class="comment-col comments-cell">
                   <div class="comment-shell">
-                    <textarea class="comment-input" data-saved-comment="${safeComment}">${safeComment}</textarea>
+                    <div class="dirty-field-shell">
+                      <textarea class="comment-input" data-saved-comment="${safeComment}">${safeComment}</textarea>
+                      <button class="field-discard-button" type="button" data-discard-field="comment" title="Discard unsaved comment edit." aria-label="Discard unsaved comment edit.">&#8630;</button>
+                    </div>
                     <div class="row-actions">
                       ${revertButton}
-                      <button class="discard-button" type="button" title="Discard unsaved edits in this row." aria-label="Discard unsaved edits in this row.">Discard</button>
                       <button class="save-button" type="button" disabled>${rowCommitLabel}</button>
                     </div>
                     <div class="narrow-expanded-kind">
@@ -6931,6 +7005,7 @@
         renderCommentColumnToggle();
         renderTextTunerSidebarToggle();
         renderComputeModeButton();
+        applyComputeModeClasses();
         renderImportConflictPolicySelect();
         renderPackageImportExportControls();
         document.body.classList.toggle("hide-comment", state.settings.showCommentColumn !== true);
@@ -8480,10 +8555,12 @@
         const expressionInput = row.querySelector(".expression-input");
         const commentInput = row.querySelector(".comment-input");
         const saveButton = row.querySelector(".save-button");
-        const discardButton = row.querySelector(".discard-button");
+        const nameDiscardButton = row.querySelector(".field-discard-button[data-discard-field='name']");
+        const expressionDiscardButton = row.querySelector(".field-discard-button[data-discard-field='expression']");
+        const commentDiscardButton = row.querySelector(".field-discard-button[data-discard-field='comment']");
         const revertButton = row.querySelector(".revert-button");
         const rowActions = row.querySelector(".row-actions");
-        if (!nameInput || !expressionInput || !commentInput || !saveButton || !discardButton) {
+        if (!nameInput || !expressionInput || !commentInput || !saveButton) {
           return;
         }
 
@@ -8499,8 +8576,15 @@
         saveButton.classList.toggle("is-dirty", isDirty);
         saveButton.classList.toggle("is-ready", isDirty && !expressionHasError && !nameHasError);
         saveButton.classList.toggle("is-error", isDirty && (expressionHasError || nameHasError));
-        discardButton.disabled = !isDirty;
-        discardButton.classList.toggle("is-dirty", isDirty);
+        if (nameDiscardButton) {
+          nameDiscardButton.classList.toggle("is-dirty", nameDirty);
+        }
+        if (expressionDiscardButton) {
+          expressionDiscardButton.classList.toggle("is-dirty", expressionDirty);
+        }
+        if (commentDiscardButton) {
+          commentDiscardButton.classList.toggle("is-dirty", commentDirty);
+        }
         if (revertButton) {
           const previousExpression = revertButton.getAttribute("data-previous-expression") || "";
           const canRevert = !!previousExpression && !isDirty;
@@ -8509,9 +8593,8 @@
         }
         if (rowActions) {
           rowActions.classList.toggle("has-revert-action", !!revertButton);
-          rowActions.classList.toggle("has-discard-action", isDirty);
         }
-        const hasVisibleSave = saveButton.classList.contains("is-dirty");
+        const hasVisibleSave = isManualComputeMode() && saveButton.classList.contains("is-dirty");
         const hasVisibleRevert = !!revertButton;
         row.classList.toggle("has-visible-actions", hasVisibleSave || hasVisibleRevert);
         const draftKey = getRowDraftKey(row);
@@ -8725,6 +8808,68 @@
           setGlobalStatus("Discarded unsaved row changes.", "success");
         }
         return true;
+      }
+
+      function discardRowFieldDraft(row, fieldKey, options = {}) {
+        const showStatus = options.showStatus !== false;
+        if (!row) {
+          return false;
+        }
+        const normalizedField = String(fieldKey || "").trim().toLowerCase();
+        const nameInput = row.querySelector(".param-name-input");
+        const expressionInput = row.querySelector(".expression-input");
+        const commentInput = row.querySelector(".comment-input");
+        if (!nameInput || !expressionInput || !commentInput) {
+          return false;
+        }
+
+        let changed = false;
+        let fieldLabel = "field";
+        if (normalizedField === "name") {
+          if (rowNameValidationTimer) {
+            window.clearTimeout(rowNameValidationTimer);
+            rowNameValidationTimer = null;
+          }
+          state.rowValidationRequestNonce += 1;
+          nameInput.setAttribute("data-name-validation-request-nonce", String(state.rowValidationRequestNonce));
+          const savedName = nameInput.getAttribute("data-saved-name") || "";
+          if (nameInput.value !== savedName) {
+            nameInput.value = savedName;
+            changed = true;
+          }
+          setRowNameValidationState(nameInput, "", "success");
+          fieldLabel = "name";
+        } else if (normalizedField === "expression") {
+          if (rowExpressionValidationTimer) {
+            window.clearTimeout(rowExpressionValidationTimer);
+            rowExpressionValidationTimer = null;
+          }
+          invalidateRowAsyncRequests(expressionInput);
+          const savedExpression = expressionInput.getAttribute("data-saved-expression") || "";
+          if (expressionInput.value !== savedExpression) {
+            expressionInput.value = savedExpression;
+            changed = true;
+          }
+          setExpressionValidationState(expressionInput, "", "success");
+          restoreRowPreview(expressionInput);
+          fieldLabel = "expression";
+        } else if (normalizedField === "comment") {
+          const savedComment = commentInput.getAttribute("data-saved-comment") || "";
+          if (commentInput.value !== savedComment) {
+            commentInput.value = savedComment;
+            changed = true;
+          }
+          autoSizeTextarea(commentInput);
+          fieldLabel = "comment";
+        } else {
+          return false;
+        }
+
+        updateRowSaveState(row);
+        if (showStatus && changed) {
+          setGlobalStatus(`Discarded unsaved ${fieldLabel} edit.`, "success");
+        }
+        return changed;
       }
 
       async function applyRowDraft(row, options = {}) {
@@ -9184,6 +9329,10 @@
         refreshParameters();
       });
 
+      document.getElementById("timelineSortButton").addEventListener("click", async () => {
+        await sortByTimelineOrder();
+      });
+
       document.getElementById("settingsGearButton").addEventListener("click", () => {
         toggleSettingsPanel();
       });
@@ -9564,6 +9713,19 @@
         }
       }, true);
 
+      parameterRows.addEventListener("mousedown", (event) => {
+        const discardButton = event.target.closest(".field-discard-button[data-discard-field]");
+        if (!discardButton) {
+          return;
+        }
+        const row = discardButton.closest("tr.parameter-row[data-parameter-key]");
+        if (!row) {
+          state.pendingFieldDiscardRowKey = "";
+          return;
+        }
+        state.pendingFieldDiscardRowKey = String(row.getAttribute("data-parameter-key") || "");
+      }, true);
+
       parameterRows.addEventListener("wheel", (event) => {
         if (!(event.ctrlKey || event.metaKey || event.shiftKey)) {
           return;
@@ -9800,6 +9962,31 @@
         if (rowNameValidationTimer) {
           window.clearTimeout(rowNameValidationTimer);
           rowNameValidationTimer = null;
+        }
+
+        const rowForFocusout = (nameInput || input || commentInput)
+          ? (nameInput || input || commentInput).closest("tr.parameter-row[data-parameter-key]")
+          : null;
+        const rowKeyForFocusout = String(rowForFocusout?.getAttribute("data-parameter-key") || "");
+        const relatedTarget = event.relatedTarget && typeof event.relatedTarget.closest === "function"
+          ? event.relatedTarget
+          : null;
+        const discardTarget = relatedTarget
+          ? relatedTarget.closest(".field-discard-button[data-discard-field]")
+          : null;
+        const discardTargetRowKey = discardTarget
+          ? String(discardTarget.closest("tr.parameter-row[data-parameter-key]")?.getAttribute("data-parameter-key") || "")
+          : "";
+        const discardIntentOnSameRow = (
+          !isManualComputeMode()
+          && rowKeyForFocusout
+          && (
+            state.pendingFieldDiscardRowKey === rowKeyForFocusout
+            || (discardTarget && discardTargetRowKey === rowKeyForFocusout)
+          )
+        );
+        if (discardIntentOnSameRow) {
+          return;
         }
 
         if (nameInput) {
@@ -10357,6 +10544,7 @@
       });
 
       document.addEventListener("mouseup", () => {
+        state.pendingFieldDiscardRowKey = "";
         if (state.activeRowDrag) {
           finishRowDrag();
         }
@@ -11000,15 +11188,17 @@
           return;
         }
 
+        const fieldDiscardButton = event.target.closest(".field-discard-button[data-discard-field]");
         const button = event.target.closest(".save-button");
-        const discardButton = event.target.closest(".discard-button");
-        if (!button && !discardButton) {
+        if (!button && !fieldDiscardButton) {
           return;
         }
 
-        if (discardButton) {
-          const row = discardButton.closest("tr");
-          discardRowDraft(row, { showStatus: true });
+        if (fieldDiscardButton) {
+          state.pendingFieldDiscardRowKey = "";
+          const row = fieldDiscardButton.closest("tr");
+          const field = fieldDiscardButton.getAttribute("data-discard-field") || "";
+          discardRowFieldDraft(row, field, { showStatus: true });
           return;
         }
 
