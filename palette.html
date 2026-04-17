@@ -3553,6 +3553,9 @@
         pendingRenderPushEnvelope: null,
         pendingRenderPushAction: "",
         pendingRenderPushNoticeShown: false,
+        pendingTableScrollAnchor: null,
+        suppressNextFieldFocus: false,
+        suppressNextRowClickSelectionKey: "",
         bridgeStringCompatWarned: false,
         initialLayoutDone: false,
         initialLayoutPassPending: false,
@@ -5113,6 +5116,7 @@
           tbody.innerHTML = `<tr><td colspan="6" class="empty">No user parameters were found in the active design.</td></tr>`;
           renderReorderMenuGroupOptions();
           applySelectedRowState();
+          restorePendingTableScrollAnchor();
           return;
         }
 
@@ -5121,6 +5125,7 @@
           tbody.innerHTML = `<tr><td colspan="6" class="empty">No parameters match your search.</td></tr>`;
           renderReorderMenuGroupOptions();
           applySelectedRowState();
+          restorePendingTableScrollAnchor();
           return;
         }
 
@@ -5129,6 +5134,7 @@
         const rowCommitLabel = isManualComputeMode() ? "Apply" : "Save";
         const pieces = [];
         let renderRowCounter = 0;
+        let nonFavoritesStripeCursor = 0;
         for (const groupBlock of grouped) {
           ensureGroupUiState(groupBlock.label);
           const groupCollapsed = isGroupCollapsed(groupBlock.label);
@@ -5190,7 +5196,21 @@
             const revertButton = (showRevert && hasRevert)
               ? `<button class="revert-button" type="button" data-previous-expression="${safePreviousExpression}" title="${revertTitle}"${previousExpression ? "" : " disabled"}>Revert</button>`
               : "";
-            const stripeClass = renderRowCounter % 2 === 0 ? " is-even" : " is-odd";
+            // Hybrid striping:
+            // - Non-favorites rows keep a stable continuous phase.
+            // - Favorites rows are phase-adjusted so the *last* favorites row
+            //   contrasts with the first non-favorites row, avoiding boundary blends.
+            const stripeParity = (() => {
+              if (!isFavoritesGroup) {
+                return (nonFavoritesStripeCursor + index) % 2;
+              }
+              const favoritesCount = Math.max(0, Number(groupBlock.parameters.length || 0));
+              const nextNonFavoritesStartParity = nonFavoritesStripeCursor % 2;
+              const desiredFavoritesLastParity = nextNonFavoritesStartParity ^ 1;
+              const favoritesStartParity = desiredFavoritesLastParity ^ ((Math.max(0, favoritesCount - 1)) % 2);
+              return favoritesStartParity ^ (index % 2);
+            })();
+            const stripeClass = (stripeParity === 0) ? " is-even" : " is-odd";
             const hiddenClass = groupCollapsed ? " is-hidden-by-group" : "";
             const narrowExpandedClass = isNarrowExpanded ? " is-narrow-expanded" : "";
             const narrowToggleGlyph = isNarrowExpanded ? "\u25be" : "\u25b8";
@@ -5260,6 +5280,10 @@
               </tr>
             `);
           });
+
+          if (!isFavoritesGroup) {
+            nonFavoritesStripeCursor += groupBlock.parameters.length;
+          }
         }
 
         tbody.innerHTML = pieces.join("");
@@ -5274,6 +5298,74 @@
         tbody.querySelectorAll("tr").forEach((row) => updateRowSaveState(row));
         applySelectedRowState();
         refreshBatchActionBar();
+        restorePendingTableScrollAnchor();
+      }
+
+      function getTableWrapElement() {
+        return document.querySelector(".table-wrap");
+      }
+
+      function captureTableScrollAnchorFromRow(row) {
+        if (!row) {
+          return;
+        }
+        const wrap = getTableWrapElement();
+        if (!wrap) {
+          return;
+        }
+        const key = String(row.getAttribute("data-parameter-key") || "");
+        if (!key) {
+          return;
+        }
+        const wrapRect = wrap.getBoundingClientRect();
+        const rowRect = row.getBoundingClientRect();
+        state.pendingTableScrollAnchor = {
+          key,
+          favoritesRow: row.getAttribute("data-favorites-row") === "true",
+          topOffset: rowRect.top - wrapRect.top,
+          scrollTop: Number(wrap.scrollTop || 0)
+        };
+      }
+
+      function restorePendingTableScrollAnchor() {
+        const anchor = state.pendingTableScrollAnchor;
+        if (!anchor) {
+          return;
+        }
+        state.pendingTableScrollAnchor = null;
+        const wrap = getTableWrapElement();
+        if (!wrap) {
+          return;
+        }
+
+        const rows = Array.from(document.querySelectorAll("#parameterRows tr.parameter-row[data-parameter-key]"));
+        let target = rows.find((row) => (
+          String(row.getAttribute("data-parameter-key") || "") === anchor.key
+          && (row.getAttribute("data-favorites-row") === "true") === !!anchor.favoritesRow
+        ));
+        // If anchor came from Favorites and that specific row no longer exists
+        // (e.g. un-favorite), do not jump to the duplicate non-favorites row.
+        // Keep viewport at prior scrollTop for stability.
+        if (!target && anchor.favoritesRow === true) {
+          wrap.scrollTop = Math.max(0, Number(anchor.scrollTop || 0));
+          return;
+        }
+        if (!target) {
+          target = rows.find((row) => String(row.getAttribute("data-parameter-key") || "") === anchor.key) || null;
+        }
+
+        if (!target) {
+          wrap.scrollTop = Math.max(0, Number(anchor.scrollTop || 0));
+          return;
+        }
+
+        const wrapRect = wrap.getBoundingClientRect();
+        const rowRect = target.getBoundingClientRect();
+        const delta = (rowRect.top - wrapRect.top) - Number(anchor.topOffset || 0);
+        if (Math.abs(delta) < 0.5) {
+          return;
+        }
+        wrap.scrollTop = Math.max(0, Number(wrap.scrollTop || 0) + delta);
       }
 
       function getRowSelectionFromElement(row) {
@@ -5283,6 +5375,24 @@
         return {
           key: row.getAttribute("data-parameter-key") || "",
           favoritesRow: row.getAttribute("data-favorites-row") === "true"
+        };
+      }
+
+      function isEditableRowFieldTarget(target) {
+        if (!target || typeof target.closest !== "function") {
+          return false;
+        }
+        return !!target.closest(".param-name-input, .expression-input, .comment-input");
+      }
+
+      function wheelDeltaToPixels(event) {
+        const mode = Number(event?.deltaMode || 0);
+        const linePx = 16;
+        const pagePx = window.innerHeight || 800;
+        const scale = mode === 1 ? linePx : (mode === 2 ? pagePx : 1);
+        return {
+          x: Number(event?.deltaX || 0) * scale,
+          y: Number(event?.deltaY || 0) * scale
         };
       }
 
@@ -8548,11 +8658,62 @@
         if (!row) {
           return;
         }
+        const rowKey = String(row.getAttribute("data-parameter-key") || "");
+        if (rowKey && state.suppressNextRowClickSelectionKey === rowKey) {
+          state.suppressNextRowClickSelectionKey = "";
+          return;
+        }
+        state.suppressNextRowClickSelectionKey = "";
         setSelectedParameterRow(row, {
           additive: event.ctrlKey || event.metaKey,
           range: event.shiftKey
         });
       });
+
+      parameterRows.addEventListener("mousedown", (event) => {
+        if (!(event.ctrlKey || event.metaKey || event.shiftKey)) {
+          return;
+        }
+        if (!isEditableRowFieldTarget(event.target)) {
+          return;
+        }
+        const row = event.target.closest("tr.parameter-row[data-parameter-key]");
+        if (!row) {
+          return;
+        }
+        event.preventDefault();
+        state.suppressNextFieldFocus = true;
+        state.suppressNextRowClickSelectionKey = String(row.getAttribute("data-parameter-key") || "");
+        setSelectedParameterRow(row, {
+          additive: event.ctrlKey || event.metaKey,
+          range: event.shiftKey
+        });
+      }, true);
+
+      parameterRows.addEventListener("wheel", (event) => {
+        if (!(event.ctrlKey || event.metaKey || event.shiftKey)) {
+          return;
+        }
+        const wrap = getTableWrapElement();
+        if (!wrap) {
+          return;
+        }
+        const delta = wheelDeltaToPixels(event);
+        if (!delta.x && !delta.y) {
+          return;
+        }
+        event.preventDefault();
+        // Keep wheel scrolling reliable during modifier-selection gestures:
+        // - route all modifier-wheel input to table scroll (including group rows)
+        // - normalize Shift+wheel to vertical table scrolling
+        const verticalDelta = Math.abs(delta.y) > 0.01 ? delta.y : (event.shiftKey ? delta.x : 0);
+        if (verticalDelta) {
+          wrap.scrollTop += verticalDelta;
+        }
+        if (!event.shiftKey && Math.abs(delta.x) > 0.01) {
+          wrap.scrollLeft += delta.x;
+        }
+      }, { capture: true, passive: false });
 
       parameterRows.addEventListener("input", (event) => {
         const nameInput = event.target.closest(".param-name-input");
@@ -8787,6 +8948,15 @@
       });
 
       parameterRows.addEventListener("focusin", (event) => {
+        if (state.suppressNextFieldFocus && isEditableRowFieldTarget(event.target)) {
+          state.suppressNextFieldFocus = false;
+          if (typeof event.target.blur === "function") {
+            event.target.blur();
+          }
+          return;
+        }
+        state.suppressNextFieldFocus = false;
+
         const row = event.target.closest("tr.parameter-row[data-parameter-key]");
         if (row) {
           const key = String(row.getAttribute("data-parameter-key") || "");
@@ -9709,6 +9879,7 @@
             return;
           }
 
+          captureTableScrollAnchorFromRow(row);
           favoriteButton.disabled = true;
           try {
             const response = await sendToFusion(ACTION.SET_PARAMETER_FAVORITE, {
@@ -9722,6 +9893,7 @@
             applyStateFromFusion(response);
             setGlobalStatus(`${parameter.name} ${parameter.isFavorite ? "removed from" : "added to"} favorites.`, "success");
           } catch (error) {
+            state.pendingTableScrollAnchor = null;
             favoriteButton.disabled = false;
             setGlobalStatus(error.message, "error");
           }
