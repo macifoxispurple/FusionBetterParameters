@@ -15,6 +15,7 @@ import traceback
 import urllib.error
 import urllib.request
 import uuid
+import webbrowser
 import zipfile
 from pathlib import Path
 
@@ -540,6 +541,10 @@ def _handle_palette_action(action, data):
 
     if action == "validateUnit":
         result = _validate_unit_response(data.get("unit", ""))
+        return {**result, "state": None}
+
+    if action == "openHelpUrl":
+        result = _open_help_url(data)
         return {**result, "state": None}
 
     if action == "getActiveDocumentInfo":
@@ -2803,6 +2808,19 @@ def _known_unit_identifiers():
         "J", "kJ", "W", "kW", "hp", "mm/s", "cm/s", "m/s", "in/s", "ft/s",
         "Text",
     }
+
+
+def _open_help_url(data):
+    url = str(data.get("url") if isinstance(data, dict) else "").strip()
+    if not url:
+        return {"ok": False, "message": '"url" is required.'}
+    if not (url.startswith("http://") or url.startswith("https://")):
+        return {"ok": False, "message": '"url" must start with "http://" or "https://".'}
+    try:
+        webbrowser.open(url)
+        return {"ok": True, "message": ""}
+    except Exception as exc:
+        return {"ok": False, "message": f"Could not open URL: {exc}"}
 
 
 def _validate_unit_response(unit_text):
