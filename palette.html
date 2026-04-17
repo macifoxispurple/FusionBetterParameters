@@ -1023,23 +1023,8 @@
         white-space: nowrap;
       }
 
-      .unit-inline-button {
-        appearance: none;
-        border: none;
-        background: transparent;
-        padding: 0;
-        margin: 0;
-        cursor: pointer;
-        display: block;
-        width: 100%;
-        text-align: left;
-      }
-
-      .unit-inline-button:hover,
-      .unit-inline-button:focus-visible {
-        color: var(--accent) !important;
-        text-decoration: underline;
-        outline: none;
+      .unit-display {
+        cursor: default;
       }
 
       .narrow-expanded-kind {
@@ -3164,8 +3149,8 @@
         "setParameterFavorite", "setParameterGroup", "renameGroup", "deleteGroup",
         "saveParameterOrder", "saveGroupUiState", "saveSettings", "savePaletteGeometry",
         "getTextTunerState", "saveTextTunerState",
-        "validateParameterName", "validateExpression", "previewExpression", "validateUnit", "validateUnitChange",
-        "renameParameter", "updateParameterUnit", "copyParameter", "deleteParameters", "sortByTimelineOrder",
+        "validateParameterName", "validateExpression", "previewExpression", "validateUnit",
+        "renameParameter", "copyParameter", "deleteParameters", "sortByTimelineOrder",
         "importParameters", "exportParameters",
         "openHelpUrl",
         "checkForUpdates", "downloadAndStageUpdate",
@@ -3175,13 +3160,13 @@
         "ready", "refresh", "createParameter", "deleteParameter", "updateParameter", "revertParameter",
         "setParameterFavorite", "setParameterGroup", "renameGroup", "deleteGroup",
         "saveParameterOrder", "saveGroupUiState", "saveSettings", "savePaletteGeometry",
-        "renameParameter", "updateParameterUnit", "copyParameter", "deleteParameters", "sortByTimelineOrder",
+        "renameParameter", "copyParameter", "deleteParameters", "sortByTimelineOrder",
         "importParameters",
         "saveTextTunerState", "checkForUpdates", "downloadAndStageUpdate",
         "syncMetadataJsonToFusion", "syncMetadataFusionToJson", "repairMetadata"
       ]);
       const READ_ONLY_OR_VALIDATION_ACTIONS = new Set([
-        "getTextTunerState", "validateParameterName", "validateExpression", "previewExpression", "validateUnit", "validateUnitChange",
+        "getTextTunerState", "validateParameterName", "validateExpression", "previewExpression", "validateUnit",
         "exportParameters", "openHelpUrl"
       ]);
       const MOCK_BRIDGE_ENABLED = !!window.__BP_USE_MOCK_BRIDGE;
@@ -4976,7 +4961,10 @@
                   <strong class="param-name-text">${safeName}</strong>
                 </td>
                 <td class="unit-cell">
-                  <button class="unit-text unit-inline-button" type="button" data-row-unit-edit="true" title="Edit unit">${unitLabel}</button>
+                  <span
+                    class="unit-text unit-display"
+                    title="Unit is set at parameter creation and cannot be changed. To use a different unit in an expression, type it directly - e.g. 5 ft on a mm parameter is valid and converts automatically."
+                  >${unitLabel}</span>
                 </td>
                 <td>
                   <div class="field-shell">
@@ -6536,7 +6524,7 @@
             if (action === "previewExpression") {
               return { ok: true, message: "", state: null, preview: "0 mm" };
             }
-            if (action === "validateExpression" || action === "validateParameterName" || action === "validateUnit" || action === "validateUnitChange") {
+            if (action === "validateExpression" || action === "validateParameterName" || action === "validateUnit") {
               return { ok: true, message: "", state: null };
             }
             return { ok: false, message: `Unknown action: ${action}`, state: null, traceback: "" };
@@ -7486,72 +7474,6 @@
           }
           setExpressionValidationState(expressionInput, error.message || "Apply failed.", "error");
           return { ok: false, key: parameterKey, name: parameter.name, message: error.message || "Apply failed." };
-        }
-      }
-
-      async function editRowUnit(row) {
-        if (!row) {
-          return;
-        }
-
-        const parameter = getParameterForRow(row);
-        if (!parameter) {
-          setGlobalStatus("Parameter not found for unit edit.", "error");
-          return;
-        }
-
-        const expressionInput = row.querySelector(".expression-input");
-        const commentInput = row.querySelector(".comment-input");
-        if (!expressionInput || !commentInput) {
-          setGlobalStatus("Row inputs are not available for unit edit.", "error");
-          return;
-        }
-
-        const currentUnit = String(parameter.unit || "").trim();
-        const currentExpression = String(expressionInput.value || "").trim();
-        const promptLabel = parameter.name || "parameter";
-        const entered = window.prompt(`Set unit for ${promptLabel}:`, currentUnit);
-        if (entered === null) {
-          return;
-        }
-
-        const requestedUnit = String(entered || "").trim();
-        if (!requestedUnit || requestedUnit.toLowerCase() === currentUnit.toLowerCase()) {
-          return;
-        }
-        if (!currentExpression) {
-          setGlobalStatus("Expression is required before changing unit.", "error");
-          return;
-        }
-
-        try {
-          setGlobalStatus(`Validating unit change for ${parameter.name}...`);
-          const validateResponse = await sendToFusion("validateUnitChange", {
-            key: parameter.key || "",
-            name: parameter.name,
-            newUnit: requestedUnit,
-            newExpression: currentExpression
-          });
-          if (!validateResponse.ok) {
-            throw new Error(validateResponse.message || "Invalid unit change.");
-          }
-
-          setGlobalStatus(`Applying unit change for ${parameter.name}...`);
-          const updateResponse = await sendToFusion("updateParameterUnit", {
-            key: parameter.key || "",
-            name: parameter.name,
-            newUnit: requestedUnit,
-            newExpression: currentExpression,
-            comment: commentInput.value || ""
-          });
-          if (!updateResponse.ok) {
-            throw new Error(updateResponse.message || "Unit update failed.");
-          }
-
-          applyStateFromFusion(updateResponse, { source: "response", action: "updateParameterUnit" });
-          setGlobalStatus(`Updated unit for ${parameter.name} to ${requestedUnit}.`, "success");
-        } catch (error) {
-          setGlobalStatus(error.message || "Unit update failed.", "error");
         }
       }
 
@@ -9314,13 +9236,6 @@
             favoriteButton.disabled = false;
             setGlobalStatus(error.message, "error");
           }
-          return;
-        }
-
-        const unitEditButton = event.target.closest("[data-row-unit-edit]");
-        if (unitEditButton) {
-          const row = unitEditButton.closest("tr.parameter-row[data-parameter-key]");
-          await editRowUnit(row);
           return;
         }
 
