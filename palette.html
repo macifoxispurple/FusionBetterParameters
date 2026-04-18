@@ -1912,6 +1912,56 @@
         border-color: var(--error);
       }
 
+      .model-parameters-section {
+        border-top: 1px solid var(--line-subtle);
+        padding: 8px;
+        display: grid;
+        gap: 8px;
+        background: color-mix(in srgb, var(--panel-raised) 92%, transparent);
+      }
+
+      .model-parameters-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .model-parameters-body {
+        display: grid;
+        gap: 8px;
+      }
+
+      .model-parameters-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
+      .model-parameters-toolbar .search-input {
+        min-width: 220px;
+        max-width: 340px;
+      }
+
+      .model-parameters-table-wrap {
+        border: 1px solid var(--line-subtle);
+        border-radius: 6px;
+        overflow: auto;
+        max-height: 300px;
+        background: var(--panel);
+      }
+
+      .model-parameters-table-wrap .model-group-header-row td {
+        background: var(--group-row-bg);
+        color: var(--ink);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+        padding: 5px 8px;
+        border-bottom: 1px solid var(--line-subtle);
+      }
+
       .search-icon {
         position: absolute;
         left: 7px;
@@ -3243,6 +3293,42 @@
               <button id="applyAllButton" class="primary" type="button">Apply All</button>
             </div>
           </div>
+          <div id="modelParametersSection" class="model-parameters-section" hidden>
+            <div class="model-parameters-header">
+              <button id="modelParametersToggle" class="ghost" type="button" aria-expanded="false">Model Parameters</button>
+              <span id="modelParametersCount" class="section-meta">0</span>
+            </div>
+            <div id="modelParametersBody" class="model-parameters-body" hidden>
+              <div class="model-parameters-toolbar">
+                <input id="modelParametersFilter" class="search-input" type="search" placeholder="Filter model parameters" autocomplete="off" aria-label="Filter model parameters" />
+                <button id="modelParametersSearchButton" class="ghost" type="button">Search</button>
+                <button id="modelParametersClearButton" class="ghost" type="button">Clear</button>
+                <button id="modelParametersPrevButton" class="ghost" type="button">Prev</button>
+                <button id="modelParametersNextButton" class="ghost" type="button">Next</button>
+                <span id="modelParametersPageInfo" class="section-meta"></span>
+              </div>
+              <div id="modelParametersStatus" class="section-meta"></div>
+              <div class="model-parameters-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th class="parameter-col">Parameter</th>
+                      <th>Name</th>
+                      <th class="unit-col">Unit</th>
+                      <th>Expression</th>
+                      <th class="value-col">Value</th>
+                      <th class="comment-col comments-col">Comments</th>
+                    </tr>
+                  </thead>
+                  <tbody id="modelParameterRows">
+                    <tr>
+                      <td colspan="6" class="empty">Expand to load model parameters.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </section>
 
       </div>
@@ -3610,6 +3696,7 @@
       const RAW_TRACE_ENABLED_STORAGE_KEY = "bp_raw_trace_enabled";
       const RAW_TRACE_MAX_ENTRIES = 1200;
       const RAW_TRACE_MAX_PAYLOAD_CHARS = 8000;
+      const TABLE_SORT_STATE_STORAGE_KEY = "bp_table_sort_state_v1";
       const ACTION = Object.freeze({
         READY: "ready",
         REFRESH: "refresh",
@@ -3631,6 +3718,7 @@
         VALIDATE_EXPRESSION: "validateExpression",
         PREVIEW_EXPRESSION: "previewExpression",
         VALIDATE_UNIT: "validateUnit",
+        GET_MODEL_PARAMETERS: "getModelParameters",
         RENAME_PARAMETER: "renameParameter",
         UPDATE_MODEL_PARAMETER: "updateModelParameter",
         BATCH_UPDATE_PARAMETERS: "batchUpdateParameters",
@@ -3660,7 +3748,7 @@
         ACTION.SET_PARAMETER_FAVORITE, ACTION.SET_PARAMETER_GROUP, ACTION.RENAME_GROUP, ACTION.DELETE_GROUP,
         ACTION.SAVE_PARAMETER_ORDER, ACTION.SAVE_GROUP_UI_STATE, ACTION.SAVE_SETTINGS, ACTION.SAVE_PALETTE_GEOMETRY,
         ACTION.GET_TEXT_TUNER_STATE, ACTION.SAVE_TEXT_TUNER_STATE,
-        ACTION.VALIDATE_PARAMETER_NAME, ACTION.VALIDATE_EXPRESSION, ACTION.PREVIEW_EXPRESSION, ACTION.VALIDATE_UNIT,
+        ACTION.VALIDATE_PARAMETER_NAME, ACTION.VALIDATE_EXPRESSION, ACTION.PREVIEW_EXPRESSION, ACTION.VALIDATE_UNIT, ACTION.GET_MODEL_PARAMETERS,
         ACTION.RENAME_PARAMETER, ACTION.UPDATE_MODEL_PARAMETER, ACTION.BATCH_UPDATE_PARAMETERS, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
         ACTION.GET_BACKEND_CONTRACT_INFO, ACTION.GET_PARAMETER_DEPENDENCY_GRAPH, ACTION.RUN_SELF_TEST_SUITE,
         ACTION.SEED_TEST_PARAMETERS, ACTION.RESET_TEST_STATE,
@@ -3682,7 +3770,7 @@
         ACTION.SYNC_METADATA_JSON_TO_FUSION, ACTION.SYNC_METADATA_FUSION_TO_JSON, ACTION.REPAIR_METADATA
       ]);
       const READ_ONLY_OR_VALIDATION_ACTIONS = new Set([
-        ACTION.GET_TEXT_TUNER_STATE, ACTION.VALIDATE_PARAMETER_NAME, ACTION.VALIDATE_EXPRESSION, ACTION.PREVIEW_EXPRESSION, ACTION.VALIDATE_UNIT,
+        ACTION.GET_TEXT_TUNER_STATE, ACTION.VALIDATE_PARAMETER_NAME, ACTION.VALIDATE_EXPRESSION, ACTION.PREVIEW_EXPRESSION, ACTION.VALIDATE_UNIT, ACTION.GET_MODEL_PARAMETERS,
         ACTION.EXPORT_PARAMETERS, ACTION.EXPORT_PARAMETERS_PACKAGE, ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, ACTION.COPY_TO_CLIPBOARD, ACTION.OPEN_HELP_URL,
         ACTION.GET_BACKEND_CONTRACT_INFO, ACTION.GET_PARAMETER_DEPENDENCY_GRAPH, ACTION.RUN_SELF_TEST_SUITE
       ]);
@@ -3712,6 +3800,37 @@
           return true;
         }
         return false;
+      }
+
+      function normalizeStoredTableSort(raw) {
+        const fallback = { column: "", direction: "asc" };
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+          return fallback;
+        }
+        const column = String(raw.column || "").trim().toLowerCase();
+        const allowed = new Set(["parameter", "name", "unit", "expression", "value", "comment", ""]);
+        const safeColumn = allowed.has(column) ? column : "";
+        const direction = String(raw.direction || "asc").trim().toLowerCase() === "desc" ? "desc" : "asc";
+        return { column: safeColumn, direction };
+      }
+
+      function loadStoredTableSort() {
+        try {
+          const raw = localStorage.getItem(TABLE_SORT_STATE_STORAGE_KEY);
+          if (!raw) {
+            return { column: "", direction: "asc" };
+          }
+          return normalizeStoredTableSort(JSON.parse(raw));
+        } catch (_) {
+          return { column: "", direction: "asc" };
+        }
+      }
+
+      function persistTableSortState() {
+        try {
+          const payload = normalizeStoredTableSort(state.tableSort || {});
+          localStorage.setItem(TABLE_SORT_STATE_STORAGE_KEY, JSON.stringify(payload));
+        } catch (_) {}
       }
 
       function getDefaultPackageImportOptions() {
@@ -3966,6 +4085,17 @@
 
       const state = {
         parameters: [],
+        modelParameterCount: 0,
+        modelParameterPage: {
+          rows: [],
+          totalCount: 0,
+          offset: 0,
+          limit: 200,
+          filter: "",
+          loaded: false,
+          loading: false,
+          error: ""
+        },
         searchQuery: "",
         groups: [],
         parameterNames: [],
@@ -4085,10 +4215,7 @@
           userOnly: true,
           favoritesOnly: false
         },
-        tableSort: {
-          column: "",
-          direction: "asc"
-        },
+        tableSort: loadStoredTableSort(),
         timelineSortActive: false,
         expandedRows: {},
         localPreviousExpressions: {},
@@ -4124,7 +4251,8 @@
           }
         }()),
         layoutDebugUpdatePending: false,
-        importConflictPolicy: "skip"
+        importConflictPolicy: "skip",
+        modelParametersCollapsed: false
       };
       let textTunerLiveApplyTimer = null;
       let textTunerPersistTimer = null;
@@ -4973,7 +5101,7 @@
       }
 
       function getDirtyParameterRows() {
-        return Array.from(document.querySelectorAll("#parameterRows tr.parameter-row.is-dirty[data-parameter-key]"));
+        return Array.from(document.querySelectorAll("#parameterRows tr.parameter-row.is-dirty[data-parameter-key][data-parameter-scope='user']"));
       }
 
       function getSelectedParameterKeys() {
@@ -5025,7 +5153,7 @@
       }
 
       function getSelectableRowsUniqueByKey() {
-        const rows = Array.from(document.querySelectorAll("#parameterRows tr.parameter-row[data-parameter-key]"));
+        const rows = Array.from(document.querySelectorAll("#parameterRows tr.parameter-row[data-parameter-key][data-row-selectable='true']"));
         const seen = new Set();
         return rows.filter((row) => {
           const key = String(row.getAttribute("data-parameter-key") || "");
@@ -5038,12 +5166,12 @@
       }
 
       function getSelectableRowsInRenderOrder() {
-        return Array.from(document.querySelectorAll("#parameterRows tr.parameter-row[data-parameter-key]"));
+        return Array.from(document.querySelectorAll("#parameterRows tr.parameter-row[data-parameter-key][data-row-selectable='true']"));
       }
 
       function pruneSelectionToVisibleRows() {
         const visibleKeys = new Set(
-          Array.from(document.querySelectorAll("#parameterRows tr.parameter-row[data-parameter-key]"))
+          Array.from(document.querySelectorAll("#parameterRows tr.parameter-row[data-parameter-key][data-row-selectable='true']"))
             .map((row) => String(row.getAttribute("data-parameter-key") || ""))
             .filter(Boolean)
         );
@@ -5065,19 +5193,21 @@
       }
 
       function hasLocalDirtyRowsInDom() {
-        return !!document.querySelector("#parameterRows tr.parameter-row.is-dirty[data-parameter-key]");
+        return !!document.querySelector("tr.parameter-row.is-dirty[data-parameter-key]");
       }
 
       function isParameterRowAttached(row) {
         if (!row || typeof row.matches !== "function") {
           return false;
         }
-        const container = document.getElementById("parameterRows");
-        return !!(container && container.contains(row) && row.matches("tr.parameter-row[data-parameter-key]"));
+        const userContainer = document.getElementById("parameterRows");
+        const modelContainer = document.getElementById("modelParameterRows");
+        const attached = (userContainer && userContainer.contains(row)) || (modelContainer && modelContainer.contains(row));
+        return !!(attached && row.matches("tr.parameter-row[data-parameter-key]"));
       }
 
       function hasAnyRowApplyInFlight() {
-        return !!document.querySelector('#parameterRows tr.parameter-row[data-row-applying="true"]');
+        return !!document.querySelector('tr.parameter-row[data-row-applying="true"]');
       }
 
       function hasBlockingLocalEdits() {
@@ -6306,6 +6436,38 @@
         setReorderMenuMode();
       }
 
+      async function toggleModelParametersSection() {
+        state.modelParametersCollapsed = !state.modelParametersCollapsed;
+        renderModelParametersSection();
+        if (!state.modelParametersCollapsed && state.modelParameterPage.loaded !== true) {
+          await fetchModelParametersPage({ offset: 0, limit: state.modelParameterPage.limit, filter: state.modelParameterPage.filter });
+        }
+      }
+
+      async function searchModelParameters() {
+        const input = document.getElementById("modelParametersFilter");
+        const filter = String(input?.value || "").trim();
+        await fetchModelParametersPage({ offset: 0, limit: state.modelParameterPage.limit, filter });
+      }
+
+      async function pageModelParameters(direction) {
+        const page = state.modelParameterPage || {};
+        const limit = getModelPageSize();
+        const total = Math.max(0, Number(page.totalCount || 0));
+        let nextOffset = Number(page.offset || 0);
+        if (direction > 0) {
+          nextOffset += limit;
+        } else if (direction < 0) {
+          nextOffset -= limit;
+        }
+        nextOffset = normalizeModelPageOffset(nextOffset, total);
+        await fetchModelParametersPage({
+          offset: nextOffset,
+          limit,
+          filter: page.filter || ""
+        });
+      }
+
       function toggleTableSortForColumn(column) {
         const col = String(column || "").trim().toLowerCase();
         if (!col) {
@@ -6321,6 +6483,7 @@
           state.tableSort.direction = "asc";
         }
         state.timelineSortActive = false;
+        persistTableSortState();
         renderSortIndicators();
         renderTimelineSortButtonState();
         renderParameters(state.parameters);
@@ -6341,6 +6504,7 @@
         state.tableSort.column = "";
         state.tableSort.direction = "asc";
         state.timelineSortActive = false;
+        persistTableSortState();
         renderSortIndicators();
         renderTimelineSortButtonState();
 
@@ -6358,6 +6522,7 @@
           state.tableSort.column = previousSort.column;
           state.tableSort.direction = previousSort.direction === "desc" ? "desc" : "asc";
           state.timelineSortActive = false;
+          persistTableSortState();
           renderSortIndicators();
           renderTimelineSortButtonState();
           renderParameters(state.parameters);
@@ -6810,6 +6975,7 @@
           tbody.innerHTML = `<tr><td colspan="${visibleColspan}" class="empty">No user parameters were found in the active design.</td></tr>`;
           renderReorderMenuGroupOptions();
           applySelectedRowState();
+          renderModelParametersSection();
           restorePendingTableScrollAnchor();
           scheduleLayoutDebugPanelUpdate();
           return;
@@ -6820,6 +6986,7 @@
           tbody.innerHTML = `<tr><td colspan="${visibleColspan}" class="empty">No parameters match your search.</td></tr>`;
           renderReorderMenuGroupOptions();
           applySelectedRowState();
+          renderModelParametersSection();
           restorePendingTableScrollAnchor();
           scheduleLayoutDebugPanelUpdate();
           return;
@@ -6913,7 +7080,7 @@
             const narrowToggleTitle = isNarrowExpanded ? "Hide comment and parameter type" : "Show comment and parameter type";
 
             pieces.push(`
-              <tr class="parameter-row${stripeClass}${hiddenClass}${narrowExpandedClass}" data-index="0" data-group-index="${index}" data-group-name="${safeGroupLabel}" data-parameter-key="${safeKey}" data-parameter-name="${safeName}" data-row-uid="row-${renderRowCounter}"${isFavoritesGroup ? ' data-favorites-row="true"' : ""}>
+              <tr class="parameter-row${stripeClass}${hiddenClass}${narrowExpandedClass}" data-parameter-scope="user" data-row-selectable="true" data-index="0" data-group-index="${index}" data-group-name="${safeGroupLabel}" data-parameter-key="${safeKey}" data-parameter-name="${safeName}" data-row-uid="row-${renderRowCounter}"${isFavoritesGroup ? ' data-favorites-row="true"' : ""}>
                 <td class="name-cell">
                   <div class="name-cell-main">
                     ${isFavoritesGroup ? `<span class="reorder-handle-placeholder" aria-hidden="true"></span>` : `<button class="reorder-handle" type="button" data-reorder-handle="true" tabindex="-1" aria-label="${reorderTitle}" title="${reorderTitle}"${isSearchActive ? " disabled" : ""}></button>`}
@@ -7008,8 +7175,277 @@
         tbody.querySelectorAll("tr").forEach((row) => updateRowSaveState(row));
         applySelectedRowState();
         refreshBatchActionBar();
+        renderModelParametersSection();
         restorePendingTableScrollAnchor();
         scheduleLayoutDebugPanelUpdate();
+      }
+
+      function getModelPageSize() {
+        const raw = Number(state.modelParameterPage?.limit || 200);
+        if (!Number.isFinite(raw) || raw <= 0) {
+          return 200;
+        }
+        return Math.max(1, Math.min(1000, Math.floor(raw)));
+      }
+
+      function normalizeModelPageOffset(offset, totalCount) {
+        const total = Math.max(0, Number(totalCount || 0));
+        if (total <= 0) {
+          return 0;
+        }
+        const pageSize = getModelPageSize();
+        const raw = Number(offset || 0);
+        const safe = Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : 0;
+        const maxStart = Math.max(0, total - (total % pageSize || pageSize));
+        return Math.min(safe, maxStart);
+      }
+
+      function renderModelParametersSection() {
+        const section = document.getElementById("modelParametersSection");
+        const body = document.getElementById("modelParametersBody");
+        const toggle = document.getElementById("modelParametersToggle");
+        const countNode = document.getElementById("modelParametersCount");
+        const statusNode = document.getElementById("modelParametersStatus");
+        const pageInfo = document.getElementById("modelParametersPageInfo");
+        const nextButton = document.getElementById("modelParametersNextButton");
+        const prevButton = document.getElementById("modelParametersPrevButton");
+        const filterInput = document.getElementById("modelParametersFilter");
+        if (!section || !body || !toggle || !countNode || !statusNode || !pageInfo || !nextButton || !prevButton || !filterInput) {
+          return;
+        }
+
+        const count = Math.max(0, Number(state.modelParameterCount || 0));
+        const hiddenByFilter = state.filters.userOnly === true;
+        section.hidden = hiddenByFilter;
+        countNode.textContent = `${count}`;
+
+        const expanded = !state.modelParametersCollapsed;
+        body.hidden = !expanded;
+        toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+        toggle.textContent = `${expanded ? "▾" : "▸"} Model Parameters`;
+
+        const page = state.modelParameterPage || {};
+        const rows = Array.isArray(page.rows) ? page.rows : [];
+        const totalCount = Math.max(0, Number(page.totalCount || 0));
+        const offset = Math.max(0, Number(page.offset || 0));
+        const limit = getModelPageSize();
+        const end = rows.length > 0 ? offset + rows.length : Math.min(offset, totalCount);
+        pageInfo.textContent = totalCount > 0
+          ? `${Math.min(offset + 1, totalCount)}-${end} of ${totalCount}`
+          : "0 of 0";
+
+        filterInput.value = String(page.filter || "");
+        prevButton.disabled = page.loading === true || offset <= 0;
+        nextButton.disabled = page.loading === true || end >= totalCount;
+
+        if (page.loading === true) {
+          statusNode.textContent = "Loading model parameters...";
+        } else if (page.error) {
+          statusNode.textContent = String(page.error);
+        } else if (!page.loaded) {
+          statusNode.textContent = "Expand to load model parameters.";
+        } else if (!rows.length) {
+          statusNode.textContent = totalCount > 0 ? "No rows on this page." : "No model parameters match the current filter.";
+        } else {
+          statusNode.textContent = "";
+        }
+
+        renderModelParameterRows();
+        if (!section.hidden && expanded && page.loaded !== true && page.loading !== true) {
+          void fetchModelParametersPage({
+            offset: page.offset || 0,
+            limit: page.limit || 200,
+            filter: page.filter || ""
+          });
+        }
+      }
+
+      function renderModelParameterRows() {
+        const tbody = document.getElementById("modelParameterRows");
+        if (!tbody) {
+          return;
+        }
+        const page = state.modelParameterPage || {};
+        const rows = Array.isArray(page.rows) ? page.rows : [];
+
+        if (page.loading === true) {
+          tbody.innerHTML = `<tr><td colspan="6" class="empty">Loading model parameters...</td></tr>`;
+          return;
+        }
+
+        if (!page.loaded) {
+          tbody.innerHTML = `<tr><td colspan="6" class="empty">Expand to load model parameters.</td></tr>`;
+          return;
+        }
+
+        if (!rows.length) {
+          const hasFilter = String(page.filter || "").trim().length > 0;
+          tbody.innerHTML = `<tr><td colspan="6" class="empty">${hasFilter ? "No model parameters match the current filter." : "No model parameters in this design."}</td></tr>`;
+          return;
+        }
+
+        const rowCommitLabel = isManualComputeMode() ? "Apply" : "Save";
+        const pieces = [];
+        let lastComponentGroup = "";
+        rows.forEach((param, index) => {
+          const componentName = String(param?.componentName || "").trim();
+          const componentLabel = componentName || "Root Component";
+          const componentGroupKey = componentLabel.toLowerCase();
+          if (componentGroupKey !== lastComponentGroup) {
+            lastComponentGroup = componentGroupKey;
+            pieces.push(`
+              <tr class="model-group-header-row">
+                <td colspan="6">${escapeHtml(componentLabel)}</td>
+              </tr>
+            `);
+          }
+          const safeKey = escapeHtml(param?.key || param?.name || "");
+          const safeName = escapeHtml(param?.name || "");
+          const safeExpression = escapeHtml(param?.expression || "");
+          const safeComment = escapeHtml(param?.comment || "");
+          const safePreview = escapeHtml(param?.valuePreview || "");
+          const safeUnit = escapeHtml(param?.unit || "No Units");
+          const createdBy = String(param?.createdBy || "").trim();
+          const kindText = createdBy ? `Model Parameter • ${escapeHtml(createdBy)}` : "Model Parameter";
+          const favoriteTitle = param?.isFavorite ? "Favorite (display only)" : "Not favorite (display only)";
+          const favoriteClass = param?.isFavorite ? "favorite-button is-on" : "favorite-button";
+          const favoriteIconEntity = param?.isFavorite ? "&#9733;" : "&#9734;";
+          const rowStateKey = String(param?.key || param?.name || "");
+          const isNarrowExpanded = !!state.expandedRows[rowStateKey];
+          const narrowExpandedClass = isNarrowExpanded ? " is-narrow-expanded" : "";
+          const narrowToggleGlyph = isNarrowExpanded ? "\u25be" : "\u25b8";
+          const narrowToggleTitle = isNarrowExpanded ? "Hide comment and parameter type" : "Show comment and parameter type";
+          const stripeClass = (index % 2 === 0) ? " is-even" : " is-odd";
+          pieces.push(`
+            <tr class="parameter-row model-parameter-row${stripeClass}${narrowExpandedClass}" data-parameter-scope="model" data-row-selectable="false" data-parameter-key="${safeKey}" data-parameter-name="${safeName}">
+              <td class="name-cell">
+                <div class="name-cell-main">
+                  <span class="reorder-handle-placeholder" aria-hidden="true"></span>
+                  <div class="name-stack">
+                    <button class="${favoriteClass}" type="button" aria-pressed="${param?.isFavorite ? "true" : "false"}" title="${favoriteTitle}" disabled>
+                      <span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span>
+                    </button>
+                    <span class="parameter-kind">${kindText}</span>
+                  </div>
+                </div>
+                <div class="narrow-summary">
+                  <div class="narrow-summary-head">
+                    <button class="${favoriteClass}" type="button" aria-pressed="${param?.isFavorite ? "true" : "false"}" title="${favoriteTitle}" disabled>
+                      <span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span>
+                    </button>
+                    <strong class="narrow-summary-name">${safeName}</strong>
+                    <span class="narrow-summary-state" data-narrow-summary-state>${safePreview}</span>
+                    <button class="ghost narrow-summary-icon-btn narrow-summary-toggle" type="button" data-narrow-toggle="true" aria-expanded="${isNarrowExpanded ? "true" : "false"}" title="${narrowToggleTitle}">${narrowToggleGlyph}</button>
+                  </div>
+                </div>
+              </td>
+              <td class="param-name-cell">
+                <div class="param-name-editor">
+                  <div class="dirty-field-shell">
+                    <input class="param-name-input" data-parameter-key="${safeKey}" data-saved-name="${safeName}" value="${safeName}" readonly aria-readonly="true" />
+                    <button class="field-discard-button" type="button" data-discard-field="name" title="Discard unsaved name edit." aria-label="Discard unsaved name edit.">&#8630;</button>
+                  </div>
+                  <div class="field-error name-field-error" aria-live="polite"></div>
+                </div>
+              </td>
+              <td class="unit-cell">
+                <span class="unit-text unit-display">${safeUnit}</span>
+              </td>
+              <td>
+                <div class="field-shell">
+                  <div class="dirty-field-shell expression-input-shell">
+                    <input class="mono expression-input" data-parameter-name="${safeName}" data-parameter-unit="${safeUnit}" data-saved-expression="${safeExpression}" value="${safeExpression}" autocomplete="off" />
+                    <button class="field-discard-button" type="button" data-discard-field="expression" title="Discard unsaved expression edit." aria-label="Discard unsaved expression edit.">&#8630;</button>
+                  </div>
+                  <div class="field-error expression-field-error" aria-live="polite"></div>
+                </div>
+              </td>
+              <td class="mono preview-cell value-cell" data-saved-preview="${safePreview}">
+                <div class="value-cell-layout">
+                  <div class="preview-value"></div>
+                  <div class="value-cell-inline-actions">
+                    <button class="save-button save-button-inline" type="button" disabled>${rowCommitLabel}</button>
+                  </div>
+                </div>
+              </td>
+              <td class="comment-col comments-cell">
+                <div class="comment-shell">
+                  <div class="dirty-field-shell">
+                    <textarea class="comment-input" data-saved-comment="${safeComment}">${safeComment}</textarea>
+                    <button class="field-discard-button" type="button" data-discard-field="comment" title="Discard unsaved comment edit." aria-label="Discard unsaved comment edit.">&#8630;</button>
+                  </div>
+                  <div class="row-actions">
+                    <button class="save-button" type="button" disabled>${rowCommitLabel}</button>
+                  </div>
+                  <div class="narrow-expanded-kind">
+                    <span class="parameter-kind">Type: ${kindText}</span>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          `);
+        });
+
+        tbody.innerHTML = pieces.join("");
+        autoSizeCommentInputs(tbody);
+        applyCommentInputPlaceholders(tbody);
+        tbody.querySelectorAll(".preview-cell").forEach((previewCell) => {
+          setPreviewCellContent(previewCell, previewCell.getAttribute("data-saved-preview") || "");
+        });
+        tbody.querySelectorAll("tr.parameter-row").forEach((row) => updateRowSaveState(row));
+      }
+
+      async function fetchModelParametersPage(options = {}) {
+        const offset = Math.max(0, Number(options.offset ?? state.modelParameterPage.offset ?? 0) || 0);
+        const limit = Math.max(1, Math.min(1000, Number(options.limit ?? state.modelParameterPage.limit ?? 200) || 200));
+        const filter = String(options.filter ?? state.modelParameterPage.filter ?? "");
+        state.modelParameterPage = {
+          ...state.modelParameterPage,
+          loading: true,
+          error: "",
+          offset,
+          limit,
+          filter
+        };
+        renderModelParametersSection();
+
+        try {
+          const response = await sendToFusion(ACTION.GET_MODEL_PARAMETERS, {
+            offset,
+            limit,
+            filter
+          });
+          if (!response || response.ok !== true) {
+            throw new Error(response?.message || "Failed to load model parameters.");
+          }
+          const rows = Array.isArray(response.parameters) ? response.parameters : [];
+          const totalCount = Math.max(0, Number(response.totalCount || 0));
+          const responseOffset = normalizeModelPageOffset(response.offset ?? offset, totalCount);
+          const responseLimit = Math.max(1, Math.min(1000, Number(response.limit || limit) || limit));
+          state.modelParameterPage = {
+            ...state.modelParameterPage,
+            rows,
+            totalCount,
+            offset: responseOffset,
+            limit: responseLimit,
+            filter,
+            loaded: true,
+            loading: false,
+            error: ""
+          };
+          if (!String(filter || "").trim()) {
+            state.modelParameterCount = totalCount;
+          }
+        } catch (error) {
+          state.modelParameterPage = {
+            ...state.modelParameterPage,
+            rows: [],
+            loaded: true,
+            loading: false,
+            error: String(error?.message || "Failed to load model parameters.")
+          };
+        }
+        renderModelParametersSection();
       }
 
       function getTableWrapElement() {
@@ -7081,6 +7517,9 @@
 
       function getRowSelectionFromElement(row) {
         if (!row || !row.matches("tr.parameter-row[data-parameter-key]")) {
+          return null;
+        }
+        if (row.getAttribute("data-row-selectable") !== "true") {
           return null;
         }
         return {
@@ -7399,9 +7838,11 @@
           return null;
         }
 
+        const scope = String(row.getAttribute("data-parameter-scope") || "user").trim().toLowerCase();
         const key = row.getAttribute("data-parameter-key") || "";
         const name = row.getAttribute("data-parameter-name") || "";
-        return state.parameters.find((parameter) => (
+        const source = scope === "model" ? (state.modelParameterPage?.rows || []) : (state.parameters || []);
+        return source.find((parameter) => (
           (key && parameter.key === key) || parameter.name === name
         )) || null;
       }
@@ -7442,7 +7883,7 @@
 
       function getCurrentParameterRowOrder() {
         const seen = new Set();
-        return Array.from(document.querySelectorAll("#parameterRows tr[data-parameter-key]"))
+        return Array.from(document.querySelectorAll("#parameterRows tr[data-parameter-key][data-parameter-scope='user']"))
           .filter((row) => row.getAttribute("data-favorites-row") !== "true")
           .map((row) => row.getAttribute("data-parameter-key") || "")
           .filter((key) => {
@@ -7455,7 +7896,7 @@
       }
 
       function getParameterRowByKey(key) {
-        return Array.from(document.querySelectorAll("#parameterRows tr[data-parameter-key]"))
+        return Array.from(document.querySelectorAll("#parameterRows tr[data-parameter-key][data-parameter-scope='user']"))
           .find((row) => (row.getAttribute("data-parameter-key") || "") === key) || null;
       }
 
@@ -7472,7 +7913,7 @@
 
       function getRowsInGroup(groupLabel) {
         const normalizedLabel = displayGroupName(groupLabel || "");
-        return Array.from(document.querySelectorAll("#parameterRows tr[data-parameter-key]"))
+        return Array.from(document.querySelectorAll("#parameterRows tr[data-parameter-key][data-parameter-scope='user']"))
           .filter((row) => displayGroupName(row.getAttribute("data-group-name") || "") === normalizedLabel);
       }
 
@@ -8596,6 +9037,23 @@
           state.parameterNames = payload.parameterNames.slice();
         }
 
+        if (Object.prototype.hasOwnProperty.call(payload, "modelParameterCount")) {
+          const nextCount = Math.max(0, Number(payload.modelParameterCount || 0));
+          state.modelParameterCount = Number.isFinite(nextCount) ? nextCount : 0;
+          if (state.modelParameterCount <= 0) {
+            state.modelParameterPage = {
+              ...state.modelParameterPage,
+              rows: [],
+              totalCount: 0,
+              offset: 0,
+              loaded: false,
+              loading: false,
+              error: ""
+            };
+            state.modelParametersCollapsed = true;
+          }
+        }
+
         if (Array.isArray(payload.groups)) {
           state.groups = payload.groups.slice();
         }
@@ -8686,6 +9144,8 @@
           renderUpdatePill();
           renderUpdateCard();
         }
+
+        renderModelParametersSection();
 
         if (!state.initialLayoutDone) {
           scheduleInitialLayoutPass();
@@ -8975,6 +9435,16 @@
           rawResponse
         });
         const envelope = parseBridgePayload(rawResponse);
+        // Compatibility: current backend `getModelParameters` responses may omit
+        // envelope-level `message` and/or `state`. Normalize before validation.
+        if (action === ACTION.GET_MODEL_PARAMETERS && envelope && typeof envelope === "object") {
+          if (!Object.prototype.hasOwnProperty.call(envelope, "message")) {
+            envelope.message = "";
+          }
+          if (!Object.prototype.hasOwnProperty.call(envelope, "state")) {
+            envelope.state = null;
+          }
+        }
         appendRawTrace("bridge.response.parsed", { action, envelope });
         const validation = validateEnvelope(envelope, { source: "response", action, requestData: data });
         if (!validation.ok) {
@@ -9911,9 +10381,11 @@
           return { ok: false, message: "Row inputs are not available." };
         }
 
+        const rowScope = String(row.getAttribute("data-parameter-scope") || "user").trim().toLowerCase();
+        const isModelScope = rowScope === "model";
         const nextName = String(nameInput.value || "");
         const savedName = String(nameInput.getAttribute("data-saved-name") || "");
-        const nameDirty = nextName !== savedName;
+        const nameDirty = !isModelScope && nextName !== savedName;
         const expression = String(expressionInput.value || "");
         const comment = commentInput.value;
         const previousSavedExpression = String(expressionInput.getAttribute("data-saved-expression") || "");
@@ -9942,6 +10414,39 @@
         }
 
         try {
+          if (isModelScope) {
+            if (expressionDirty) {
+              const isExpressionValid = await validateExpressionAgainstFusion(expressionInput);
+              if (!isExpressionValid) {
+                return { ok: false, key: parameterKey, name: parameter.name, message: "Expression is invalid.", errorField: "expression" };
+              }
+            }
+
+            const request = {
+              key: parameter.key || "",
+              name: parameter.name,
+              expression
+            };
+            if (commentDirty) {
+              request.comment = comment;
+            }
+            const response = await sendToFusion(ACTION.UPDATE_MODEL_PARAMETER, request);
+            if (!response.ok) {
+              throw new Error(response.message || "Save failed.");
+            }
+            applyStateFromFusion(response, { source: "response", action: ACTION.UPDATE_MODEL_PARAMETER });
+            clearRowDraftByKey(parameterKey);
+            await fetchModelParametersPage({
+              offset: state.modelParameterPage.offset,
+              limit: state.modelParameterPage.limit,
+              filter: state.modelParameterPage.filter
+            });
+            if (showSuccess) {
+              setGlobalStatus(`${isManualComputeMode() ? "Applied" : "Saved"} ${parameter.name}.`, "success");
+            }
+            return { ok: true, key: parameterKey, name: parameter.name };
+          }
+
           let currentName = parameter.name;
           if (nameDirty) {
             const validName = await validateRowNameInput(nameInput);
@@ -10879,6 +11384,7 @@
       });
 
       const parameterRows = document.getElementById("parameterRows");
+      const modelParameterRows = document.getElementById("modelParameterRows");
       let focusRefreshTimer = null;
       const parameterSearchInput = document.getElementById("parameterSearchInput");
       const parameterSearchClear = document.getElementById("parameterSearchClear");
@@ -10899,6 +11405,54 @@
         setSearchQuery("");
         parameterSearchInput.focus();
       });
+
+      const modelParametersToggle = document.getElementById("modelParametersToggle");
+      const modelParametersSearchButton = document.getElementById("modelParametersSearchButton");
+      const modelParametersClearButton = document.getElementById("modelParametersClearButton");
+      const modelParametersPrevButton = document.getElementById("modelParametersPrevButton");
+      const modelParametersNextButton = document.getElementById("modelParametersNextButton");
+      const modelParametersFilter = document.getElementById("modelParametersFilter");
+
+      if (modelParametersToggle) {
+        modelParametersToggle.addEventListener("click", () => {
+          void toggleModelParametersSection();
+        });
+      }
+      if (modelParametersSearchButton) {
+        modelParametersSearchButton.addEventListener("click", () => {
+          void searchModelParameters();
+        });
+      }
+      if (modelParametersClearButton) {
+        modelParametersClearButton.addEventListener("click", () => {
+          if (modelParametersFilter) {
+            modelParametersFilter.value = "";
+          }
+          void fetchModelParametersPage({ offset: 0, limit: state.modelParameterPage.limit, filter: "" });
+        });
+      }
+      if (modelParametersPrevButton) {
+        modelParametersPrevButton.addEventListener("click", () => {
+          void pageModelParameters(-1);
+        });
+      }
+      if (modelParametersNextButton) {
+        modelParametersNextButton.addEventListener("click", () => {
+          void pageModelParameters(1);
+        });
+      }
+      if (modelParametersFilter) {
+        modelParametersFilter.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            void searchModelParameters();
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            modelParametersFilter.value = "";
+            void fetchModelParametersPage({ offset: 0, limit: state.modelParameterPage.limit, filter: "" });
+          }
+        });
+      }
 
       document.getElementById("favoritesFilterButton").addEventListener("click", () => {
         setFavoritesOnlyFilter(!(state.filters.favoritesOnly === true));
@@ -11309,6 +11863,162 @@
           }
         }
       });
+
+      if (modelParameterRows) {
+        modelParameterRows.addEventListener("mousedown", (event) => {
+          const discardButton = event.target.closest(".field-discard-button[data-discard-field]");
+          if (!discardButton) {
+            return;
+          }
+          const row = discardButton.closest("tr.parameter-row[data-parameter-key]");
+          if (!row) {
+            state.pendingFieldDiscardRowKey = "";
+            return;
+          }
+          state.pendingFieldDiscardRowKey = String(row.getAttribute("data-parameter-key") || "");
+        }, true);
+
+        modelParameterRows.addEventListener("input", (event) => {
+          const commentInput = event.target.closest(".comment-input");
+          if (commentInput) {
+            applyCommentInputPlaceholders(commentInput.closest("tr") || modelParameterRows);
+            autoSizeTextarea(commentInput);
+            updateRowSaveState(commentInput.closest("tr"));
+            return;
+          }
+
+          const input = event.target.closest(".expression-input");
+          if (!input) {
+            return;
+          }
+          updateExpressionSuggestions(input, input.getAttribute("data-parameter-name") || "");
+          updateFunctionHelper(input);
+
+          clearManagedRowTimer(rowExpressionValidationTimersByInput, input);
+          const value = input.value;
+          if (!value.trim()) {
+            setExpressionValidationState(input, "Expression is required.");
+            restoreRowPreview(input);
+            updateRowSaveState(input.closest("tr"));
+            return;
+          }
+          updateRowSaveState(input.closest("tr"));
+          scheduleManagedRowTimer(rowExpressionValidationTimersByInput, input, ROW_EXPRESSION_PREVIEW_DEBOUNCE_MS, () => {
+            void previewRowExpression(input).catch(() => {});
+          });
+        });
+
+        modelParameterRows.addEventListener("keydown", async (event) => {
+          const input = event.target.closest(".expression-input");
+          if (!input) {
+            return;
+          }
+          if (event.key === "Enter") {
+            event.preventDefault();
+            if (isManualComputeMode()) {
+              const row = input.closest("tr.parameter-row[data-parameter-key]");
+              const saveButton = row ? getRowPrimarySaveButton(row) : null;
+              if (saveButton && !saveButton.disabled && row?.getAttribute("data-row-applying") !== "true") {
+                saveButton.click();
+              }
+            } else {
+              await autoApplyRowIfNeeded(input, "enter");
+            }
+            return;
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            const row = input.closest("tr.parameter-row[data-parameter-key]");
+            if (row) {
+              discardRowDraft(row, { showStatus: false });
+            }
+            return;
+          }
+        });
+
+        modelParameterRows.addEventListener("focusout", async (event) => {
+          const input = event.target.closest(".expression-input");
+          const commentInput = event.target.closest(".comment-input");
+          if (!input && !commentInput) {
+            return;
+          }
+          const expressionInput = input
+            || (commentInput ? commentInput.closest("tr")?.querySelector(".expression-input") : null);
+          if (!expressionInput) {
+            return;
+          }
+          clearManagedRowTimer(rowExpressionValidationTimersByInput, expressionInput);
+          const row = expressionInput.closest("tr.parameter-row[data-parameter-key]");
+          const rowKey = String(row?.getAttribute("data-parameter-key") || "");
+          const relatedTarget = event.relatedTarget && typeof event.relatedTarget.closest === "function"
+            ? event.relatedTarget
+            : null;
+          const discardTarget = relatedTarget
+            ? relatedTarget.closest(".field-discard-button[data-discard-field]")
+            : null;
+          const discardTargetRowKey = discardTarget
+            ? String(discardTarget.closest("tr.parameter-row[data-parameter-key]")?.getAttribute("data-parameter-key") || "")
+            : "";
+          const discardIntentOnSameRow = (
+            !isManualComputeMode()
+            && rowKey
+            && (
+              state.pendingFieldDiscardRowKey === rowKey
+              || (discardTarget && discardTargetRowKey === rowKey)
+            )
+          );
+          if (discardIntentOnSameRow) {
+            return;
+          }
+          if (!isParameterRowAttached(row)) {
+            return;
+          }
+          const isValid = await validateExpressionAgainstFusion(expressionInput);
+          if (!isParameterRowAttached(row)) {
+            return;
+          }
+          if (isValid) {
+            await autoApplyRowIfNeeded(expressionInput, "blur");
+          }
+        });
+
+        modelParameterRows.addEventListener("click", async (event) => {
+          const narrowToggle = event.target.closest("[data-narrow-toggle]");
+          if (narrowToggle) {
+            const row = narrowToggle.closest("tr.parameter-row[data-parameter-key]");
+            if (!row) {
+              return;
+            }
+            const nextExpanded = !row.classList.contains("is-narrow-expanded");
+            setNarrowRowExpanded(row, nextExpanded);
+            return;
+          }
+
+          const fieldDiscardButton = event.target.closest(".field-discard-button[data-discard-field]");
+          const button = event.target.closest(".save-button, .save-button-inline");
+          if (!button && !fieldDiscardButton) {
+            return;
+          }
+
+          if (fieldDiscardButton) {
+            state.pendingFieldDiscardRowKey = "";
+            const row = fieldDiscardButton.closest("tr");
+            const field = fieldDiscardButton.getAttribute("data-discard-field") || "";
+            discardRowFieldDraft(row, field, { showStatus: true });
+            return;
+          }
+
+          const row = button.closest("tr");
+          if (row && row.getAttribute("data-row-applying") === "true") {
+            return;
+          }
+          await applyRowDraft(row, {
+            showProgress: true,
+            showSuccess: true,
+            showErrors: true
+          });
+        });
+      }
 
       document.getElementById("moveRowTopButton").addEventListener("click", async () => {
         cancelReorderMenuClose();

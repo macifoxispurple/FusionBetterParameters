@@ -180,7 +180,7 @@ _READ_ONLY_ACTIONS = [
     "getActiveDocumentInfo", "checkForUpdates", "getMetadataDebugSnapshot",
     "validateParametersPackageImport", "exportParameters", "exportParametersPackage",
     "getParameterDependencyGraph", "getBackendContractInfo", "runSelfTestSuite",
-    "copyToClipboard",
+    "copyToClipboard", "getModelParameters",
 ]
 
 _MUTATING_ACTIONS = [
@@ -704,6 +704,10 @@ def _handle_palette_action(action, data):
             "debugMetadata": _collect_metadata_debug_snapshot(),
         }
 
+    if action == "getModelParameters":
+        result = _get_model_parameters(data)
+        return {**result, "state": None}
+
     if action == "getParameterDependencyGraph":
         graph = _get_parameter_dependency_graph()
         return _ok_data(nodes=graph["nodes"], edges=graph["edges"])
@@ -768,7 +772,7 @@ def _current_state_payload(settings=None):
         "documentDefaults": {
             "unit": _default_document_unit(),
         },
-        "modelParameters": _collect_model_parameters(),
+        "modelParameterCount": _model_parameter_count(),
         "textTunerState": _load_text_tuner_state(),
         "fusionTheme": _detect_fusion_theme(),
         "updateInfo": _build_update_info_payload(active_settings),
@@ -933,36 +937,122 @@ def _find_model_parameter_by_token(design, token):
     return None
 
 
-def _collect_model_parameters():
-    """Return serialized model parameters from the active design's root component."""
+_MODEL_PARAMETER_MAX_LIMIT = 1000  # hard cap per page
+
+
+def _model_parameter_count():
+    """Return the total number of model parameters across all components in the active design.
+
+    Iterates design.allComponents and sums each component's modelParameters.count.
+    Returns 0 if no design is active or the collection is inaccessible.
+    """
     design = _design()
     if not design:
-        return []
+        return 0
     try:
-        params = design.rootComponent.modelParameters
+        total = 0
+        all_comps = design.allComponents
+        for i in range(all_comps.count):
+            comp = all_comps.item(i)
+            if comp:
+                total += comp.modelParameters.count
+        return total
     except Exception:
-        return []
+        return 0
+
+
+def _serialize_model_parameter(param, units_manager, component_name=""):
+    """Return the serialized dict for a single ModelParameter.
+
+    component_name: display name of the owning component. Empty string for root.
+    """
+    return {
+        "key": _parameter_entity_token(param),
+        "name": param.name,
+        "expression": param.expression,
+        "unit": param.unit,
+        "comment": param.comment or "",
+        "isFavorite": param.isFavorite,
+        "valuePreview": _format_parameter_value(param, units_manager),
+        "isDeletable": False,
+        "createdBy": _created_by_label(param),
+        "componentName": component_name,
+    }
+
+
+def _get_model_parameters(data):
+    """Return a paginated, optionally filtered list of model parameters.
+
+    Pagination:
+        offset  int  First item index (0-based). Default 0.
+        limit   int  Max items to return. Default 200. Hard cap: 1000.
+
+    Filtering:
+        filter  str  Case-insensitive substring filter applied to name and
+                     expression. Empty / absent = return all.
+
+    Sort: case-insensitive by name (stable, applied after filter, before slice).
+
+    Returns dict with: ok, totalCount, parameters, offset, limit.
+        totalCount  Total items matching the filter (not the page size).
+        parameters  Serialized items for the requested page.
+
+    Never raises — requires an active design (raises BPNoDesignError).
+    """
+    design = _require_design()
+
+    raw_offset = data.get("offset")
+    raw_limit = data.get("limit")
+    filter_str = str(data.get("filter") or "").strip().casefold()
+
+    offset = max(0, int(raw_offset)) if raw_offset is not None else 0
+    limit = max(1, min(int(raw_limit), _MODEL_PARAMETER_MAX_LIMIT)) if raw_limit is not None else 200
 
     units_manager = design.unitsManager
-    results = []
-    for index in range(params.count):
-        param = params.item(index)
-        if not param:
-            continue
-        results.append({
-            "key": _parameter_entity_token(param),
-            "name": param.name,
-            "expression": param.expression,
-            "unit": param.unit,
-            "comment": param.comment or "",
-            "isFavorite": param.isFavorite,
-            "valuePreview": _format_parameter_value(param, units_manager),
-            "isDeletable": False,
-            "createdBy": _created_by_label(param),
-        })
 
-    results.sort(key=lambda item: item.get("name", "").casefold())
-    return results
+    try:
+        all_comps = design.allComponents
+    except Exception:
+        return {"ok": True, "totalCount": 0, "parameters": [], "offset": offset, "limit": limit}
+
+    # Collect from all components — (param, component_name) tuples.
+    # Linear scan across all components is unavoidable for arbitrary filter text.
+    candidates = []
+    for comp_idx in range(all_comps.count):
+        comp = all_comps.item(comp_idx)
+        if not comp:
+            continue
+        comp_name = comp.name or ""
+        try:
+            param_collection = comp.modelParameters
+        except Exception:
+            continue
+        for idx in range(param_collection.count):
+            param = param_collection.item(idx)
+            if not param:
+                continue
+            if filter_str:
+                name_cf = (param.name or "").casefold()
+                expr_cf = (param.expression or "").casefold()
+                comp_cf = comp_name.casefold()
+                if filter_str not in name_cf and filter_str not in expr_cf and filter_str not in comp_cf:
+                    continue
+            candidates.append((param, comp_name))
+
+    # Sort by component name then parameter name, both case-insensitive.
+    candidates.sort(key=lambda t: (t[1].casefold(), (t[0].name or "").casefold()))
+    filtered_count = len(candidates)
+
+    page = candidates[offset: offset + limit]
+    results = [_serialize_model_parameter(p, units_manager, comp_name) for p, comp_name in page]
+
+    return {
+        "ok": True,
+        "totalCount": filtered_count,
+        "parameters": results,
+        "offset": offset,
+        "limit": limit,
+    }
 
 
 def _settings_path():
@@ -2371,8 +2461,21 @@ def _update_model_parameter(data):
 
     parameter = _find_model_parameter_by_token(design, key) if key else None
     if not parameter and name:
+        # Search all components — root-only lookup misses subcomponent params.
+        # Returns first match; key (entityToken) should be preferred for unambiguous lookup.
         try:
-            parameter = design.rootComponent.modelParameters.itemByName(name)
+            all_comps = design.allComponents
+            for _ci in range(all_comps.count):
+                _comp = all_comps.item(_ci)
+                if not _comp:
+                    continue
+                try:
+                    _p = _comp.modelParameters.itemByName(name)
+                    if _p:
+                        parameter = _p
+                        break
+                except Exception:
+                    continue
         except Exception:
             pass
     if not parameter:
