@@ -1,4 +1,5 @@
 import csv
+import ctypes
 import io
 import json
 import importlib
@@ -8,6 +9,7 @@ import os
 import platform
 import re
 import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -178,6 +180,7 @@ _READ_ONLY_ACTIONS = [
     "getActiveDocumentInfo", "checkForUpdates", "getMetadataDebugSnapshot",
     "validateParametersPackageImport", "exportParameters", "exportParametersPackage",
     "getParameterDependencyGraph", "getBackendContractInfo", "runSelfTestSuite",
+    "copyToClipboard",
 ]
 
 _MUTATING_ACTIONS = [
@@ -655,6 +658,10 @@ def _handle_palette_action(action, data):
 
     if action == "openHelpUrl":
         result = _open_help_url(data)
+        return {**result, "state": None}
+
+    if action == "copyToClipboard":
+        result = _copy_to_clipboard(data)
         return {**result, "state": None}
 
     if action == "getActiveDocumentInfo":
@@ -3963,6 +3970,103 @@ def _open_help_url(data):
         return {"ok": True, "message": ""}
     except Exception as exc:
         return {"ok": False, "message": f"Could not open URL: {exc}"}
+
+
+# ---------------------------------------------------------------------------
+# Clipboard
+# ---------------------------------------------------------------------------
+
+def _clipboard_write_win32(text):
+    """Write text to the Windows clipboard using Win32 API via ctypes.
+
+    Bypasses WebView clipboard security restrictions entirely.
+    Uses CF_UNICODETEXT (UTF-16-LE) for full Unicode support.
+    Raises RuntimeError on any Win32 failure.
+    """
+    CF_UNICODETEXT = 13
+    GMEM_MOVEABLE = 0x0002
+
+    encoded = (text + "\x00").encode("utf-16-le")
+    size = len(encoded)
+
+    kernel32 = ctypes.windll.kernel32
+    user32 = ctypes.windll.user32
+
+    h_mem = kernel32.GlobalAlloc(GMEM_MOVEABLE, size)
+    if not h_mem:
+        raise RuntimeError("GlobalAlloc failed.")
+
+    h_mem_owned_by_clipboard = False
+    try:
+        p = kernel32.GlobalLock(h_mem)
+        if not p:
+            raise RuntimeError("GlobalLock failed.")
+        ctypes.memmove(p, encoded, size)
+        kernel32.GlobalUnlock(h_mem)
+
+        if not user32.OpenClipboard(None):
+            raise RuntimeError("OpenClipboard failed.")
+        try:
+            user32.EmptyClipboard()
+            if not user32.SetClipboardData(CF_UNICODETEXT, h_mem):
+                raise RuntimeError("SetClipboardData failed.")
+            # Clipboard now owns the memory — do not free.
+            h_mem_owned_by_clipboard = True
+        finally:
+            user32.CloseClipboard()
+    finally:
+        if not h_mem_owned_by_clipboard:
+            kernel32.GlobalFree(h_mem)
+
+
+def _clipboard_write_macos(text):
+    """Write text to the macOS clipboard via pbcopy subprocess.
+
+    pbcopy reads stdin and places it on the general pasteboard.
+    Raises subprocess.CalledProcessError on failure.
+    """
+    subprocess.run(
+        ["pbcopy"],
+        input=text.encode("utf-8"),
+        check=True,
+        capture_output=True,
+        timeout=3,
+    )
+
+
+def _copy_to_clipboard(data):
+    """Write text to the OS clipboard.
+
+    Uses Win32 ctypes API on Windows, pbcopy subprocess on macOS.
+    Bypasses WebView clipboard security restrictions entirely — reliable
+    across all Fusion 360 WebView/QtWebEngine variants.
+
+    Raises BPValidationError if "text" is missing.
+    Raises BPError (ERROR_IO) if the OS clipboard write fails.
+    Does not require an active design.
+    """
+    text = str(data.get("text") or "")
+    if not text:
+        raise BPValidationError('"text" is required and must be non-empty.')
+
+    current_platform = platform.system()
+    try:
+        if current_platform == "Windows":
+            _clipboard_write_win32(text)
+        elif current_platform == "Darwin":
+            _clipboard_write_macos(text)
+        else:
+            raise BPError(
+                f"Clipboard write not supported on platform: {current_platform!r}. "
+                "Use the FE fallback (navigator.clipboard / execCommand).",
+                ERROR_IO,
+            )
+    except BPError:
+        raise
+    except Exception as exc:
+        raise BPError(f"Clipboard write failed: {exc}", ERROR_IO) from exc
+
+    return {"ok": True, "message": ""}
 
 
 def _validate_unit_response(unit_text):

@@ -2836,16 +2836,16 @@
         display: inline;
       }
       .update-pill.has-update {
-        background: color-mix(in srgb, var(--accent) 22%, var(--btn-bg));
-        border: 1px solid color-mix(in srgb, var(--accent) 70%, var(--line));
-        color: var(--accent);
+        background: color-mix(in srgb, var(--success) 20%, var(--btn-bg));
+        border: 1px solid color-mix(in srgb, var(--success) 70%, var(--line));
+        color: var(--success);
         font-weight: 600;
         cursor: pointer;
       }
       .update-pill.is-staged {
-        background: color-mix(in srgb, var(--success) 20%, var(--btn-bg));
-        border: 1px solid color-mix(in srgb, var(--success) 70%, var(--line));
-        color: var(--success);
+        background: color-mix(in srgb, var(--accent) 22%, var(--btn-bg));
+        border: 1px solid color-mix(in srgb, var(--accent) 70%, var(--line));
+        color: var(--accent);
         font-weight: 600;
       }
       .update-notes-tooltip {
@@ -3647,6 +3647,7 @@
         EXPORT_PARAMETERS_PACKAGE: "exportParametersPackage",
         VALIDATE_PARAMETERS_PACKAGE_IMPORT: "validateParametersPackageImport",
         IMPORT_PARAMETERS_PACKAGE: "importParametersPackage",
+        COPY_TO_CLIPBOARD: "copyToClipboard",
         OPEN_HELP_URL: "openHelpUrl",
         CHECK_FOR_UPDATES: "checkForUpdates",
         DOWNLOAD_AND_STAGE_UPDATE: "downloadAndStageUpdate",
@@ -3665,6 +3666,7 @@
         ACTION.SEED_TEST_PARAMETERS, ACTION.RESET_TEST_STATE,
         ACTION.IMPORT_PARAMETERS, ACTION.EXPORT_PARAMETERS,
         ACTION.EXPORT_PARAMETERS_PACKAGE, ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, ACTION.IMPORT_PARAMETERS_PACKAGE,
+        ACTION.COPY_TO_CLIPBOARD,
         ACTION.OPEN_HELP_URL,
         ACTION.CHECK_FOR_UPDATES, ACTION.DOWNLOAD_AND_STAGE_UPDATE,
         ACTION.SYNC_METADATA_JSON_TO_FUSION, ACTION.SYNC_METADATA_FUSION_TO_JSON, ACTION.REPAIR_METADATA
@@ -3681,7 +3683,7 @@
       ]);
       const READ_ONLY_OR_VALIDATION_ACTIONS = new Set([
         ACTION.GET_TEXT_TUNER_STATE, ACTION.VALIDATE_PARAMETER_NAME, ACTION.VALIDATE_EXPRESSION, ACTION.PREVIEW_EXPRESSION, ACTION.VALIDATE_UNIT,
-        ACTION.EXPORT_PARAMETERS, ACTION.EXPORT_PARAMETERS_PACKAGE, ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, ACTION.OPEN_HELP_URL,
+        ACTION.EXPORT_PARAMETERS, ACTION.EXPORT_PARAMETERS_PACKAGE, ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, ACTION.COPY_TO_CLIPBOARD, ACTION.OPEN_HELP_URL,
         ACTION.GET_BACKEND_CONTRACT_INFO, ACTION.GET_PARAMETER_DEPENDENCY_GRAPH, ACTION.RUN_SELF_TEST_SUITE
       ]);
       // Compatibility: import flows can return ok=true with state=null from current backend paths.
@@ -3701,6 +3703,16 @@
       // It must stay unreachable during normal Fusion runtime when `adsk.fusionSendData` is present.
       const MOCK_BRIDGE_ENABLED = !!window.__BP_USE_MOCK_BRIDGE;
       const BOOTSTRAP_LAYOUT_DEBUG_ENABLED = window.__BP_LAYOUT_DEBUG_START === true;
+
+      function hasNativeFusionBridge() {
+        if (typeof adsk !== "undefined" && typeof adsk.fusionSendData === "function") {
+          return true;
+        }
+        if (window.adsk && typeof window.adsk.fusionSendData === "function") {
+          return true;
+        }
+        return false;
+      }
 
       function getDefaultPackageImportOptions() {
         return {
@@ -5792,7 +5804,16 @@
           throw new Error("No text to copy.");
         }
 
-        // Fusion webview hosts are often more reliable with execCommand-based copy.
+        // Primary path: backend-native clipboard write in real Fusion hosts.
+        if (hasNativeFusionBridge()) {
+          const response = await sendToFusion(ACTION.COPY_TO_CLIPBOARD, { text: value });
+          if (response && response.ok === true) {
+            return "backend.copyToClipboard";
+          }
+          throw new Error(response?.message || "Clipboard copy failed.");
+        }
+
+        // Fallback path: mock mode / bridge-unavailable environments.
         if (tryCopyWithTextareaExecCommand(value)) {
           return "execCommand-textarea";
         }
