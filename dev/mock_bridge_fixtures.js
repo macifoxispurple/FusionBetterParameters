@@ -116,6 +116,33 @@
       };
     }
 
+    if (action === actionMap.BATCH_UPDATE_PARAMETERS) {
+      var batchPayload = parsePayload(payloadJson);
+      var updates = Array.isArray(batchPayload.updates) ? batchPayload.updates : [];
+      if (fixtureMode === "m4_batch_all_fail") {
+        return {
+          ok: false,
+          message: "Batch update failed.",
+          errorCode: "VALIDATION_ERROR",
+          state: null,
+          updatedCount: 0,
+          failedRows: updates.map(function (item) {
+            return {
+              name: String((item && (item.name || item.key)) || ""),
+              message: "Mock batch failure."
+            };
+          })
+        };
+      }
+      return {
+        ok: true,
+        message: "",
+        state: statePayload,
+        updatedCount: updates.length,
+        failedRows: []
+      };
+    }
+
     if (action === actionMap.VALIDATE_PARAMETERS_PACKAGE_IMPORT) {
       if (fixtureMode === "m6_validate_cancel") {
         return { ok: false, message: "Import cancelled.", errorCode: "DIALOG_CANCELLED", state: null, preview: null, filePath: "" };

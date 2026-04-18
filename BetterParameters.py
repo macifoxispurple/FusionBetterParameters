@@ -190,6 +190,7 @@ _MUTATING_ACTIONS = [
     "saveTextTunerState", "downloadAndStageUpdate",
     "syncMetadataJsonToFusion", "syncMetadataFusionToJson", "repairMetadata",
     "importParametersPackage", "seedTestParameters", "resetTestState",
+    "batchUpdateParameters",
 ]
 
 # ---------------------------------------------------------------------------
@@ -490,6 +491,11 @@ def _handle_palette_action(action, data):
     if action == "updateParameter":
         _update_parameter(data)
         return _ok_state(_current_state_payload())
+
+    if action == "batchUpdateParameters":
+        result = _batch_update_parameters(data)
+        state = _current_state_payload() if result["ok"] else None
+        return {**result, "state": state}
 
     if action == "revertParameter":
         _revert_parameter(data)
@@ -1835,6 +1841,121 @@ def _update_parameter(data):
 
     parameter.expression = expression
     parameter.comment = comment
+
+
+def _batch_update_parameters(data):
+    """Apply multiple user parameter expression/comment updates in one Fusion call.
+
+    Uses design.modifyParameters() when available (Fusion API Sept 2022+) to apply
+    all expression changes in a single call, triggering only one design recomputation.
+    Falls back to sequential .expression= assignments on older Fusion builds.
+
+    Comments are applied after expressions; comment writes do not trigger recomputation.
+
+    Returns dict with keys: ok, updatedCount, failedRows, message.
+    Raises BPNoDesignError if no design is active.
+    Raises BPValidationError if "updates" is missing or not a list.
+    """
+    design = _require_design()
+    updates = data.get("updates")
+    if not isinstance(updates, list):
+        raise BPValidationError('"updates" must be an array.')
+    if not updates:
+        return {"ok": True, "updatedCount": 0, "failedRows": [], "message": ""}
+
+    # --- Phase 1: resolve all parameters and build Fusion input arrays -------
+    params_list = []
+    values_list = []
+    comment_pairs = []   # (param, comment_str_or_None)
+    failed_rows = []
+
+    for record in updates:
+        rec_key  = str(record.get("key")  or "").strip()
+        rec_name = str(record.get("name") or "").strip()
+        expression = str(record.get("expression") or "").strip()
+        comment = record.get("comment")           # None means "don't touch comment"
+
+        param = _find_user_parameter_by_token(design, rec_key) if rec_key else None
+        if not param and rec_name:
+            param = design.userParameters.itemByName(rec_name)
+        if not param:
+            failed_rows.append({
+                "name": rec_name or rec_key,
+                "message": "Parameter not found.",
+            })
+            continue
+
+        try:
+            value_input = adsk.core.ValueInput.createByString(expression)
+        except Exception as exc:
+            failed_rows.append({"name": param.name, "message": str(exc)})
+            continue
+
+        params_list.append(param)
+        values_list.append(value_input)
+        comment_pairs.append((param, comment))
+
+    if failed_rows:
+        return {
+            "ok": False,
+            "errorCode": ERROR_NOT_FOUND,
+            "message": f"{len(failed_rows)} parameter(s) not found.",
+            "updatedCount": 0,
+            "failedRows": failed_rows,
+        }
+
+    # --- Phase 2: apply all expressions — single Fusion recompute -----------
+    if hasattr(design, "modifyParameters"):
+        # Preferred path: one Fusion call → one design recompute cycle.
+        try:
+            success = design.modifyParameters(params_list, values_list)
+        except Exception as exc:
+            return {
+                "ok": False,
+                "errorCode": ERROR_UNKNOWN,
+                "message": f"modifyParameters failed: {exc}",
+                "updatedCount": 0,
+                "failedRows": [],
+            }
+        if not success:
+            return {
+                "ok": False,
+                "errorCode": ERROR_VALIDATION,
+                "message": "modifyParameters returned False — one or more expressions may be invalid.",
+                "updatedCount": 0,
+                "failedRows": [],
+            }
+    else:
+        # Fallback: sequential .expression= for Fusion builds < Sept 2022.
+        sequential_failed = []
+        for param, value_input in zip(params_list, values_list):
+            try:
+                param.expression = str(value_input)
+            except Exception as exc:
+                sequential_failed.append({"name": param.name, "message": str(exc)})
+        if sequential_failed:
+            return {
+                "ok": False,
+                "errorCode": ERROR_VALIDATION,
+                "message": f"{len(sequential_failed)} expression(s) rejected by Fusion.",
+                "updatedCount": len(params_list) - len(sequential_failed),
+                "failedRows": sequential_failed,
+            }
+
+    # --- Phase 3: apply comments (no recompute triggered) --------------------
+    for param, comment in comment_pairs:
+        if comment is not None:
+            try:
+                param.comment = str(comment)
+            except Exception:
+                pass  # comment failure is non-fatal
+
+    return {
+        "ok": True,
+        "updatedCount": len(params_list),
+        "failedRows": [],
+        "message": "",
+    }
 
 
 def _revert_parameter(data):

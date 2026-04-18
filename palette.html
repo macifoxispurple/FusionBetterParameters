@@ -3579,6 +3579,7 @@
         VALIDATE_UNIT: "validateUnit",
         RENAME_PARAMETER: "renameParameter",
         UPDATE_MODEL_PARAMETER: "updateModelParameter",
+        BATCH_UPDATE_PARAMETERS: "batchUpdateParameters",
         COPY_PARAMETER: "copyParameter",
         DELETE_PARAMETERS: "deleteParameters",
         SORT_BY_TIMELINE_ORDER: "sortByTimelineOrder",
@@ -3605,7 +3606,7 @@
         ACTION.SAVE_PARAMETER_ORDER, ACTION.SAVE_GROUP_UI_STATE, ACTION.SAVE_SETTINGS, ACTION.SAVE_PALETTE_GEOMETRY,
         ACTION.GET_TEXT_TUNER_STATE, ACTION.SAVE_TEXT_TUNER_STATE,
         ACTION.VALIDATE_PARAMETER_NAME, ACTION.VALIDATE_EXPRESSION, ACTION.PREVIEW_EXPRESSION, ACTION.VALIDATE_UNIT,
-        ACTION.RENAME_PARAMETER, ACTION.UPDATE_MODEL_PARAMETER, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
+        ACTION.RENAME_PARAMETER, ACTION.UPDATE_MODEL_PARAMETER, ACTION.BATCH_UPDATE_PARAMETERS, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
         ACTION.GET_BACKEND_CONTRACT_INFO, ACTION.GET_PARAMETER_DEPENDENCY_GRAPH, ACTION.RUN_SELF_TEST_SUITE,
         ACTION.SEED_TEST_PARAMETERS, ACTION.RESET_TEST_STATE,
         ACTION.IMPORT_PARAMETERS, ACTION.EXPORT_PARAMETERS,
@@ -3618,7 +3619,7 @@
         ACTION.READY, ACTION.REFRESH, ACTION.CREATE_PARAMETER, ACTION.DELETE_PARAMETER, ACTION.UPDATE_PARAMETER, ACTION.REVERT_PARAMETER,
         ACTION.SET_PARAMETER_FAVORITE, ACTION.SET_PARAMETER_GROUP, ACTION.RENAME_GROUP, ACTION.DELETE_GROUP,
         ACTION.SAVE_PARAMETER_ORDER, ACTION.SAVE_GROUP_UI_STATE, ACTION.SAVE_SETTINGS, ACTION.SAVE_PALETTE_GEOMETRY,
-        ACTION.RENAME_PARAMETER, ACTION.UPDATE_MODEL_PARAMETER, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
+        ACTION.RENAME_PARAMETER, ACTION.UPDATE_MODEL_PARAMETER, ACTION.BATCH_UPDATE_PARAMETERS, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
         ACTION.SEED_TEST_PARAMETERS, ACTION.RESET_TEST_STATE,
         ACTION.IMPORT_PARAMETERS, ACTION.IMPORT_PARAMETERS_PACKAGE,
         ACTION.SAVE_TEXT_TUNER_STATE, ACTION.CHECK_FOR_UPDATES, ACTION.DOWNLOAD_AND_STAGE_UPDATE,
@@ -9807,12 +9808,24 @@
           const nameInput = row.querySelector(".param-name-input");
           const expressionInput = row.querySelector(".expression-input");
           const commentInput = row.querySelector(".comment-input");
+          const savedName = nameInput ? String(nameInput.getAttribute("data-saved-name") || "") : "";
+          const savedExpression = expressionInput ? String(expressionInput.getAttribute("data-saved-expression") || "") : "";
+          const savedComment = commentInput ? String(commentInput.getAttribute("data-saved-comment") || "") : "";
+          const nextName = nameInput ? String(nameInput.value || "") : "";
+          const expression = expressionInput ? String(expressionInput.value || "") : "";
+          const comment = commentInput ? String(commentInput.value || "") : "";
           return {
             key: row.getAttribute("data-parameter-key") || "",
             name: parameter?.name || row.getAttribute("data-parameter-name") || "",
-            nextName: nameInput ? String(nameInput.value || "") : "",
-            expression: expressionInput ? expressionInput.value : "",
-            comment: commentInput ? commentInput.value : ""
+            nextName,
+            expression,
+            comment,
+            savedName,
+            savedExpression,
+            savedComment,
+            nameDirty: nextName !== savedName,
+            expressionDirty: expression !== savedExpression,
+            commentDirty: comment !== savedComment
           };
         });
       }
@@ -9887,83 +9900,166 @@
         state.applyAllRunning = true;
         refreshBatchActionBar();
 
-        let appliedCount = 0;
         let failedCount = 0;
         let skippedCount = 0;
         let stoppedByTransportFailure = false;
+        const appliedKeys = new Set();
+        const failedKeys = new Set();
         const failedRows = [];
 
+        const isFatalFailureMessage = (message) => /Fusion palette bridge is not available|Backend contract error|API version mismatch/i.test(String(message || ""));
+        const markFailure = (op, message, errorField = "expression") => {
+          const itemName = op.nextName || op.name || op.key || "Row";
+          const itemMessage = String(message || "Apply failed.");
+          if (!failedKeys.has(op.key)) {
+            failedKeys.add(op.key);
+            failedCount += 1;
+            failedRows.push({ name: itemName, message: itemMessage });
+          }
+          pending.set(op.key, {
+            name: op.nextName,
+            expression: op.expression,
+            comment: op.comment,
+            nameErrorMessage: errorField === "name" ? itemMessage : "",
+            errorMessage: errorField === "name" ? "" : itemMessage
+          });
+        };
+
         try {
+          const renameOps = [];
+          const batchOps = [];
           for (const op of ops) {
             if (!op.key) {
               skippedCount += 1;
               continue;
             }
+            if (op.nameDirty) {
+              renameOps.push(op);
+            }
+            if (op.expressionDirty || op.commentDirty) {
+              batchOps.push(op);
+            }
+          }
 
+          for (const op of renameOps) {
             const row = getParameterRowByKey(op.key);
             if (!row) {
-              skippedCount += 1;
+              markFailure(op, "Row not found.", "name");
+              restorePendingDirtyOps(pending);
               continue;
             }
 
-            const expressionInput = row.querySelector(".expression-input");
-            const commentInput = row.querySelector(".comment-input");
-            if (!expressionInput || !commentInput) {
-              skippedCount += 1;
+            const nameInput = row.querySelector(".param-name-input");
+            if (!nameInput) {
+              markFailure(op, "Name input is not available.", "name");
+              restorePendingDirtyOps(pending);
               continue;
             }
-            expressionInput.value = op.expression;
-            commentInput.value = op.comment;
+
+            nameInput.value = op.nextName;
             updateRowSaveState(row);
 
-            const result = await applyRowDraft(row, {
-              showProgress: false,
-              showSuccess: false,
-              showErrors: false
-            });
+            const validName = await validateRowNameInput(nameInput);
+            if (!validName) {
+              markFailure(op, "Name is invalid.", "name");
+              restorePendingDirtyOps(pending);
+              continue;
+            }
 
-            if (result.ok) {
-              appliedCount += 1;
-              pending.delete(op.key);
-            } else {
-              if (result.fatal) {
-                failedCount += 1;
+            try {
+              const renameResponse = await sendToFusion(ACTION.RENAME_PARAMETER, {
+                key: op.key,
+                name: op.name,
+                newName: op.nextName
+              });
+              if (!renameResponse.ok) {
+                throw new Error(renameResponse.message || "Rename failed.");
+              }
+              applyStateFromFusion(renameResponse, { source: "response", action: ACTION.RENAME_PARAMETER });
+              op.name = op.nextName;
+              pending.set(op.key, { name: op.nextName, expression: op.expression, comment: op.comment, nameErrorMessage: "", errorMessage: "" });
+              if (!op.expressionDirty && !op.commentDirty) {
+                appliedKeys.add(op.key);
+                pending.delete(op.key);
+              }
+            } catch (error) {
+              const failureMessage = String(error?.message || "Rename failed.");
+              markFailure(op, failureMessage, "name");
+              if (isFatalFailureMessage(failureMessage)) {
                 stoppedByTransportFailure = true;
-                failedRows.push({
-                  name: op.name || op.key,
-                  message: result.message || "Transport failure."
-                });
-                pending.set(op.key, {
-                  name: op.nextName,
-                  expression: op.expression,
-                  comment: op.comment,
-                  nameErrorMessage: result.errorField === "name" ? (result.message || "Transport failure.") : "",
-                  errorMessage: result.errorField === "name" ? "" : (result.message || "Transport failure.")
-                });
                 restorePendingDirtyOps(pending);
                 break;
               }
-              failedCount += 1;
-              failedRows.push({
-                name: op.name || op.key,
-                message: result.message || "Apply failed."
-              });
-              pending.set(op.key, {
-                name: op.nextName,
-                expression: op.expression,
-                comment: op.comment,
-                nameErrorMessage: result.errorField === "name" ? (result.message || "Apply failed.") : "",
-                errorMessage: result.errorField === "name" ? "" : (result.message || "Apply failed.")
-              });
             }
-
             restorePendingDirtyOps(pending);
+          }
+
+          if (!stoppedByTransportFailure) {
+            const batchCandidates = batchOps.filter((op) => op.key && !failedKeys.has(op.key));
+            if (batchCandidates.length > 0) {
+              const updatesPayload = batchCandidates.map((op) => ({
+                key: op.key,
+                name: op.nextName || op.name || "",
+                expression: op.expression,
+                comment: op.comment
+              }));
+              try {
+                const batchResponse = await sendToFusion(ACTION.BATCH_UPDATE_PARAMETERS, { updates: updatesPayload });
+                if (!batchResponse.ok) {
+                  throw new Error(batchResponse.message || "Batch update failed.");
+                }
+                if (hasObjectStatePayload(batchResponse.state)) {
+                  applyStateFromFusion(batchResponse, { source: "response", action: ACTION.BATCH_UPDATE_PARAMETERS });
+                } else {
+                  appendStatusHistory("Batch update response omitted state; running refresh for compatibility.", "warning");
+                  await refreshParameters();
+                }
+
+                const batchFailedRows = Array.isArray(batchResponse.failedRows) ? batchResponse.failedRows : [];
+                const normalizeToken = (value) => String(value || "").trim().toLowerCase();
+                const failedByName = new Map();
+                batchFailedRows.forEach((item) => {
+                  const token = normalizeToken(item?.name);
+                  if (!token) {
+                    return;
+                  }
+                  if (!failedByName.has(token)) {
+                    failedByName.set(token, String(item?.message || "Apply failed."));
+                  }
+                });
+
+                batchCandidates.forEach((op) => {
+                  const tokens = [
+                    normalizeToken(op.nextName),
+                    normalizeToken(op.name),
+                    normalizeToken(op.key)
+                  ].filter(Boolean);
+                  const matchedMessage = tokens.find((token) => failedByName.has(token));
+                  if (matchedMessage) {
+                    markFailure(op, failedByName.get(matchedMessage), "expression");
+                    return;
+                  }
+                  appliedKeys.add(op.key);
+                  pending.delete(op.key);
+                });
+              } catch (error) {
+                const failureMessage = String(error?.message || "Batch update failed.");
+                batchCandidates.forEach((op) => {
+                  markFailure(op, failureMessage, "expression");
+                });
+                if (isFatalFailureMessage(failureMessage)) {
+                  stoppedByTransportFailure = true;
+                }
+              }
+              restorePendingDirtyOps(pending);
+            }
           }
         } finally {
           state.applyAllRunning = false;
           refreshBatchActionBar();
         }
 
+        const appliedCount = appliedKeys.size;
         const summary = stoppedByTransportFailure
           ? `Apply All stopped on transport/contract failure. Applied ${appliedCount}, failed ${failedCount}, skipped ${skippedCount}.`
           : `Apply All finished. Applied ${appliedCount}, failed ${failedCount}, skipped ${skippedCount}.`;

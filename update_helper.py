@@ -29,7 +29,7 @@ import os
 import shutil
 import sys
 
-ALWAYS_SKIP = {".gitignore", "dev"}
+ALWAYS_SKIP = {".git", ".gitignore", "dev"}
 
 # Files hash-checked when --verify is given.  Manifest excluded intentionally
 # (see module docstring).
