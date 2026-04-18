@@ -12110,9 +12110,6 @@
             throw new Error(previewResponse.message || "Import preview failed.");
           }
           const resolvedFilePath = String(previewResponse.filePath || "").trim();
-          if (!resolvedFilePath) {
-            appendStatusHistory("CSV preview did not return filePath; commit import may prompt for file selection again.", "warning");
-          }
           const previewImported = readResponseCountField(previewResponse, "importedCount", "CSV preview");
           const previewSkipped = readResponseCountField(previewResponse, "skippedCount", "CSV preview");
           const previewFailed = readResponseCountField(previewResponse, "failedCount", "CSV preview");

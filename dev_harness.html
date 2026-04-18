@@ -269,6 +269,14 @@
           return input;
         }
 
+        function setExpression(row, text) {
+          const input = row?.querySelector(".expression-input");
+          assertTrue(!!input, "Expression input missing.");
+          input.value = String(text || "");
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          return input;
+        }
+
         async function ensureManualMode(doc) {
           const computeButton = doc.getElementById("computeModeButton");
           assertTrue(!!computeButton, "Compute mode button missing.");
@@ -278,6 +286,17 @@
             await sleep(50);
           }
           assertTrue(/manual/i.test(modeLabel()), "Failed to switch to Manual mode.");
+        }
+
+        async function ensureAutoMode(doc) {
+          const computeButton = doc.getElementById("computeModeButton");
+          assertTrue(!!computeButton, "Compute mode button missing.");
+          const modeLabel = () => String(computeButton.textContent || "");
+          if (!/auto/i.test(modeLabel())) {
+            computeButton.click();
+            await sleep(50);
+          }
+          assertTrue(/auto/i.test(modeLabel()), "Failed to switch to Auto mode.");
         }
 
         async function loadFrame(options = {}) {
@@ -424,6 +443,99 @@
           }
         }
 
+        async function testAutoBlurAppliesValidEdit() {
+          await loadFrame({ fixture: DEFAULT_FIXTURE });
+          const doc = getFrameDoc();
+          await ensureAutoMode(doc);
+          const rows = getUniqueRows(doc);
+          assertTrue(rows.length >= 1, "Need at least one parameter row.");
+          const row = rows[0];
+          const key = String(row.getAttribute("data-parameter-key") || "");
+          const marker = `auto-blur-${Date.now()}`;
+          const commentInput = setComment(row, marker);
+          assertTrue(row.classList.contains("is-dirty"), "Row should be dirty before auto blur.");
+          commentInput.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: doc.getElementById("refreshButton") }));
+          const applied = await waitFor(() => {
+            const liveRow = getRowByKey(doc, key);
+            return !!liveRow && !liveRow.classList.contains("is-dirty");
+          }, 7000, 40);
+          assertTrue(applied, "Auto mode blur did not apply valid edit.");
+        }
+
+        async function testAutoInvalidRemainsDirtyWithError() {
+          await loadFrame({ fixture: DEFAULT_FIXTURE });
+          const doc = getFrameDoc();
+          await ensureAutoMode(doc);
+          const rows = getUniqueRows(doc);
+          assertTrue(rows.length >= 1, "Need at least one parameter row.");
+          const row = rows[0];
+          const expressionInput = setExpression(row, "");
+          expressionInput.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: doc.getElementById("refreshButton") }));
+          await sleep(220);
+          assertTrue(row.classList.contains("is-dirty"), "Invalid auto edit should remain dirty.");
+          assertTrue(expressionInput.getAttribute("aria-invalid") === "true", "Invalid expression should keep aria-invalid=true.");
+        }
+
+        async function testAutoDiscardButtonDoesNotApply() {
+          await loadFrame({ fixture: DEFAULT_FIXTURE });
+          const doc = getFrameDoc();
+          await ensureAutoMode(doc);
+          const rows = getUniqueRows(doc);
+          assertTrue(rows.length >= 1, "Need at least one parameter row.");
+          const row = rows[0];
+          const commentInput = row.querySelector(".comment-input");
+          assertTrue(!!commentInput, "Comment input missing.");
+          const savedComment = String(commentInput.getAttribute("data-saved-comment") || "");
+          const marker = `discard-${Date.now()}`;
+          setComment(row, marker);
+          const discardButton = row.querySelector(".field-discard-button[data-discard-field='comment']");
+          assertTrue(!!discardButton, "Comment discard button missing.");
+          discardButton.click();
+          await sleep(180);
+          assertTrue(!row.classList.contains("is-dirty"), "Discard click should clear dirty state.");
+          assertTrue(String(commentInput.value || "") === savedComment, "Discard click should restore saved value.");
+        }
+
+        async function testApplyAllDisabledWhenAnyRowInvalid() {
+          await loadFrame({ fixture: DEFAULT_FIXTURE });
+          const doc = getFrameDoc();
+          await ensureManualMode(doc);
+          const rows = getUniqueRows(doc);
+          assertTrue(rows.length >= 1, "Need at least one parameter row.");
+          const row = rows[0];
+          setExpression(row, "");
+          await sleep(120);
+          const applyAllButton = doc.getElementById("applyAllButton");
+          assertTrue(!!applyAllButton, "Apply All button missing.");
+          assertTrue(applyAllButton.disabled === true, "Apply All should be disabled when a dirty row is invalid.");
+          assertTrue(applyAllButton.classList.contains("is-error"), "Apply All should use error style when invalid dirty rows exist.");
+        }
+
+        async function testDiscardAllResetsAllDirtyRows() {
+          await loadFrame({ fixture: DEFAULT_FIXTURE });
+          const doc = getFrameDoc();
+          await ensureManualMode(doc);
+          const rows = getUniqueRows(doc);
+          assertTrue(rows.length >= 2, "Need at least two parameter rows.");
+          const rowA = rows[0];
+          const rowB = rows[1];
+          const inputA = rowA.querySelector(".comment-input");
+          const inputB = rowB.querySelector(".comment-input");
+          assertTrue(!!inputA && !!inputB, "Comment inputs missing.");
+          const savedA = String(inputA.getAttribute("data-saved-comment") || "");
+          const savedB = String(inputB.getAttribute("data-saved-comment") || "");
+          setComment(rowA, `discard-all-a-${Date.now()}`);
+          setComment(rowB, `discard-all-b-${Date.now()}`);
+          assertTrue(rowA.classList.contains("is-dirty") && rowB.classList.contains("is-dirty"), "Rows should be dirty before Discard All.");
+          const discardAllButton = doc.getElementById("discardAllButton");
+          assertTrue(!!discardAllButton && !discardAllButton.disabled, "Discard All button should be enabled.");
+          discardAllButton.click();
+          await sleep(220);
+          assertTrue(!rowA.classList.contains("is-dirty") && !rowB.classList.contains("is-dirty"), "Discard All should clear dirty state for all rows.");
+          assertTrue(String(inputA.value || "") === savedA, "Discard All should restore row A saved comment.");
+          assertTrue(String(inputB.value || "") === savedB, "Discard All should restore row B saved comment.");
+        }
+
         async function runRegressionTests() {
           runTestsButton.disabled = true;
           setResults("Running FE regression tests...");
@@ -432,7 +544,12 @@
             { id: "fe/resize-preserves-drafts", fn: testResizeKeepsDirtyDrafts },
             { id: "fe/timeline-blocked-when-dirty", fn: testTimelineBlockedWhenDirty },
             { id: "fe/import-cancel-silent", fn: testImportCancelSilentNoError },
-            { id: "fe/import-partial-failure-details", fn: testImportPartialFailureDetailsRendered }
+            { id: "fe/import-partial-failure-details", fn: testImportPartialFailureDetailsRendered },
+            { id: "fe/auto-blur-applies-valid-edit", fn: testAutoBlurAppliesValidEdit },
+            { id: "fe/auto-invalid-stays-dirty", fn: testAutoInvalidRemainsDirtyWithError },
+            { id: "fe/auto-discard-click-no-apply", fn: testAutoDiscardButtonDoesNotApply },
+            { id: "fe/manual-apply-all-disabled-invalid", fn: testApplyAllDisabledWhenAnyRowInvalid },
+            { id: "fe/manual-discard-all-resets-rows", fn: testDiscardAllResetsAllDirtyRows }
           ];
           let pass = 0;
           let fail = 0;
