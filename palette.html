@@ -4117,6 +4117,8 @@
       let textTunerLiveApplyTimer = null;
       let textTunerPersistTimer = null;
       let selectedActionInFlight = false;
+      let rowExpressionValidationTimersByInput = new Map();
+      let rowNameValidationTimersByInput = new Map();
 
       function reportBackgroundFailure(contextLabel, error) {
         const reason = String(error?.message || error || "Unknown error");
@@ -4127,6 +4129,47 @@
         Promise.resolve(taskPromise).catch((error) => {
           reportBackgroundFailure(contextLabel, error);
         });
+      }
+
+      function clearManagedRowTimer(timerMap, input) {
+        if (!timerMap || !input) {
+          return;
+        }
+        const timerId = timerMap.get(input);
+        if (typeof timerId === "number") {
+          window.clearTimeout(timerId);
+        }
+        timerMap.delete(input);
+      }
+
+      function scheduleManagedRowTimer(timerMap, input, delayMs, callback) {
+        if (!timerMap || !input || typeof callback !== "function") {
+          return;
+        }
+        clearManagedRowTimer(timerMap, input);
+        const timerId = window.setTimeout(() => {
+          timerMap.delete(input);
+          callback();
+        }, delayMs);
+        timerMap.set(input, timerId);
+      }
+
+      function clearAllManagedRowTimers() {
+        [rowExpressionValidationTimersByInput, rowNameValidationTimersByInput].forEach((timerMap) => {
+          if (!(timerMap instanceof Map)) {
+            return;
+          }
+          timerMap.forEach((timerId) => {
+            if (typeof timerId === "number") {
+              window.clearTimeout(timerId);
+            }
+          });
+          timerMap.clear();
+        });
+      }
+
+      function isSelectionInteractionBlocked() {
+        return selectedActionInFlight === true;
       }
 
       function readResponseCountField(payload, fieldName, contextLabel) {
@@ -6735,6 +6778,7 @@
 
       function renderParameters(parameters) {
         state.parameters = parameters || [];
+        clearAllManagedRowTimers();
         const tbody = document.getElementById("parameterRows");
         const visibleColspan = getVisibleTableColumnCount();
         renderSearchControls();
@@ -7180,6 +7224,9 @@
       }
 
       function setSelectedParameterRow(row, options = {}) {
+        if (isSelectionInteractionBlocked()) {
+          return;
+        }
         const nextSelection = getRowSelectionFromElement(row);
         if (!nextSelection || !nextSelection.key) {
           return;
@@ -9738,14 +9785,8 @@
         if (!nameInput || !expressionInput || !commentInput) {
           return false;
         }
-        if (rowExpressionValidationTimer) {
-          window.clearTimeout(rowExpressionValidationTimer);
-          rowExpressionValidationTimer = null;
-        }
-        if (rowNameValidationTimer) {
-          window.clearTimeout(rowNameValidationTimer);
-          rowNameValidationTimer = null;
-        }
+        clearManagedRowTimer(rowExpressionValidationTimersByInput, expressionInput);
+        clearManagedRowTimer(rowNameValidationTimersByInput, nameInput);
         invalidateRowAsyncRequests(expressionInput);
 
         const savedName = nameInput.getAttribute("data-saved-name") || "";
@@ -9782,10 +9823,7 @@
         let changed = false;
         let fieldLabel = "field";
         if (normalizedField === "name") {
-          if (rowNameValidationTimer) {
-            window.clearTimeout(rowNameValidationTimer);
-            rowNameValidationTimer = null;
-          }
+          clearManagedRowTimer(rowNameValidationTimersByInput, nameInput);
           state.rowValidationRequestNonce += 1;
           nameInput.setAttribute("data-name-validation-request-nonce", String(state.rowValidationRequestNonce));
           const savedName = nameInput.getAttribute("data-saved-name") || "";
@@ -9796,10 +9834,7 @@
           setRowNameValidationState(nameInput, "", "success");
           fieldLabel = "name";
         } else if (normalizedField === "expression") {
-          if (rowExpressionValidationTimer) {
-            window.clearTimeout(rowExpressionValidationTimer);
-            rowExpressionValidationTimer = null;
-          }
+          clearManagedRowTimer(rowExpressionValidationTimersByInput, expressionInput);
           invalidateRowAsyncRequests(expressionInput);
           const savedExpression = expressionInput.getAttribute("data-saved-expression") || "";
           if (expressionInput.value !== savedExpression) {
@@ -10823,8 +10858,6 @@
       });
 
       const parameterRows = document.getElementById("parameterRows");
-      let rowExpressionValidationTimer = null;
-      let rowNameValidationTimer = null;
       let focusRefreshTimer = null;
       const parameterSearchInput = document.getElementById("parameterSearchInput");
       const parameterSearchClear = document.getElementById("parameterSearchClear");
@@ -10868,6 +10901,9 @@
       });
 
       parameterRows.addEventListener("click", (event) => {
+        if (isSelectionInteractionBlocked()) {
+          return;
+        }
         const row = event.target.closest("tr.parameter-row[data-parameter-key]");
         if (!row) {
           return;
@@ -10886,6 +10922,9 @@
       });
 
       parameterRows.addEventListener("mousedown", (event) => {
+        if (isSelectionInteractionBlocked()) {
+          return;
+        }
         if (!(event.ctrlKey || event.metaKey || event.shiftKey)) {
           return;
         }
@@ -10961,19 +11000,16 @@
       parameterRows.addEventListener("input", (event) => {
         const nameInput = event.target.closest(".param-name-input");
         if (nameInput) {
-          if (rowNameValidationTimer) {
-            window.clearTimeout(rowNameValidationTimer);
-            rowNameValidationTimer = null;
-          }
+          clearManagedRowTimer(rowNameValidationTimersByInput, nameInput);
           const row = nameInput.closest("tr.parameter-row[data-parameter-key]");
           const localMessage = validateParameterNameLocallyForRow(String(nameInput.value || ""), row);
           if (localMessage) {
             setRowNameValidationState(nameInput, localMessage, "error");
           } else {
             setRowNameValidationState(nameInput, "", "success");
-            rowNameValidationTimer = window.setTimeout(() => {
+            scheduleManagedRowTimer(rowNameValidationTimersByInput, nameInput, ROW_NAME_VALIDATION_DEBOUNCE_MS, () => {
               void validateRowNameInput(nameInput).catch(() => {});
-            }, ROW_NAME_VALIDATION_DEBOUNCE_MS);
+            });
           }
           return;
         }
@@ -10993,9 +11029,7 @@
         updateExpressionSuggestions(input, input.getAttribute("data-parameter-name") || "");
         updateFunctionHelper(input);
 
-        if (rowExpressionValidationTimer) {
-          window.clearTimeout(rowExpressionValidationTimer);
-        }
+        clearManagedRowTimer(rowExpressionValidationTimersByInput, input);
 
         const value = input.value;
         if (!value.trim()) {
@@ -11006,9 +11040,9 @@
         }
 
         updateRowSaveState(input.closest("tr"));
-        rowExpressionValidationTimer = window.setTimeout(() => {
+        scheduleManagedRowTimer(rowExpressionValidationTimersByInput, input, ROW_EXPRESSION_PREVIEW_DEBOUNCE_MS, () => {
           void previewRowExpression(input).catch(() => {});
-        }, ROW_EXPRESSION_PREVIEW_DEBOUNCE_MS);
+        });
       });
 
       document.getElementById("newComment").addEventListener("input", (event) => {
@@ -11162,18 +11196,14 @@
 
         window.setTimeout(() => closeExpressionSuggestions(), FIELD_HELPER_CLOSE_DELAY_MS);
         window.setTimeout(() => closeFunctionHelper(), FIELD_HELPER_CLOSE_DELAY_MS);
-        if (rowExpressionValidationTimer) {
-          window.clearTimeout(rowExpressionValidationTimer);
-          rowExpressionValidationTimer = null;
-        }
-        if (rowNameValidationTimer) {
-          window.clearTimeout(rowNameValidationTimer);
-          rowNameValidationTimer = null;
-        }
 
         const rowForFocusout = (nameInput || input || commentInput)
           ? (nameInput || input || commentInput).closest("tr.parameter-row[data-parameter-key]")
           : null;
+        const focusoutNameInput = nameInput || rowForFocusout?.querySelector(".param-name-input");
+        const focusoutExpressionInput = input || rowForFocusout?.querySelector(".expression-input");
+        clearManagedRowTimer(rowNameValidationTimersByInput, focusoutNameInput);
+        clearManagedRowTimer(rowExpressionValidationTimersByInput, focusoutExpressionInput);
         const rowKeyForFocusout = String(rowForFocusout?.getAttribute("data-parameter-key") || "");
         const relatedTarget = event.relatedTarget && typeof event.relatedTarget.closest === "function"
           ? event.relatedTarget
@@ -12794,6 +12824,7 @@
         );
         const isTextTunerToggle = keyLower === "t" && event.ctrlKey && !event.metaKey
           && ((event.altKey && !event.shiftKey) || (event.shiftKey && !event.altKey));
+        const isComputeModeToggleShortcut = keyLower === "m" && event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey;
         if (isLayoutDebugToggle) {
           event.preventDefault();
           setLayoutDebugEnabled(!state.layoutDebugEnabled);
@@ -12802,6 +12833,14 @@
         if (isTextTunerToggle) {
           event.preventDefault();
           void setTextTunerSidebarPreferenceVisible(!shouldShowTextTunerSidebar());
+          return;
+        }
+        if (isComputeModeToggleShortcut) {
+          event.preventDefault();
+          const computeModeButton = document.getElementById("computeModeButton");
+          if (computeModeButton && !computeModeButton.disabled) {
+            computeModeButton.click();
+          }
           return;
         }
         if (event.key !== "Escape") {
@@ -12956,10 +12995,7 @@
           window.clearTimeout(expressionValidationTimer);
           expressionValidationTimer = null;
         }
-        if (rowExpressionValidationTimer) {
-          window.clearTimeout(rowExpressionValidationTimer);
-          rowExpressionValidationTimer = null;
-        }
+        clearAllManagedRowTimers();
         if (paletteResizeTimer) {
           window.clearTimeout(paletteResizeTimer);
           paletteResizeTimer = null;
