@@ -3635,6 +3635,14 @@
         ACTION.IMPORT_PARAMETERS,
         ACTION.IMPORT_PARAMETERS_PACKAGE
       ]);
+      const QUEUE_STATE_WHILE_EDITING_ACTIONS = new Set([
+        ACTION.REFRESH
+      ]);
+      const IGNORE_STATE_WHILE_EDITING_ACTIONS = new Set([
+        ACTION.SAVE_SETTINGS,
+        ACTION.SAVE_PALETTE_GEOMETRY,
+        ACTION.SAVE_GROUP_UI_STATE
+      ]);
       // Mock bridge is dev-only and opt-in (`?mock=1` / `window.__BP_USE_MOCK_BRIDGE`).
       // It must stay unreachable during normal Fusion runtime when `adsk.fusionSendData` is present.
       const MOCK_BRIDGE_ENABLED = !!window.__BP_USE_MOCK_BRIDGE;
@@ -8719,7 +8727,18 @@
           envelope.state
           && typeof envelope.state === "object"
           && context.source === "response"
-          && context.action === ACTION.REFRESH
+          && IGNORE_STATE_WHILE_EDITING_ACTIONS.has(context.action)
+          && hasBlockingLocalEdits()
+        ) {
+          appendStatusHistory(`Ignored background "${context.action}" state update while editing to preserve local drafts.`, "warning");
+          return envelope;
+        }
+
+        if (
+          envelope.state
+          && typeof envelope.state === "object"
+          && context.source === "response"
+          && QUEUE_STATE_WHILE_EDITING_ACTIONS.has(context.action)
           && hasBlockingLocalEdits()
         ) {
           queuePendingStateEnvelope(envelope, context.action || "renderState");
@@ -8809,7 +8828,7 @@
           throw new Error(response.message || "Settings save failed.");
         }
 
-        applyStateFromFusion(response);
+        applyStateFromFusion(response, { source: "response", action: ACTION.SAVE_SETTINGS });
         if (statusMessage) {
           setGlobalStatus(statusMessage, "success");
         }
@@ -8824,7 +8843,7 @@
         if (!response.ok) {
           throw new Error(response.message || "Group UI state save failed.");
         }
-        applyStateFromFusion(response);
+        applyStateFromFusion(response, { source: "response", action: ACTION.SAVE_GROUP_UI_STATE });
         if (statusMessage) {
           setGlobalStatus(statusMessage, "success");
         }
@@ -9705,6 +9724,19 @@
         const parameterKey = String(parameter.key || parameter.name || "");
         const expressionDirty = expression !== previousSavedExpression;
         const commentDirty = comment !== (commentInput.getAttribute("data-saved-comment") || "");
+        const pendingOtherDrafts = new Map();
+        collectDirtyRowOps().forEach((op) => {
+          if (!op || !op.key || op.key === parameterKey) {
+            return;
+          }
+          pendingOtherDrafts.set(op.key, {
+            name: op.nextName,
+            expression: op.expression,
+            comment: op.comment,
+            nameErrorMessage: "",
+            errorMessage: ""
+          });
+        });
         if (!nameDirty && !expressionDirty && !commentDirty) {
           return { ok: true, skipped: true, key: parameterKey, name: parameter.name };
         }
@@ -9782,6 +9814,9 @@
             }
             clearRowDraftByKey(parameterKey);
           }
+          if (pendingOtherDrafts.size > 0) {
+            restorePendingDirtyOps(pendingOtherDrafts);
+          }
 
           if (showSuccess) {
             setGlobalStatus(`${isManualComputeMode() ? "Applied" : "Saved"} ${currentName}.`, "success");
@@ -9795,6 +9830,9 @@
             setRowNameValidationState(nameInput, error.message || "Apply failed.", "error");
           } else {
             setExpressionValidationState(expressionInput, error.message || "Apply failed.", "error");
+          }
+          if (pendingOtherDrafts.size > 0) {
+            restorePendingDirtyOps(pendingOtherDrafts);
           }
           const failureMessage = error.message || "Apply failed.";
           const fatal = /Fusion palette bridge is not available|Backend contract error|API version mismatch/i.test(failureMessage);

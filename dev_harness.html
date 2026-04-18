@@ -108,6 +108,21 @@
         color: var(--muted);
         font-size: 12px;
       }
+
+      .results {
+        padding: 10px 12px;
+        border-top: 1px solid var(--line);
+        background: #172030;
+        color: var(--ink);
+        font: 12px/1.4 Consolas, "SFMono-Regular", Menlo, monospace;
+        white-space: pre-wrap;
+        min-height: 88px;
+      }
+
+      .toolbar .run-btn {
+        border-color: color-mix(in srgb, #7ee787 55%, var(--line));
+        color: #7ee787;
+      }
     </style>
   </head>
   <body>
@@ -131,6 +146,7 @@
         </select>
       </label>
       <button id="reloadButton" class="accent" type="button">Reload Palette</button>
+      <button id="runTestsButton" class="run-btn" type="button">Run FE Regression Tests</button>
       <span class="note">Mock bridge + debug sidebar enabled. In palette: Ctrl+Alt+D (or Ctrl+Shift+D) toggles sidebar.</span>
     </div>
     <div class="stage">
@@ -138,6 +154,7 @@
         <iframe id="paletteFrame" title="BetterParameters palette test harness"></iframe>
       </div>
     </div>
+    <pre id="resultsOutput" class="results">Ready.</pre>
 
     <script>
       (function () {
@@ -146,7 +163,10 @@
         const widthInput = document.getElementById("frameWidthInput");
         const fixtureSelect = document.getElementById("fixtureSelect");
         const reloadButton = document.getElementById("reloadButton");
+        const runTestsButton = document.getElementById("runTestsButton");
+        const resultsOutput = document.getElementById("resultsOutput");
         const widthButtons = Array.from(document.querySelectorAll("button[data-width]"));
+        const DEFAULT_FIXTURE = "";
 
         function clampWidth(value) {
           const n = Number(value);
@@ -173,8 +193,263 @@
           return `./palette.html?${params.toString()}`;
         }
 
-        function loadFrame() {
-          frame.src = buildFrameSrc();
+        function appendLine(text) {
+          const next = String(text || "");
+          resultsOutput.textContent = (resultsOutput.textContent || "").trim() === "Ready."
+            ? next
+            : `${resultsOutput.textContent}\n${next}`;
+        }
+
+        function setResults(text) {
+          resultsOutput.textContent = String(text || "");
+        }
+
+        function sleep(ms) {
+          return new Promise((resolve) => window.setTimeout(resolve, ms));
+        }
+
+        async function waitFor(predicate, timeoutMs = 5000, intervalMs = 25) {
+          const started = Date.now();
+          while ((Date.now() - started) <= timeoutMs) {
+            try {
+              if (predicate()) {
+                return true;
+              }
+            } catch (_) {}
+            await sleep(intervalMs);
+          }
+          return false;
+        }
+
+        function assertTrue(value, message) {
+          if (!value) {
+            throw new Error(message || "Assertion failed.");
+          }
+        }
+
+        function getFrameDoc() {
+          return frame.contentDocument || frame.contentWindow?.document || null;
+        }
+
+        function getUniqueRows(doc) {
+          const rows = Array.from(doc.querySelectorAll("#parameterRows tr.parameter-row[data-parameter-key]"));
+          const counts = new Map();
+          rows.forEach((row) => {
+            const key = String(row.getAttribute("data-parameter-key") || "");
+            if (!key) return;
+            counts.set(key, (counts.get(key) || 0) + 1);
+          });
+          const seen = new Set();
+          const uniqueOnly = rows.filter((row) => {
+            const key = String(row.getAttribute("data-parameter-key") || "");
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return (counts.get(key) || 0) === 1;
+          });
+          if (uniqueOnly.length >= 2) {
+            return uniqueOnly;
+          }
+          return rows.filter((row) => {
+            const key = String(row.getAttribute("data-parameter-key") || "");
+            if (!key || seen.has(`fallback:${key}`)) return false;
+            seen.add(`fallback:${key}`);
+            return true;
+          });
+        }
+
+        function getRowByKey(doc, key) {
+          return doc.querySelector(`#parameterRows tr.parameter-row[data-parameter-key="${CSS.escape(String(key || ""))}"]`);
+        }
+
+        function setComment(row, text) {
+          const input = row?.querySelector(".comment-input");
+          assertTrue(!!input, "Comment input missing.");
+          input.value = String(text || "");
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          return input;
+        }
+
+        async function ensureManualMode(doc) {
+          const computeButton = doc.getElementById("computeModeButton");
+          assertTrue(!!computeButton, "Compute mode button missing.");
+          const modeLabel = () => String(computeButton.textContent || "");
+          if (!/manual/i.test(modeLabel())) {
+            computeButton.click();
+            await sleep(50);
+          }
+          assertTrue(/manual/i.test(modeLabel()), "Failed to switch to Manual mode.");
+        }
+
+        async function loadFrame(options = {}) {
+          const fixture = Object.prototype.hasOwnProperty.call(options, "fixture")
+            ? String(options.fixture || "")
+            : String(fixtureSelect.value || "");
+          fixtureSelect.value = fixture;
+          const src = buildFrameSrc();
+          const loaded = new Promise((resolve) => {
+            const onLoad = () => {
+              frame.removeEventListener("load", onLoad);
+              resolve();
+            };
+            frame.addEventListener("load", onLoad);
+          });
+          frame.src = src;
+          await loaded;
+          const ready = await waitFor(() => {
+            const doc = getFrameDoc();
+            if (!doc) return false;
+            const rows = doc.querySelectorAll("#parameterRows tr.parameter-row[data-parameter-key]");
+            return rows.length > 0 && !!doc.getElementById("computeModeButton");
+          }, 7000, 40);
+          assertTrue(ready, "Palette did not become ready.");
+          await sleep(120);
+        }
+
+        function collectStatusMessages(doc) {
+          const items = Array.from(doc.querySelectorAll("#statusHistoryList .status-history-item"));
+          return items.map((item) => ({
+            kind: String(item.className || ""),
+            message: String(item.querySelector(".status-history-text")?.textContent || "").trim()
+          }));
+        }
+
+        async function testSingleApplyKeepsOtherDirty() {
+          await loadFrame({ fixture: DEFAULT_FIXTURE });
+          const doc = getFrameDoc();
+          await ensureManualMode(doc);
+          const rows = getUniqueRows(doc);
+          assertTrue(rows.length >= 2, "Need at least two parameter rows.");
+          const rowA = rows[0];
+          const rowB = rows[1];
+          const keyA = String(rowA.getAttribute("data-parameter-key") || "");
+          const keyB = String(rowB.getAttribute("data-parameter-key") || "");
+          const markerA = `harness-a-${Date.now()}`;
+          const markerB = `harness-b-${Date.now()}`;
+          setComment(rowA, markerA);
+          setComment(rowB, markerB);
+          assertTrue(rowA.classList.contains("is-dirty"), "Row A should be dirty before apply.");
+          assertTrue(rowB.classList.contains("is-dirty"), "Row B should be dirty before apply.");
+          const saveButtonA = rowA.querySelector(".save-button");
+          assertTrue(!!saveButtonA && !saveButtonA.disabled, "Row A Apply button should be enabled.");
+          saveButtonA.click();
+          const rowAApplied = await waitFor(() => {
+            const liveRowA = getRowByKey(doc, keyA);
+            return !!liveRowA && !liveRowA.classList.contains("is-dirty");
+          }, 7000, 40);
+          assertTrue(rowAApplied, "Row A did not apply.");
+          const liveRowB = getRowByKey(doc, keyB);
+          assertTrue(!!liveRowB, "Row B not found after apply.");
+          assertTrue(liveRowB.classList.contains("is-dirty"), "Row B dirty state was discarded.");
+          const rowBComment = String(liveRowB.querySelector(".comment-input")?.value || "");
+          assertTrue(rowBComment === markerB, "Row B comment draft was not preserved.");
+        }
+
+        async function testResizeKeepsDirtyDrafts() {
+          await loadFrame({ fixture: DEFAULT_FIXTURE });
+          const doc = getFrameDoc();
+          const win = frame.contentWindow;
+          await ensureManualMode(doc);
+          const rows = getUniqueRows(doc);
+          assertTrue(rows.length >= 1, "Need at least one parameter row.");
+          const row = rows[0];
+          const key = String(row.getAttribute("data-parameter-key") || "");
+          const marker = `resize-draft-${Date.now()}`;
+          setComment(row, marker);
+          assertTrue(row.classList.contains("is-dirty"), "Row should be dirty before resize.");
+          const currentWidth = clampWidth(widthInput.value);
+          applyWidth(Math.max(420, currentWidth - 120));
+          win.dispatchEvent(new Event("resize"));
+          await sleep(420);
+          applyWidth(currentWidth);
+          win.dispatchEvent(new Event("resize"));
+          await sleep(420);
+          const liveRow = getRowByKey(doc, key);
+          assertTrue(!!liveRow, "Row missing after resize.");
+          assertTrue(liveRow.classList.contains("is-dirty"), "Dirty state lost after resize.");
+          const currentComment = String(liveRow.querySelector(".comment-input")?.value || "");
+          assertTrue(currentComment === marker, "Comment draft changed after resize.");
+        }
+
+        async function testTimelineBlockedWhenDirty() {
+          await loadFrame({ fixture: DEFAULT_FIXTURE });
+          const doc = getFrameDoc();
+          await ensureManualMode(doc);
+          const rows = getUniqueRows(doc);
+          assertTrue(rows.length >= 1, "Need at least one parameter row.");
+          setComment(rows[0], `timeline-dirty-${Date.now()}`);
+          const timelineButton = doc.getElementById("timelineSortButton");
+          assertTrue(!!timelineButton, "Timeline sort button missing.");
+          assertTrue(timelineButton.disabled === true, "Timeline sort should be disabled when local edits are dirty.");
+          const title = String(timelineButton.title || "");
+          assertTrue(/save or discard local edits/i.test(title), "Blocked timeline tooltip message missing.");
+        }
+
+        async function testImportCancelSilentNoError() {
+          await loadFrame({ fixture: "m4_import_cancel" });
+          const doc = getFrameDoc();
+          const clearButton = doc.getElementById("clearStatusHistoryButton");
+          assertTrue(!!clearButton, "Clear status history button missing.");
+          clearButton.click();
+          const importButton = doc.getElementById("importParametersButton");
+          assertTrue(!!importButton, "Import CSV button missing.");
+          importButton.click();
+          await sleep(300);
+          const statuses = collectStatusMessages(doc);
+          const hasError = statuses.some((item) => /status-history-kind-error/.test(item.kind));
+          const hasCancelMessage = statuses.some((item) => /cancelled/i.test(item.message));
+          assertTrue(!hasError, "Import cancel produced an error status.");
+          assertTrue(!hasCancelMessage, "Import cancel produced a cancellation message.");
+        }
+
+        async function testImportPartialFailureDetailsRendered() {
+          await loadFrame({ fixture: "m6_import_partial_fail" });
+          const doc = getFrameDoc();
+          const win = frame.contentWindow;
+          const importButton = doc.getElementById("importParametersPackageButton");
+          assertTrue(!!importButton, "Import Package button missing.");
+          const originalConfirm = win.confirm;
+          win.confirm = function () { return true; };
+          try {
+            importButton.click();
+            const done = await waitFor(() => {
+              const summaryNode = doc.getElementById("parameterFileSummary");
+              const text = String(summaryNode?.textContent || "");
+              return /Rows needing attention/i.test(text);
+            }, 7000, 40);
+            assertTrue(done, "Package partial-failure details did not render.");
+            const summary = String(doc.getElementById("parameterFileSummary")?.textContent || "");
+            assertTrue(/Row 5/i.test(summary) && /Invalid expression/i.test(summary), "Expected failed row details missing.");
+          } finally {
+            win.confirm = originalConfirm;
+          }
+        }
+
+        async function runRegressionTests() {
+          runTestsButton.disabled = true;
+          setResults("Running FE regression tests...");
+          const tests = [
+            { id: "fe/single-apply-preserves-other-dirty", fn: testSingleApplyKeepsOtherDirty },
+            { id: "fe/resize-preserves-drafts", fn: testResizeKeepsDirtyDrafts },
+            { id: "fe/timeline-blocked-when-dirty", fn: testTimelineBlockedWhenDirty },
+            { id: "fe/import-cancel-silent", fn: testImportCancelSilentNoError },
+            { id: "fe/import-partial-failure-details", fn: testImportPartialFailureDetailsRendered }
+          ];
+          let pass = 0;
+          let fail = 0;
+          const lines = [];
+          for (const test of tests) {
+            try {
+              await test.fn();
+              pass += 1;
+              lines.push(`[PASS] ${test.id}`);
+            } catch (error) {
+              fail += 1;
+              lines.push(`[FAIL] ${test.id}: ${String(error?.message || error)}`);
+            }
+          }
+          lines.unshift(`FE Harness: ${pass} passed, ${fail} failed`);
+          setResults(lines.join("\n"));
+          runTestsButton.disabled = false;
         }
 
         widthInput.addEventListener("change", () => applyWidth(widthInput.value));
@@ -183,6 +458,12 @@
         });
         fixtureSelect.addEventListener("change", loadFrame);
         reloadButton.addEventListener("click", loadFrame);
+        runTestsButton.addEventListener("click", () => {
+          runRegressionTests().catch((error) => {
+            appendLine(`[FATAL] ${String(error?.message || error)}`);
+            runTestsButton.disabled = false;
+          });
+        });
 
         applyWidth(widthInput.value);
         loadFrame();
