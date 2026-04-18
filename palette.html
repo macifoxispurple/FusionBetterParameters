@@ -1719,6 +1719,52 @@
         background: color-mix(in srgb, var(--accent) 16%, transparent);
       }
 
+      .native-icon-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .timeline-sort-btn {
+        width: 22px;
+        height: 22px;
+        padding: 0;
+      }
+
+      .timeline-sort-btn:disabled {
+        color: var(--muted);
+        border-color: var(--line);
+        background: color-mix(in srgb, var(--panel-raised) 72%, transparent);
+      }
+
+      .selection-action-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .selection-action-btn.is-ready {
+        border-width: 1px;
+      }
+
+      .selection-action-copy.is-ready {
+        color: var(--accent);
+        border-color: var(--accent);
+        background: color-mix(in srgb, var(--accent) 16%, var(--btn-bg));
+      }
+
+      .selection-action-copy.is-ready:hover {
+        background: color-mix(in srgb, var(--accent) 24%, var(--btn-hover));
+      }
+
+      .selection-action-delete.is-ready {
+        color: var(--error);
+        border-color: color-mix(in srgb, var(--error) 72%, var(--line));
+        background: color-mix(in srgb, var(--error) 14%, var(--btn-bg));
+      }
+
+      .selection-action-delete.is-ready:hover {
+        background: color-mix(in srgb, var(--error) 20%, var(--btn-hover));
+      }
+
       .sortable-header {
         cursor: pointer;
       }
@@ -2724,13 +2770,17 @@
         display: inline;
       }
       .update-pill.has-update {
-        background: var(--panel-hover);
+        background: color-mix(in srgb, var(--accent) 22%, var(--btn-bg));
+        border: 1px solid color-mix(in srgb, var(--accent) 70%, var(--line));
         color: var(--accent);
+        font-weight: 600;
         cursor: pointer;
       }
       .update-pill.is-staged {
-        background: var(--btn-bg);
-        color: var(--muted);
+        background: color-mix(in srgb, var(--success) 20%, var(--btn-bg));
+        border: 1px solid color-mix(in srgb, var(--success) 70%, var(--line));
+        color: var(--success);
+        font-weight: 600;
       }
       .update-notes-tooltip {
         display: none;
@@ -2962,11 +3012,11 @@
             </div>
           </div>
           <div class="debug-sidebar-body">
-            <details class="tuner-section" open>
+            <details id="debugLayoutSection" class="tuner-section" open>
               <summary>Layout</summary>
               <pre id="layoutDebugBody" class="layout-debug-body">Layout debug inactive.</pre>
             </details>
-            <details class="tuner-section">
+            <details id="debugMetadataSection" class="tuner-section">
               <summary>Metadata</summary>
               <div class="settings-collapsible-body">
                 <p>Inspect JSON and Fusion attribute metadata sources, then force sync either direction for testing.</p>
@@ -2980,7 +3030,34 @@
                 <pre id="debugOutput" class="release-notes-body">Debug data not loaded yet.</pre>
               </div>
             </details>
-            <details class="tuner-section">
+            <details id="debugMessageLogSection" class="tuner-section" open>
+              <summary>Message Log (Session)</summary>
+              <div class="settings-collapsible-body">
+                <p>All status/error/warning messages captured with timestamps.</p>
+                <div class="actions">
+                  <button id="debugCaptureToggleButton" class="ghost" type="button">Capture: Off</button>
+                  <button id="exportPersistentLogButton" class="ghost" type="button">Export Capture</button>
+                  <button id="clearPersistentLogButton" class="ghost" type="button">Clear Capture</button>
+                  <button id="clearMessageLogButton" class="ghost" type="button">Clear Log</button>
+                </div>
+                <div id="persistentLogInfo" class="section-meta"></div>
+                <pre id="messageLogOutput" class="release-notes-body">No messages yet.</pre>
+              </div>
+            </details>
+            <details id="debugRawTraceSection" class="tuner-section">
+              <summary>Raw Event Trace (Session)</summary>
+              <div class="settings-collapsible-body">
+                <p>Literal FE/BE traffic and status events. High volume; intended for deep diagnostics.</p>
+                <div class="actions">
+                  <button id="rawTraceToggleButton" class="ghost" type="button">Trace: Off</button>
+                  <button id="copyRawTraceButton" class="ghost" type="button">Copy Trace</button>
+                  <button id="clearRawTraceButton" class="ghost" type="button">Clear Trace</button>
+                </div>
+                <div id="rawTraceInfo" class="section-meta"></div>
+                <pre id="rawTraceOutput" class="release-notes-body">Raw trace disabled.</pre>
+              </div>
+            </details>
+            <details id="debugStatusHistorySection" class="tuner-section">
               <summary>Status History (Session)</summary>
               <div class="settings-collapsible-body">
                 <p>Transient status messages from this running session.</p>
@@ -3037,8 +3114,23 @@
             </div>
             <div class="rail-actions">
               <span id="selectionCountChip" class="selection-chip" hidden>0 selected</span>
+              <button id="copySelectedButton" class="ghost icon-btn selection-action-btn selection-action-copy" type="button" title="Copy selected parameter(s)" aria-label="Copy selected parameters" disabled>
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="6" y="3" width="7" height="9" rx="1.2"></rect>
+                  <path d="M10 12.5H4.8A1.3 1.3 0 0 1 3.5 11.2V4.8A1.3 1.3 0 0 1 4.8 3.5H6"></path>
+                </svg>
+              </button>
+              <button id="deleteSelectedButton" class="ghost icon-btn selection-action-btn selection-action-delete" type="button" title="Delete selected parameter(s)" aria-label="Delete selected parameters" disabled>
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 4h10"></path>
+                  <path d="M6 4v-1h4v1"></path>
+                  <rect x="4.2" y="4.2" width="7.6" height="8.3" rx="1"></rect>
+                  <path d="M6.7 6.5v4"></path>
+                  <path d="M9.3 6.5v4"></path>
+                </svg>
+              </button>
               <button id="newParamButton" class="ghost icon-btn" type="button" title="New Parameter" aria-label="New Parameter" aria-haspopup="dialog" aria-controls="createModal" aria-expanded="false">+</button>
-              <button id="timelineSortButton" class="ghost icon-btn" type="button" title="Sort by Timeline Order" aria-label="Sort by timeline order">
+              <button id="timelineSortButton" class="native-icon-btn timeline-sort-btn" type="button" title="Sort by Timeline Order" aria-label="Sort by timeline order" aria-pressed="false">
                 <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <line x1="3" y1="4" x2="11" y2="4"></line>
                   <polyline points="10 2.7 11.8 4 10 5.3"></polyline>
@@ -3435,6 +3527,15 @@
       const COMMENTS_MIN_WIDTH_PX = 120;
       const PACKAGE_PREFS_STORAGE_KEY = "bp_package_ui_prefs";
       const LAYOUT_DEBUG_STORAGE_KEY = "bp_layout_debug";
+      const DEBUG_CAPTURE_ENABLED_STORAGE_KEY = "bp_debug_capture_enabled";
+      const DEBUG_CAPTURE_LOG_STORAGE_KEY = "bp_debug_capture_log_v1";
+      const DEBUG_CAPTURE_MAX_ENTRIES = 500;
+      const DEBUG_CAPTURE_MAX_CHARS = 200000;
+      const DEBUG_CAPTURE_RETENTION_DAYS = 14;
+      const DEBUG_HUB_SECTIONS_STORAGE_KEY = "bp_debug_hub_sections_v1";
+      const RAW_TRACE_ENABLED_STORAGE_KEY = "bp_raw_trace_enabled";
+      const RAW_TRACE_MAX_ENTRIES = 1200;
+      const RAW_TRACE_MAX_PAYLOAD_CHARS = 8000;
       // REVIEW: BACKEND_API.md still lists validateUnitChange/updateParameterUnit as normative; FE intentionally omits them per blocked M2 policy.
       const ACTION = Object.freeze({
         READY: "ready",
@@ -3862,6 +3963,23 @@
         debugMetadataSnapshot: null,
         lastSyncResult: null,
         statusHistory: [],
+        messageLog: [],
+        persistentMessageLog: [],
+        debugCaptureEnabled: (function () {
+          try {
+            return localStorage.getItem(DEBUG_CAPTURE_ENABLED_STORAGE_KEY) === "1";
+          } catch (_) {
+            return false;
+          }
+        }()),
+        rawTraceLog: [],
+        rawTraceEnabled: (function () {
+          try {
+            return localStorage.getItem(RAW_TRACE_ENABLED_STORAGE_KEY) === "1";
+          } catch (_) {
+            return false;
+          }
+        }()),
         filters: {
           userOnly: true,
           favoritesOnly: false
@@ -3870,6 +3988,7 @@
           column: "",
           direction: "asc"
         },
+        timelineSortActive: false,
         expandedRows: {},
         localPreviousExpressions: {},
         applyAllRunning: false,
@@ -3905,6 +4024,7 @@
       };
       let textTunerLiveApplyTimer = null;
       let textTunerPersistTimer = null;
+      let selectedActionInFlight = false;
 
       function migrateColumnWidths(stored) {
         if (!stored || typeof stored !== "object") return { ...DEFAULT_TABLE_COLUMNS };
@@ -4266,6 +4386,54 @@
         return panel;
       }
 
+      const DEBUG_HUB_SECTION_IDS = [
+        "debugLayoutSection",
+        "debugMetadataSection",
+        "debugMessageLogSection",
+        "debugRawTraceSection",
+        "debugStatusHistorySection"
+      ];
+
+      function loadDebugHubSectionState() {
+        try {
+          const raw = localStorage.getItem(DEBUG_HUB_SECTIONS_STORAGE_KEY);
+          if (!raw) {
+            return {};
+          }
+          const parsed = JSON.parse(raw);
+          return parsed && typeof parsed === "object" ? parsed : {};
+        } catch (_) {
+          return {};
+        }
+      }
+
+      function saveDebugHubSectionState() {
+        try {
+          const next = {};
+          DEBUG_HUB_SECTION_IDS.forEach((id) => {
+            const details = document.getElementById(id);
+            if (details && details.tagName === "DETAILS") {
+              next[id] = details.open === true;
+            }
+          });
+          localStorage.setItem(DEBUG_HUB_SECTIONS_STORAGE_KEY, JSON.stringify(next));
+        } catch (_) {}
+      }
+
+      function initializeDebugHubSectionPersistence() {
+        const stored = loadDebugHubSectionState();
+        DEBUG_HUB_SECTION_IDS.forEach((id) => {
+          const details = document.getElementById(id);
+          if (!details || details.tagName !== "DETAILS") {
+            return;
+          }
+          if (Object.prototype.hasOwnProperty.call(stored, id)) {
+            details.open = stored[id] === true;
+          }
+          details.addEventListener("toggle", saveDebugHubSectionState);
+        });
+      }
+
       function collectLayoutDebugLines() {
         const wrap = document.querySelector(".table-wrap");
         const table = document.querySelector(".table-wrap table");
@@ -4620,6 +4788,39 @@
         const selectedCount = getSelectedParameterKeys().length;
         chip.hidden = selectedCount <= 0;
         chip.textContent = `${selectedCount} selected`;
+        renderSelectedActionButtons();
+      }
+
+      function renderSelectedActionButtons() {
+        const copyButton = document.getElementById("copySelectedButton");
+        const deleteButton = document.getElementById("deleteSelectedButton");
+        if (!copyButton || !deleteButton) {
+          return;
+        }
+        const selectedCount = getSelectedParameterKeys().length;
+        const hasSelection = selectedCount > 0;
+        const blockedByLocalEdits = hasBlockingLocalEdits();
+        const disabled = selectedActionInFlight || !hasSelection || blockedByLocalEdits;
+        copyButton.disabled = disabled;
+        deleteButton.disabled = disabled;
+        copyButton.classList.toggle("is-ready", !disabled);
+        deleteButton.classList.toggle("is-ready", !disabled);
+
+        if (!hasSelection) {
+          copyButton.title = "Select one or more rows to copy.";
+          deleteButton.title = "Select one or more rows to delete.";
+          renderTimelineSortButtonState();
+          return;
+        }
+        if (blockedByLocalEdits) {
+          copyButton.title = "Save or discard local edits before copy.";
+          deleteButton.title = "Save or discard local edits before delete.";
+          renderTimelineSortButtonState();
+          return;
+        }
+        copyButton.title = selectedCount === 1 ? "Copy selected parameter" : `Copy ${selectedCount} selected parameters`;
+        deleteButton.title = selectedCount === 1 ? "Delete selected parameter" : `Delete ${selectedCount} selected parameters`;
+        renderTimelineSortButtonState();
       }
 
       function getSelectableRowsUniqueByKey() {
@@ -4876,6 +5077,7 @@
         applyAllButton.title = hasInvalidDirty
           ? "Fix all invalid name/expression rows before Apply All."
           : "";
+        renderSelectedActionButtons();
       }
 
       function setRowNameValidationState(input, message = "", kind = "error") {
@@ -5041,6 +5243,240 @@
         }).join("");
       }
 
+      function sanitizeDebugLogMessage(message) {
+        let text = String(message || "");
+        if (!text) {
+          return "";
+        }
+        // Redact obvious local paths and email-like strings.
+        text = text.replace(/[A-Za-z]:\\[^\s"']+/g, "[path]");
+        text = text.replace(/\/(?:Users|home)\/[^\s"']+/g, "[path]");
+        text = text.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]");
+        return text;
+      }
+
+      function prunePersistentMessageLog(entries = []) {
+        const now = Date.now();
+        const minTimestamp = now - (DEBUG_CAPTURE_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+        const normalized = (Array.isArray(entries) ? entries : [])
+          .map((item) => ({
+            time: String(item?.time || "--:--:--"),
+            kind: String(item?.kind || ""),
+            message: String(item?.message || ""),
+            timestamp: Number(item?.timestamp || 0)
+          }))
+          .filter((item) => item.message && item.timestamp > 0 && item.timestamp >= minTimestamp)
+          .sort((left, right) => right.timestamp - left.timestamp);
+
+        const next = [];
+        let charTotal = 0;
+        for (const item of normalized) {
+          const itemSize = item.message.length + item.time.length + item.kind.length + 12;
+          if (next.length >= DEBUG_CAPTURE_MAX_ENTRIES) {
+            break;
+          }
+          if (charTotal + itemSize > DEBUG_CAPTURE_MAX_CHARS) {
+            break;
+          }
+          next.push(item);
+          charTotal += itemSize;
+        }
+        return next;
+      }
+
+      function persistPersistentMessageLog() {
+        try {
+          localStorage.setItem(DEBUG_CAPTURE_LOG_STORAGE_KEY, JSON.stringify(state.persistentMessageLog || []));
+        } catch (_) {}
+      }
+
+      function loadPersistentMessageLog() {
+        try {
+          const raw = localStorage.getItem(DEBUG_CAPTURE_LOG_STORAGE_KEY);
+          if (!raw) {
+            state.persistentMessageLog = [];
+            return;
+          }
+          const parsed = JSON.parse(raw);
+          state.persistentMessageLog = prunePersistentMessageLog(parsed);
+          persistPersistentMessageLog();
+        } catch (_) {
+          state.persistentMessageLog = [];
+        }
+      }
+
+      function setDebugCaptureEnabled(enabled) {
+        state.debugCaptureEnabled = enabled === true;
+        try {
+          localStorage.setItem(DEBUG_CAPTURE_ENABLED_STORAGE_KEY, state.debugCaptureEnabled ? "1" : "0");
+        } catch (_) {}
+        renderPersistentLogInfo();
+      }
+
+      function renderPersistentLogInfo() {
+        const info = document.getElementById("persistentLogInfo");
+        const toggle = document.getElementById("debugCaptureToggleButton");
+        if (toggle) {
+          toggle.textContent = state.debugCaptureEnabled ? "Capture: On" : "Capture: Off";
+        }
+        if (!info) {
+          return;
+        }
+        const entries = Array.isArray(state.persistentMessageLog) ? state.persistentMessageLog : [];
+        const latest = entries[0];
+        const latestLabel = latest ? `${latest.time} ${latest.message}` : "none";
+        info.textContent = `Persistent capture: ${state.debugCaptureEnabled ? "enabled" : "disabled"} | entries: ${entries.length} | latest: ${latestLabel}`;
+      }
+
+      function safeSerializeTracePayload(payload) {
+        try {
+          return JSON.stringify(payload);
+        } catch (error) {
+          return JSON.stringify({ serializationError: String(error?.message || error) });
+        }
+      }
+
+      function toTracePayloadText(payload) {
+        const raw = safeSerializeTracePayload(payload);
+        if (raw.length <= RAW_TRACE_MAX_PAYLOAD_CHARS) {
+          return raw;
+        }
+        return `${raw.slice(0, RAW_TRACE_MAX_PAYLOAD_CHARS)}...<truncated>`;
+      }
+
+      function setRawTraceEnabled(enabled) {
+        state.rawTraceEnabled = enabled === true;
+        try {
+          localStorage.setItem(RAW_TRACE_ENABLED_STORAGE_KEY, state.rawTraceEnabled ? "1" : "0");
+        } catch (_) {}
+        renderRawTraceInfo();
+        renderRawTraceLog();
+      }
+
+      function renderRawTraceInfo() {
+        const info = document.getElementById("rawTraceInfo");
+        const toggle = document.getElementById("rawTraceToggleButton");
+        if (toggle) {
+          toggle.textContent = state.rawTraceEnabled ? "Trace: On" : "Trace: Off";
+        }
+        if (!info) {
+          return;
+        }
+        const entries = Array.isArray(state.rawTraceLog) ? state.rawTraceLog : [];
+        const latest = entries[0];
+        const latestLabel = latest ? `${latest.time} ${latest.type}` : "none";
+        info.textContent = `Raw trace: ${state.rawTraceEnabled ? "enabled" : "disabled"} | entries: ${entries.length} | latest: ${latestLabel}`;
+      }
+
+      function renderRawTraceLog() {
+        const output = document.getElementById("rawTraceOutput");
+        if (!output) {
+          return;
+        }
+        if (!state.rawTraceEnabled && (!Array.isArray(state.rawTraceLog) || !state.rawTraceLog.length)) {
+          output.textContent = "Raw trace disabled.";
+          return;
+        }
+        const entries = Array.isArray(state.rawTraceLog) ? state.rawTraceLog : [];
+        if (!entries.length) {
+          output.textContent = state.rawTraceEnabled ? "No raw trace entries yet." : "Raw trace disabled.";
+          return;
+        }
+        const lines = entries.map((entry) => {
+          const time = String(entry?.time || "--:--:--");
+          const type = String(entry?.type || "event");
+          const payload = String(entry?.payload || "");
+          return `${time} ${type} ${payload}`;
+        });
+        output.textContent = lines.join("\n");
+      }
+
+      function appendRawTrace(type, payload) {
+        if (!state.rawTraceEnabled) {
+          return;
+        }
+        if (!Array.isArray(state.rawTraceLog)) {
+          state.rawTraceLog = [];
+        }
+        const now = new Date();
+        const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}.${String(now.getMilliseconds()).padStart(3, "0")}`;
+        state.rawTraceLog.unshift({
+          time,
+          type: String(type || "event"),
+          payload: toTracePayloadText(payload)
+        });
+        if (state.rawTraceLog.length > RAW_TRACE_MAX_ENTRIES) {
+          state.rawTraceLog.length = RAW_TRACE_MAX_ENTRIES;
+        }
+        renderRawTraceInfo();
+        renderRawTraceLog();
+      }
+
+      function appendPersistentMessageLog(item) {
+        if (!state.debugCaptureEnabled || !item || !item.message) {
+          return;
+        }
+        if (!Array.isArray(state.persistentMessageLog)) {
+          state.persistentMessageLog = [];
+        }
+        const cleanMessage = sanitizeDebugLogMessage(item.message);
+        if (!cleanMessage) {
+          return;
+        }
+        state.persistentMessageLog.unshift({
+          time: String(item.time || "--:--:--"),
+          kind: String(item.kind || ""),
+          message: cleanMessage,
+          timestamp: Number(item.timestamp || Date.now())
+        });
+        state.persistentMessageLog = prunePersistentMessageLog(state.persistentMessageLog);
+        persistPersistentMessageLog();
+        renderPersistentLogInfo();
+      }
+
+      function renderMessageLog() {
+        const output = document.getElementById("messageLogOutput");
+        if (!output) {
+          return;
+        }
+        const items = Array.isArray(state.messageLog) ? state.messageLog : [];
+        if (!items.length) {
+          output.textContent = "No messages yet.";
+          return;
+        }
+        const lines = items
+          .slice()
+          .map((item) => {
+            const time = String(item?.time || "--:--:--");
+            const kind = String(item?.kind || "").trim().toUpperCase();
+            const prefix = kind ? `[${kind}]` : "[INFO]";
+            return `${time} ${prefix} ${String(item?.message || "")}`;
+          });
+        output.textContent = lines.join("\n");
+      }
+
+      function buildPersistentLogExportText() {
+        const items = Array.isArray(state.persistentMessageLog) ? state.persistentMessageLog : [];
+        if (!items.length) {
+          return "No persistent debug messages captured.";
+        }
+        const lines = [
+          `timestamp: ${new Date().toISOString()}`,
+          `entries: ${items.length}`,
+          ""
+        ];
+        items
+          .slice()
+          .reverse()
+          .forEach((item) => {
+            const time = String(item?.time || "--:--:--");
+            const kind = String(item?.kind || "").trim().toUpperCase();
+            const prefix = kind ? `[${kind}]` : "[INFO]";
+            lines.push(`${time} ${prefix} ${String(item?.message || "")}`);
+          });
+        return lines.join("\n");
+      }
+
       function appendStatusHistory(message, kind = "") {
         const text = String(message || "").trim();
         if (!text) {
@@ -5051,13 +5487,20 @@
         const item = {
           time,
           kind: String(kind || "").trim().toLowerCase(),
-          message: text
+          message: text,
+          timestamp: now.getTime()
         };
         state.statusHistory.unshift(item);
         if (state.statusHistory.length > 200) {
           state.statusHistory.length = 200;
         }
         renderStatusHistory();
+        state.messageLog.unshift(item);
+        if (state.messageLog.length > 500) {
+          state.messageLog.length = 500;
+        }
+        renderMessageLog();
+        appendPersistentMessageLog(item);
       }
 
       function shouldShowInlineStatus(message, kind = "") {
@@ -5082,6 +5525,84 @@
         return false;
       }
 
+      function tryCopyWithTextareaExecCommand(text) {
+        const value = String(text || "");
+        if (!value) {
+          return false;
+        }
+        const textarea = document.createElement("textarea");
+        textarea.value = value;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.top = "-1000px";
+        textarea.style.left = "-1000px";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+
+        let copied = false;
+        try {
+          copied = document.execCommand("copy") === true;
+        } catch (_) {
+          copied = false;
+        } finally {
+          textarea.remove();
+        }
+        return copied;
+      }
+
+      async function copyTextToClipboard(text) {
+        const value = String(text || "");
+        if (!value) {
+          throw new Error("No text to copy.");
+        }
+
+        // Fusion webview hosts are often more reliable with execCommand-based copy.
+        if (tryCopyWithTextareaExecCommand(value)) {
+          return "execCommand-textarea";
+        }
+
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+          try {
+            await Promise.race([
+              navigator.clipboard.writeText(value),
+              new Promise((_, reject) => window.setTimeout(() => reject(new Error("Clipboard API timeout.")), 350))
+            ]);
+            return "navigator.clipboard";
+          } catch (_) {
+            // Fall through to final failure.
+          }
+        }
+
+        throw new Error("Clipboard copy is unavailable in this host.");
+      }
+
+      function copyNodeTextWithSelection(node) {
+        if (!node) {
+          return false;
+        }
+        let selection = null;
+        try {
+          selection = window.getSelection ? window.getSelection() : null;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          if (selection) {
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+          return document.execCommand("copy") === true;
+        } catch (_) {
+          return false;
+        } finally {
+          try {
+            if (selection) {
+              selection.removeAllRanges();
+            }
+          } catch (_) {}
+        }
+      }
+
       function isDialogCancelledResponse(response) {
         if (!response || response.ok !== false) {
           return false;
@@ -5102,6 +5623,7 @@
         status.classList.add("global-status");
         status.classList.toggle("is-hidden", !showInline);
         document.body.classList.toggle("inline-status-visible", showInline);
+        appendRawTrace("ui.status", { kind: String(kind || ""), message: String(message || ""), inline: showInline });
         appendStatusHistory(message, kind);
       }
 
@@ -5471,6 +5993,26 @@
           favoritesButton.setAttribute("aria-pressed", on ? "true" : "false");
           favoritesButton.title = on ? "Favorites-only filter on" : "Show favorites only";
         }
+        renderTimelineSortButtonState();
+      }
+
+      function renderTimelineSortButtonState() {
+        const button = document.getElementById("timelineSortButton");
+        if (!button) {
+          return;
+        }
+        const isOn = state.timelineSortActive === true;
+        const blocked = hasBlockingLocalEdits() || state.applyAllRunning === true || selectedActionInFlight === true;
+        button.classList.toggle("is-on", isOn);
+        button.disabled = blocked;
+        button.setAttribute("aria-pressed", isOn ? "true" : "false");
+        if (blocked) {
+          button.title = "Save or discard local edits before sorting by timeline.";
+        } else if (isOn) {
+          button.title = "Timeline order active";
+        } else {
+          button.title = "Sort by Timeline Order";
+        }
       }
 
       function renderSortIndicators() {
@@ -5523,7 +6065,9 @@
           state.tableSort.column = "";
           state.tableSort.direction = "asc";
         }
+        state.timelineSortActive = false;
         renderSortIndicators();
+        renderTimelineSortButtonState();
         renderParameters(state.parameters);
       }
 
@@ -5541,7 +6085,9 @@
         // Timeline sort should be visible as-is, not overridden by header lexical sort.
         state.tableSort.column = "";
         state.tableSort.direction = "asc";
+        state.timelineSortActive = false;
         renderSortIndicators();
+        renderTimelineSortButtonState();
 
         try {
           setGlobalStatus("Sorting parameters by timeline order...");
@@ -5549,14 +6095,138 @@
           if (!response.ok) {
             throw new Error(response.message || "Timeline sort failed.");
           }
+          state.timelineSortActive = true;
           applyStateFromFusion(response, { source: "response", action: ACTION.SORT_BY_TIMELINE_ORDER });
+          renderTimelineSortButtonState();
           setGlobalStatus("Sorted parameters by timeline order.", "success");
         } catch (error) {
           state.tableSort.column = previousSort.column;
           state.tableSort.direction = previousSort.direction === "desc" ? "desc" : "asc";
+          state.timelineSortActive = false;
           renderSortIndicators();
+          renderTimelineSortButtonState();
           renderParameters(state.parameters);
           setGlobalStatus(error.message || "Timeline sort failed.", "error");
+        }
+      }
+
+      async function copySelectedParameters() {
+        const targets = getSelectedParameterTargets();
+        if (!targets.length) {
+          setGlobalStatus("Select one or more parameters to copy.", "warning");
+          return;
+        }
+        if (hasBlockingLocalEdits()) {
+          setGlobalStatus("Save or discard local edits before copy.", "error");
+          return;
+        }
+
+        selectedActionInFlight = true;
+        renderSelectedActionButtons();
+        setGlobalStatus(`Copying ${targets.length} selected parameter${targets.length === 1 ? "" : "s"}...`);
+        let copiedCount = 0;
+        const failures = [];
+
+        try {
+          for (const target of targets) {
+            try {
+              const response = await sendToFusion(ACTION.COPY_PARAMETER, { key: target.key, name: target.name });
+              if (!response.ok) {
+                failures.push({ name: target.name, message: response.message || "Copy failed." });
+                continue;
+              }
+              copiedCount += 1;
+              applyStateFromFusion(response, { source: "response", action: ACTION.COPY_PARAMETER });
+            } catch (error) {
+              failures.push({ name: target.name, message: error.message || "Copy failed." });
+            }
+          }
+
+          if (!failures.length) {
+            setGlobalStatus(`Copied ${copiedCount} parameter${copiedCount === 1 ? "" : "s"}.`, "success");
+            return;
+          }
+
+          const sample = failures[0];
+          const summary = copiedCount > 0
+            ? `Copied ${copiedCount}, failed ${failures.length}.`
+            : `Copy failed for ${failures.length} selected parameter${failures.length === 1 ? "" : "s"}.`;
+          setGlobalStatus(`${summary} ${sample.name ? `${sample.name}: ` : ""}${sample.message}`, copiedCount > 0 ? "warning" : "error");
+        } finally {
+          selectedActionInFlight = false;
+          renderSelectedActionButtons();
+        }
+      }
+
+      async function deleteSelectedParameters() {
+        const targets = getSelectedParameterTargets();
+        if (!targets.length) {
+          setGlobalStatus("Select one or more parameters to delete.", "warning");
+          return;
+        }
+        if (hasBlockingLocalEdits()) {
+          setGlobalStatus("Save or discard local edits before delete.", "error");
+          return;
+        }
+
+        const count = targets.length;
+        const namesPreview = targets.slice(0, 3).map((item) => item.name).filter(Boolean).join(", ");
+        const previewSuffix = count > 3 ? ", ..." : "";
+        const confirmMessage = count === 1
+          ? `Delete parameter "${targets[0].name}"?`
+          : `Delete ${count} selected parameters${namesPreview ? ` (${namesPreview}${previewSuffix})` : ""}?`;
+        if (!window.confirm(confirmMessage)) {
+          return;
+        }
+
+        selectedActionInFlight = true;
+        renderSelectedActionButtons();
+        setGlobalStatus(`Deleting ${count} selected parameter${count === 1 ? "" : "s"}...`);
+        const selectedKeys = targets.map((item) => String(item.key || "")).filter(Boolean);
+        try {
+          const response = await sendToFusion(ACTION.DELETE_PARAMETERS, {
+            keys: selectedKeys
+          });
+          if (!response.ok) {
+            throw new Error(response.message || "Delete failed.");
+          }
+
+          const failedDetails = Array.isArray(response.failedDetails) ? response.failedDetails : [];
+          const failedKeys = new Set(
+            failedDetails
+              .map((detail) => String(detail?.key || ""))
+              .filter(Boolean)
+          );
+          const deletedKeys = selectedKeys.filter((key) => !failedKeys.has(key));
+          clearLocalCachesForParameterKeys(deletedKeys);
+          state.selectedRowKeys = getSelectedParameterKeys().filter((key) => !deletedKeys.includes(key));
+          if (state.selectedRow && deletedKeys.includes(String(state.selectedRow.key || ""))) {
+            state.selectedRow = null;
+          }
+          if (state.selectionAnchorKey && deletedKeys.includes(String(state.selectionAnchorKey || ""))) {
+            state.selectionAnchorKey = "";
+          }
+
+          applyStateFromFusion(response, { source: "response", action: ACTION.DELETE_PARAMETERS });
+
+          const deletedCount = Number(response.deletedCount || 0);
+          const failedCount = Number(response.failedCount || 0);
+          if (failedCount > 0) {
+            const first = failedDetails[0];
+            const firstName = String(first?.name || "").trim();
+            const firstMessage = String(first?.message || "").trim();
+            setGlobalStatus(
+              `Deleted ${deletedCount}, failed ${failedCount}.${firstMessage ? ` ${firstName ? `${firstName}: ` : ""}${firstMessage}` : ""}`,
+              deletedCount > 0 ? "warning" : "error"
+            );
+          } else {
+            setGlobalStatus(`Deleted ${deletedCount} parameter${deletedCount === 1 ? "" : "s"}.`, "success");
+          }
+        } catch (error) {
+          setGlobalStatus(error.message || "Delete failed.", "error");
+        } finally {
+          selectedActionInFlight = false;
+          renderSelectedActionButtons();
         }
       }
 
@@ -6404,6 +7074,40 @@
         return state.parameters.find((parameter) => (
           (key && parameter.key === key) || parameter.name === name
         )) || null;
+      }
+
+      function getParameterForKey(key) {
+        const token = String(key || "");
+        if (!token) {
+          return null;
+        }
+        return (state.parameters || []).find((parameter) => String(parameter?.key || "") === token) || null;
+      }
+
+      function getSelectedParameterTargets() {
+        return getSelectedParameterKeys()
+          .map((key) => {
+            const parameter = getParameterForKey(key);
+            if (!parameter) {
+              return null;
+            }
+            return {
+              key: String(parameter.key || ""),
+              name: String(parameter.name || "")
+            };
+          })
+          .filter(Boolean);
+      }
+
+      function clearLocalCachesForParameterKeys(keys = []) {
+        (Array.isArray(keys) ? keys : []).forEach((key) => {
+          const token = String(key || "");
+          if (!token) {
+            return;
+          }
+          clearRowDraftByKey(token);
+          delete state.localPreviousExpressions[token];
+        });
       }
 
       function getCurrentParameterRowOrder() {
@@ -7433,7 +8137,7 @@
               return;
             }
             try {
-              await navigator.clipboard.writeText(text);
+              await copyTextToClipboard(text);
               setGlobalStatus("Text tuning debug copied to clipboard.", "success");
             } catch (_error) {
               setGlobalStatus("Clipboard copy failed. Copy manually from debug box.", "error");
@@ -8105,14 +8809,23 @@
       async function sendToFusion(action, data = {}) {
         const bridge = getFusionBridge();
         if (!bridge) {
+          appendRawTrace("bridge.error", { action, reason: "bridge unavailable" });
           throw new Error("Fusion palette bridge is not available.");
         }
 
+        appendRawTrace("bridge.request", { action, data });
         const rawResponse = await bridge.fusionSendData(action, JSON.stringify(data));
+        appendRawTrace("bridge.response.raw", {
+          action,
+          rawType: typeof rawResponse,
+          rawResponse
+        });
         const envelope = parseBridgePayload(rawResponse);
+        appendRawTrace("bridge.response.parsed", { action, envelope });
         const validation = validateEnvelope(envelope, { source: "response", action });
         if (!validation.ok) {
           const message = `Backend contract error (${action}): ${validation.message}`;
+          appendRawTrace("bridge.response.invalid", { action, validation });
           hardFailContract(message);
           throw new Error(message);
         }
@@ -9484,6 +10197,14 @@
         refreshParameters();
       });
 
+      document.getElementById("copySelectedButton").addEventListener("click", async () => {
+        await copySelectedParameters();
+      });
+
+      document.getElementById("deleteSelectedButton").addEventListener("click", async () => {
+        await deleteSelectedParameters();
+      });
+
       document.getElementById("timelineSortButton").addEventListener("click", async () => {
         await sortByTimelineOrder();
       });
@@ -9540,6 +10261,109 @@
           state.statusHistory = [];
           renderStatusHistory();
           setGlobalStatus("Status history cleared.", "success");
+        });
+      }
+
+      const clearMessageLogButton = document.getElementById("clearMessageLogButton");
+      if (clearMessageLogButton) {
+        clearMessageLogButton.addEventListener("click", () => {
+          state.messageLog = [];
+          renderMessageLog();
+          setGlobalStatus("Message log cleared.", "success");
+        });
+      }
+
+      const debugCaptureToggleButton = document.getElementById("debugCaptureToggleButton");
+      if (debugCaptureToggleButton) {
+        debugCaptureToggleButton.addEventListener("click", () => {
+          setDebugCaptureEnabled(!state.debugCaptureEnabled);
+          setGlobalStatus(`Persistent debug capture ${state.debugCaptureEnabled ? "enabled" : "disabled"}.`, "success");
+        });
+      }
+
+      const clearPersistentLogButton = document.getElementById("clearPersistentLogButton");
+      if (clearPersistentLogButton) {
+        clearPersistentLogButton.addEventListener("click", () => {
+          state.persistentMessageLog = [];
+          persistPersistentMessageLog();
+          renderPersistentLogInfo();
+          setGlobalStatus("Persistent debug capture log cleared.", "success");
+        });
+      }
+
+      const exportPersistentLogButton = document.getElementById("exportPersistentLogButton");
+      if (exportPersistentLogButton) {
+        exportPersistentLogButton.addEventListener("click", async () => {
+          const payload = buildPersistentLogExportText();
+          const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+          const fileName = `bp-debug-capture-${stamp}.txt`;
+          try {
+            const blob = new Blob([payload], { type: "text/plain;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            setGlobalStatus(`Exported persistent debug capture (${fileName}).`, "success");
+          } catch (error) {
+            try {
+              await copyTextToClipboard(payload);
+              setGlobalStatus("Export fallback used: persistent capture copied to clipboard.", "warning");
+            } catch (_) {
+              setGlobalStatus(error?.message || "Could not export persistent capture.", "error");
+            }
+          }
+        });
+      }
+
+      const rawTraceToggleButton = document.getElementById("rawTraceToggleButton");
+      if (rawTraceToggleButton) {
+        rawTraceToggleButton.addEventListener("click", () => {
+          setRawTraceEnabled(!state.rawTraceEnabled);
+          setGlobalStatus(`Raw event trace ${state.rawTraceEnabled ? "enabled" : "disabled"}.`, "success");
+        });
+      }
+
+      const copyRawTraceButton = document.getElementById("copyRawTraceButton");
+      if (copyRawTraceButton) {
+        copyRawTraceButton.addEventListener("click", async () => {
+          const output = document.getElementById("rawTraceOutput");
+          const text = String(output?.textContent || "").trim();
+          appendRawTrace("ui.raw-trace-copy.click", { length: text.length });
+          if (!text) {
+            setGlobalStatus("Raw trace is empty.", "warning");
+            return;
+          }
+          try {
+            const method = await copyTextToClipboard(text);
+            appendRawTrace("ui.raw-trace-copy.success", { method, length: text.length });
+            setGlobalStatus("Raw trace copied to clipboard.", "success");
+          } catch (error) {
+            const fallbackCopied = copyNodeTextWithSelection(output);
+            if (fallbackCopied) {
+              appendRawTrace("ui.raw-trace-copy.success", { method: "copyNodeTextWithSelection", length: text.length });
+              setGlobalStatus("Raw trace copied to clipboard.", "success");
+              return;
+            }
+            appendRawTrace("ui.raw-trace-copy.failure", {
+              error: String(error?.message || error || "unknown"),
+              fallback: "copyNodeTextWithSelection=false"
+            });
+            setGlobalStatus("Could not copy raw trace. Try Export Capture or manual select-copy.", "error");
+          }
+        });
+      }
+
+      const clearRawTraceButton = document.getElementById("clearRawTraceButton");
+      if (clearRawTraceButton) {
+        clearRawTraceButton.addEventListener("click", () => {
+          state.rawTraceLog = [];
+          renderRawTraceInfo();
+          renderRawTraceLog();
+          setGlobalStatus("Raw event trace cleared.", "success");
         });
       }
 
@@ -11670,7 +12494,8 @@
           (event.ctrlKey && event.altKey && !event.metaKey)
           || (event.ctrlKey && event.shiftKey && !event.metaKey)
         );
-        const isTextTunerToggle = keyLower === "t" && event.ctrlKey && event.altKey && !event.metaKey && !event.shiftKey;
+        const isTextTunerToggle = keyLower === "t" && event.ctrlKey && !event.metaKey
+          && ((event.altKey && !event.shiftKey) || (event.shiftKey && !event.altKey));
         if (isLayoutDebugToggle) {
           event.preventDefault();
           setLayoutDebugEnabled(!state.layoutDebugEnabled);
@@ -11703,15 +12528,20 @@
 
       function handleFusionPush(action, dataString) {
         try {
+          appendRawTrace("push.raw", { action, dataString });
           const data = dataString ? JSON.parse(dataString) : {};
+          appendRawTrace("push.parsed", { action, data });
           if (action === "renderState" || action === "renderParameters") {
             if (hasBlockingLocalEdits()) {
               queuePendingStateEnvelope(data, action);
+              appendRawTrace("push.queued", { action, reason: "blocking local edits" });
               return "OK";
             }
             applyStateFromFusion(data, { source: "push", action });
+            appendRawTrace("push.applied", { action });
           }
         } catch (error) {
+          appendRawTrace("push.error", { action, error: String(error?.message || error) });
           setGlobalStatus(error.message || "Failed to process backend push payload.", "error");
           appendStatusHistory(`Push handler failure: ${String(error.message || error)}`, "error");
           return "FAILED";
@@ -11729,10 +12559,16 @@
 
       window.addEventListener("load", async () => {
         try {
+          initializeDebugHubSectionPersistence();
           if (state.layoutDebugEnabled) {
             setLayoutDebugEnabled(true);
           }
+          loadPersistentMessageLog();
           renderStatusHistory();
+          renderMessageLog();
+          renderPersistentLogInfo();
+          renderRawTraceInfo();
+          renderRawTraceLog();
           initializeTextTunerCard();
           applySettings(state.settings, { deferColumnLayout: true });
           syncDefaultUnit(true);

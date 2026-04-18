@@ -905,15 +905,15 @@ def _find_model_parameter_by_token(design, token):
     except Exception:
         return None
 
-    param = adsk.fusion.ModelParameter.cast(found)
-    if param:
-        return param
-
-    if isinstance(found, (list, tuple)):
+    # findEntityByToken returns an ObjectCollection, not a list/tuple.
+    # Try iterating regardless of concrete type.
+    try:
         for item in found:
             param = adsk.fusion.ModelParameter.cast(item)
             if param:
                 return param
+    except Exception:
+        pass
     return None
 
 
@@ -1175,15 +1175,15 @@ def _find_user_parameter_by_token(design, token):
     except Exception:
         return None
 
-    parameter = adsk.fusion.UserParameter.cast(found)
-    if parameter:
-        return parameter
-
-    if isinstance(found, (list, tuple)):
+    # findEntityByToken returns an ObjectCollection, not a list/tuple.
+    # Try iterating regardless of concrete type.
+    try:
         for item in found:
             parameter = adsk.fusion.UserParameter.cast(item)
             if parameter:
                 return parameter
+    except Exception:
+        pass
 
     return None
 
