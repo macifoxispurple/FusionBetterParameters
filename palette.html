@@ -3559,6 +3559,7 @@
         PREVIEW_EXPRESSION: "previewExpression",
         VALIDATE_UNIT: "validateUnit",
         RENAME_PARAMETER: "renameParameter",
+        UPDATE_MODEL_PARAMETER: "updateModelParameter",
         COPY_PARAMETER: "copyParameter",
         DELETE_PARAMETERS: "deleteParameters",
         SORT_BY_TIMELINE_ORDER: "sortByTimelineOrder",
@@ -3585,7 +3586,7 @@
         ACTION.SAVE_PARAMETER_ORDER, ACTION.SAVE_GROUP_UI_STATE, ACTION.SAVE_SETTINGS, ACTION.SAVE_PALETTE_GEOMETRY,
         ACTION.GET_TEXT_TUNER_STATE, ACTION.SAVE_TEXT_TUNER_STATE,
         ACTION.VALIDATE_PARAMETER_NAME, ACTION.VALIDATE_EXPRESSION, ACTION.PREVIEW_EXPRESSION, ACTION.VALIDATE_UNIT,
-        ACTION.RENAME_PARAMETER, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
+        ACTION.RENAME_PARAMETER, ACTION.UPDATE_MODEL_PARAMETER, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
         ACTION.GET_BACKEND_CONTRACT_INFO, ACTION.GET_PARAMETER_DEPENDENCY_GRAPH, ACTION.RUN_SELF_TEST_SUITE,
         ACTION.SEED_TEST_PARAMETERS, ACTION.RESET_TEST_STATE,
         ACTION.IMPORT_PARAMETERS, ACTION.EXPORT_PARAMETERS,
@@ -3598,7 +3599,7 @@
         ACTION.READY, ACTION.REFRESH, ACTION.CREATE_PARAMETER, ACTION.DELETE_PARAMETER, ACTION.UPDATE_PARAMETER, ACTION.REVERT_PARAMETER,
         ACTION.SET_PARAMETER_FAVORITE, ACTION.SET_PARAMETER_GROUP, ACTION.RENAME_GROUP, ACTION.DELETE_GROUP,
         ACTION.SAVE_PARAMETER_ORDER, ACTION.SAVE_GROUP_UI_STATE, ACTION.SAVE_SETTINGS, ACTION.SAVE_PALETTE_GEOMETRY,
-        ACTION.RENAME_PARAMETER, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
+        ACTION.RENAME_PARAMETER, ACTION.UPDATE_MODEL_PARAMETER, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
         ACTION.SEED_TEST_PARAMETERS, ACTION.RESET_TEST_STATE,
         ACTION.IMPORT_PARAMETERS, ACTION.IMPORT_PARAMETERS_PACKAGE,
         ACTION.SAVE_TEXT_TUNER_STATE, ACTION.CHECK_FOR_UPDATES, ACTION.DOWNLOAD_AND_STAGE_UPDATE,
@@ -6183,9 +6184,11 @@
         renderSelectedActionButtons();
         setGlobalStatus(`Deleting ${count} selected parameter${count === 1 ? "" : "s"}...`);
         const selectedKeys = targets.map((item) => String(item.key || "")).filter(Boolean);
+        const selectedNames = targets.map((item) => String(item.name || "")).filter(Boolean);
         try {
           const response = await sendToFusion(ACTION.DELETE_PARAMETERS, {
-            keys: selectedKeys
+            keys: selectedKeys,
+            names: selectedNames
           });
           if (!response.ok) {
             throw new Error(response.message || "Delete failed.");
@@ -12204,6 +12207,7 @@
           favoriteButton.disabled = true;
           try {
             const response = await sendToFusion(ACTION.SET_PARAMETER_FAVORITE, {
+              key: parameter.key || "",
               name: parameter.name,
               isFavorite: !parameter.isFavorite
             });
