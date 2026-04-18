@@ -1,4 +1,4 @@
-# Better Parameters
+﻿# Better Parameters
 
 **Better Parameters** is an Autodesk Fusion add-in that makes working with user parameters faster, less frustrating, and a lot more manageable.
 
@@ -6,11 +6,11 @@ It gives you a non-blocking, table-based interface for editing parameters, organ
 
 ## Why I made it
 
-Fusion’s built-in Parameters dialog works, but once you start using parameters heavily, it starts to get in the way:
+Fusionâ€™s built-in Parameters dialog works, but once you start using parameters heavily, it starts to get in the way:
 
 - the dialog blocks your workflow
 - editing values takes more clicks than it should
-- there’s no good way to organize parameters
+- thereâ€™s no good way to organize parameters
 - grouping and ordering are basically non-existent
 - finding what you need in a large parameter list gets tedious fast
 
@@ -27,10 +27,11 @@ Better Parameters gives you:
 - **Favorites** for quick access to important parameters
 - Search across name, expression, comment, unit, and value
 - Per-row **Save, Revert, and Discard** with dirty state tracking
-- Expression preview and validation using Fusion’s engine
+- Expression preview and validation using Fusionâ€™s engine
+- Reliable Shift-range multi-select behavior across grouped rows, including when Favorites duplicate rows are visible
 - Persistent UI settings (theme, layout, column sizes, etc.)
 
-You can think of it as a much more flexible, always-available version of Fusion’s parameter dialog.
+You can think of it as a much more flexible, always-available version of Fusionâ€™s parameter dialog.
 
 ## Working with groups
 
@@ -39,13 +40,13 @@ Parameters can be organized into groups to keep things manageable as your design
 - Create and rename groups as needed
 - Collapse and expand groups to reduce clutter
 - Reorder both groups and parameters
-- “Ungrouped” is treated as a default bucket
+- â€œUngroupedâ€ is treated as a default bucket
 
 Grouping and ordering are stored in the Fusion design file when possible, so they usually travel between computers, with a local fallback on each machine to keep things consistent.
 
 ## Editing and validation
 
-Expressions are validated using Fusion’s native expression engine, so behavior matches what you’d expect from the built-in tools.
+Expressions are validated using Fusionâ€™s native expression engine, so behavior matches what youâ€™d expect from the built-in tools.
 
 A few important details:
 
@@ -53,13 +54,13 @@ A few important details:
 - Expressions require explicit operators (no implicit multiplication)
 - Preview values are generated using the active document units
 
-If something looks off, it’s coming from Fusion’s evaluator, not a separate system.
+If something looks off, itâ€™s coming from Fusionâ€™s evaluator, not a separate system.
 
 ## Settings
 
 Better Parameters remembers how you like to work.
 
-Settings are stored locally in `settings.json` next to the installed add-in inside Fusion’s AddIns folder, including:
+Settings are stored locally in `settings.json` next to the installed add-in inside Fusionâ€™s AddIns folder, including:
 
 - theme (light / dark)
 - palette size and layout
@@ -84,7 +85,7 @@ Status messages are also captured in a session-only **Status History** section i
    (make sure you select the folder that contains `BetterParameters.py`, not a parent folder)
 7. Run the add-in
 
-### Option 2: Copy into Fusion’s Add-Ins folder
+### Option 2: Copy into Fusionâ€™s Add-Ins folder
 
 **Windows:**  
 `%AppData%\Autodesk\Autodesk Fusion 360\API\AddIns`
@@ -98,7 +99,7 @@ Copy the `BetterParameters` folder into the appropriate location, then enable it
 
 Better Parameters adds a **Better Parameters** button under the **Utilities** tab.
 
-When available, it also promotes itself into Modify panels so it’s easy to access while working.
+When available, it also promotes itself into Modify panels so itâ€™s easy to access while working.
 
 ## A few notes
 
@@ -107,7 +108,7 @@ When available, it also promotes itself into Modify panels so it’s easy to acc
 - Changes are applied immediately to the active document
 - Some UI state and ordering is stored locally per machine
 
-There is also a temporary **Text Tuner** sidebar included for UI/debug tuning. It’s experimental and may change or be removed later.
+There is also a temporary **Text Tuner** sidebar included for UI/debug tuning. Itâ€™s experimental and may change or be removed later.
 
 ## Updates
 
@@ -117,14 +118,14 @@ You can disable update checks in settings if you prefer.
 
 ## Project files
 
-- `BetterParameters.py` — main add-in logic
-- `palette.html` — UI for the parameter editor
-- `update_helper.py` — update application logic
-- `update_state.py` — update state tracking
+- `BetterParameters.py` â€” main add-in logic
+- `palette.html` â€” UI for the parameter editor
+- `update_helper.py` â€” update application logic
+- `update_state.py` â€” update state tracking
 
 ## Status
 
-Better Parameters is ready to use today and works well for real-world parameter-heavy workflows. There’s still room to refine the UI and expand features over time, but it’s already a big improvement over the default experience.
+Better Parameters is ready to use today and works well for real-world parameter-heavy workflows. Thereâ€™s still room to refine the UI and expand features over time, but itâ€™s already a big improvement over the default experience.
 
 ## License
 

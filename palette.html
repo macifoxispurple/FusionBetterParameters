@@ -3996,6 +3996,8 @@
         selectedRow: null,
         selectedRowKeys: [],
         selectionAnchorKey: "",
+        selectionAnchorRowIndex: -1,
+        shiftRangeGestureActive: false,
         lastNarrowLayoutMode: null,
         viewportModeAutoFitPending: false,
         rowDraftsByKey: {},
@@ -4006,6 +4008,7 @@
         pendingTableScrollAnchor: null,
         suppressNextFieldFocus: false,
         suppressNextRowClickSelectionKey: "",
+        suppressNextFocusSelectionKey: "",
         pendingFieldDiscardRowKey: "",
         bridgeStringCompatWarned: false,
         initialLayoutDone: false,
@@ -4837,6 +4840,10 @@
         });
       }
 
+      function getSelectableRowsInRenderOrder() {
+        return Array.from(document.querySelectorAll("#parameterRows tr.parameter-row[data-parameter-key]"));
+      }
+
       function pruneSelectionToVisibleRows() {
         const visibleKeys = new Set(
           Array.from(document.querySelectorAll("#parameterRows tr.parameter-row[data-parameter-key]"))
@@ -4846,6 +4853,7 @@
         state.selectedRowKeys = getSelectedParameterKeys().filter((key) => visibleKeys.has(key));
         if (state.selectionAnchorKey && !visibleKeys.has(state.selectionAnchorKey)) {
           state.selectionAnchorKey = "";
+          state.selectionAnchorRowIndex = -1;
         }
         if (state.selectedRow && !visibleKeys.has(String(state.selectedRow.key || ""))) {
           state.selectedRow = null;
@@ -6864,23 +6872,32 @@
 
       function maybeEndRangeSelectingForEvent(event) {
         if (!document.body.classList.contains("range-selecting")) {
+          if (event && event.type === "keyup" && event.key === "Shift") {
+            state.shiftRangeGestureActive = false;
+          }
           return;
         }
         if (!event) {
           endRangeSelectingUiMode();
+          state.shiftRangeGestureActive = false;
           return;
         }
         if (event.type === "keyup") {
           if (event.key === "Shift" || !event.shiftKey) {
             endRangeSelectingUiMode();
+            state.shiftRangeGestureActive = false;
           }
           return;
         }
         if (event.type === "visibilitychange") {
           if (document.visibilityState === "hidden") {
             endRangeSelectingUiMode();
+            state.shiftRangeGestureActive = false;
           }
           return;
+        }
+        if (event.type === "blur") {
+          state.shiftRangeGestureActive = false;
         }
         endRangeSelectingUiMode();
       }
@@ -6984,18 +7001,63 @@
         const key = nextSelection.key;
         const additive = options.additive === true;
         const range = options.range === true;
+        const rangeGestureStart = options.rangeGestureStart === true;
         const selected = new Set(getSelectedParameterKeys());
         const currentAnchor = String(state.selectionAnchorKey || "");
+        const allRows = getSelectableRowsInRenderOrder();
+        const clickedIndex = allRows.indexOf(row);
 
         if (range) {
-          const rows = getSelectableRowsUniqueByKey();
-          const keys = rows.map((entry) => String(entry.getAttribute("data-parameter-key") || "")).filter(Boolean);
-          const anchorKey = currentAnchor && keys.includes(currentAnchor) ? currentAnchor : key;
-          const start = keys.indexOf(anchorKey);
-          const end = keys.indexOf(key);
-          if (start >= 0 && end >= 0) {
-            const [from, to] = start <= end ? [start, end] : [end, start];
-            const rangeKeys = keys.slice(from, to + 1);
+          if (rangeGestureStart && !additive && (selected.size !== 1 || !selected.has(currentAnchor))) {
+            selected.clear();
+            selected.add(key);
+            state.selectionAnchorKey = key;
+            state.selectionAnchorRowIndex = clickedIndex;
+            state.shiftRangeGestureActive = true;
+            state.selectedRowKeys = Array.from(selected).filter(Boolean);
+            state.selectedRow = nextSelection;
+            applySelectedRowState();
+            return;
+          }
+
+          let anchorIndex = -1;
+          const storedAnchorIndex = Number(state.selectionAnchorRowIndex);
+          if (
+            Number.isFinite(storedAnchorIndex)
+            && storedAnchorIndex >= 0
+            && storedAnchorIndex < allRows.length
+            && String(allRows[storedAnchorIndex].getAttribute("data-parameter-key") || "") === currentAnchor
+          ) {
+            anchorIndex = storedAnchorIndex;
+          } else if (currentAnchor) {
+            const matchingIndexes = allRows
+              .map((entry, index) => ({
+                index,
+                key: String(entry.getAttribute("data-parameter-key") || "")
+              }))
+              .filter((entry) => entry.key === currentAnchor)
+              .map((entry) => entry.index);
+            if (matchingIndexes.length) {
+              if (clickedIndex >= 0) {
+                anchorIndex = matchingIndexes.reduce((best, candidate) => (
+                  Math.abs(candidate - clickedIndex) < Math.abs(best - clickedIndex) ? candidate : best
+                ), matchingIndexes[0]);
+              } else {
+                anchorIndex = matchingIndexes[0];
+              }
+            }
+          }
+          if (anchorIndex < 0) {
+            anchorIndex = clickedIndex >= 0 ? clickedIndex : 0;
+          }
+
+          const end = clickedIndex >= 0 ? clickedIndex : anchorIndex;
+          if (anchorIndex >= 0 && end >= 0 && allRows.length > 0) {
+            const [from, to] = anchorIndex <= end ? [anchorIndex, end] : [end, anchorIndex];
+            const rangeKeys = allRows
+              .slice(from, to + 1)
+              .map((entry) => String(entry.getAttribute("data-parameter-key") || ""))
+              .filter(Boolean);
             if (!additive) {
               selected.clear();
             }
@@ -7004,7 +7066,11 @@
             selected.clear();
             selected.add(key);
           }
-          state.selectionAnchorKey = anchorKey;
+          state.selectionAnchorKey = String(allRows[anchorIndex]?.getAttribute("data-parameter-key") || key);
+          state.selectionAnchorRowIndex = anchorIndex;
+          if (!additive) {
+            state.shiftRangeGestureActive = true;
+          }
         } else if (additive) {
           if (selected.has(key)) {
             selected.delete(key);
@@ -7012,16 +7078,22 @@
             selected.add(key);
           }
           state.selectionAnchorKey = key;
+          state.selectionAnchorRowIndex = clickedIndex;
+          state.shiftRangeGestureActive = false;
         } else {
           selected.clear();
           selected.add(key);
           state.selectionAnchorKey = key;
+          state.selectionAnchorRowIndex = clickedIndex;
+          state.shiftRangeGestureActive = false;
         }
 
         const nextKeys = Array.from(selected).filter(Boolean);
         state.selectedRowKeys = nextKeys;
         if (!nextKeys.length) {
           state.selectionAnchorKey = "";
+          state.selectionAnchorRowIndex = -1;
+          state.shiftRangeGestureActive = false;
         }
         state.selectedRow = nextSelection;
         applySelectedRowState();
@@ -10658,7 +10730,8 @@
         state.suppressNextRowClickSelectionKey = "";
         setSelectedParameterRow(row, {
           additive: event.ctrlKey || event.metaKey,
-          range: event.shiftKey
+          range: event.shiftKey,
+          rangeGestureStart: event.shiftKey && !(event.ctrlKey || event.metaKey)
         });
       });
 
@@ -10682,13 +10755,15 @@
         event.preventDefault();
         state.suppressNextFieldFocus = editableTarget;
         state.suppressNextRowClickSelectionKey = rowKey;
+        state.suppressNextFocusSelectionKey = rowKey;
         if (isRangeGesture) {
           beginRangeSelectingUiMode();
           clearDocumentTextSelection();
         }
         setSelectedParameterRow(row, {
           additive: event.ctrlKey || event.metaKey,
-          range: event.shiftKey
+          range: event.shiftKey,
+          rangeGestureStart: event.shiftKey && !(event.ctrlKey || event.metaKey)
         });
         if (isRangeGesture) {
           window.requestAnimationFrame(clearDocumentTextSelection);
@@ -11003,6 +11078,11 @@
         const row = event.target.closest("tr.parameter-row[data-parameter-key]");
         if (row) {
           const key = String(row.getAttribute("data-parameter-key") || "");
+          if (key && state.suppressNextFocusSelectionKey === key) {
+            state.suppressNextFocusSelectionKey = "";
+            return;
+          }
+          state.suppressNextFocusSelectionKey = "";
           const selected = new Set(getSelectedParameterKeys());
           if (key && selected.has(key)) {
             state.selectedRow = getRowSelectionFromElement(row);
