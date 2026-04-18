@@ -1846,6 +1846,18 @@
         padding: 0 9px;
       }
 
+      .batch-action-buttons .primary.is-error,
+      .batch-action-buttons .primary.is-error:disabled {
+        background: color-mix(in srgb, var(--error) 88%, var(--panel));
+        border-color: var(--error);
+        color: var(--accent-text);
+      }
+
+      .batch-action-buttons .primary.is-error:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--error) 82%, var(--panel));
+        border-color: var(--error);
+      }
+
       .search-icon {
         position: absolute;
         left: 7px;
@@ -2943,6 +2955,14 @@
           };
           if (getFlag("mock")) {
             window.__BP_USE_MOCK_BRIDGE = true;
+            try {
+              var xhr = new XMLHttpRequest();
+              xhr.open("GET", "dev/mock_bridge_fixtures.js", false);
+              xhr.send(null);
+              if ((xhr.status === 0 || xhr.status === 200) && String(xhr.responseText || "").trim()) {
+                (0, eval)(xhr.responseText);
+              }
+            } catch (_) {}
           }
           var fixture = String(params.get("fixture") || "").trim();
           if (fixture) {
@@ -3536,7 +3556,6 @@
       const RAW_TRACE_ENABLED_STORAGE_KEY = "bp_raw_trace_enabled";
       const RAW_TRACE_MAX_ENTRIES = 1200;
       const RAW_TRACE_MAX_PAYLOAD_CHARS = 8000;
-      // REVIEW: BACKEND_API.md still lists validateUnitChange/updateParameterUnit as normative; FE intentionally omits them per blocked M2 policy.
       const ACTION = Object.freeze({
         READY: "ready",
         REFRESH: "refresh",
@@ -3610,7 +3629,13 @@
         ACTION.EXPORT_PARAMETERS, ACTION.EXPORT_PARAMETERS_PACKAGE, ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, ACTION.OPEN_HELP_URL,
         ACTION.GET_BACKEND_CONTRACT_INFO, ACTION.GET_PARAMETER_DEPENDENCY_GRAPH, ACTION.RUN_SELF_TEST_SUITE
       ]);
-      // REVIEW: Mock bridge is intentionally kept behind explicit opt-in for local fixture testing.
+      // Compatibility: import flows can return ok=true with state=null from current backend paths.
+      const STATE_OPTIONAL_MUTATING_ACTIONS = new Set([
+        ACTION.IMPORT_PARAMETERS,
+        ACTION.IMPORT_PARAMETERS_PACKAGE
+      ]);
+      // Mock bridge is dev-only and opt-in (`?mock=1` / `window.__BP_USE_MOCK_BRIDGE`).
+      // It must stay unreachable during normal Fusion runtime when `adsk.fusionSendData` is present.
       const MOCK_BRIDGE_ENABLED = !!window.__BP_USE_MOCK_BRIDGE;
       const BOOTSTRAP_LAYOUT_DEBUG_ENABLED = window.__BP_LAYOUT_DEBUG_START === true;
 
@@ -4922,11 +4947,15 @@
 
       function captureRowDraftsFromDom() {
         const rows = Array.from(document.querySelectorAll("#parameterRows tr.parameter-row[data-parameter-key]"));
+        const bestRenderedDraftByKey = new Map();
+        const bestRenderedScoreByKey = new Map();
+        const renderedKeys = new Set();
         rows.forEach((row) => {
           const key = getRowDraftKey(row);
           if (!key) {
             return;
           }
+          renderedKeys.add(key);
           const nameInput = row.querySelector(".param-name-input");
           const expressionInput = row.querySelector(".expression-input");
           const commentInput = row.querySelector(".comment-input");
@@ -4955,13 +4984,20 @@
           const errorMessage = String(errorNode?.textContent || "").trim();
           const draftPreview = String(previewCell.getAttribute("data-draft-preview") || "");
           const shouldKeep = isDirty || nameInvalid || ariaInvalid || !!nameErrorMessage || !!errorMessage || !!draftPreview;
+          const score = (isDirty ? 4 : 0)
+            + ((nameInvalid || ariaInvalid) ? 2 : 0)
+            + ((nameErrorMessage || errorMessage || draftPreview) ? 1 : 0);
+          const previousScore = bestRenderedScoreByKey.get(key);
 
           if (!shouldKeep) {
-            clearRowDraftByKey(key);
             return;
           }
+          if (typeof previousScore === "number" && previousScore > score) {
+            return;
+          }
+          bestRenderedScoreByKey.set(key, score);
 
-          state.rowDraftsByKey[key] = {
+          bestRenderedDraftByKey.set(key, {
             name,
             nameDirty,
             nameInvalid,
@@ -4974,8 +5010,18 @@
             errorMessage,
             draftPreview,
             parameterName: String(row.getAttribute("data-parameter-name") || "")
-          };
+          });
         });
+
+        const nextDrafts = { ...(state.rowDraftsByKey || {}) };
+        renderedKeys.forEach((key) => {
+          if (bestRenderedDraftByKey.has(key)) {
+            nextDrafts[key] = bestRenderedDraftByKey.get(key);
+          } else {
+            delete nextDrafts[key];
+          }
+        });
+        state.rowDraftsByKey = nextDrafts;
       }
 
       function applyDraftToRow(row, draft) {
@@ -5083,6 +5129,7 @@
         const disabled = state.applyAllRunning || dirtyCount === 0;
         discardAllButton.disabled = disabled;
         applyAllButton.disabled = disabled || hasInvalidDirty;
+        applyAllButton.classList.toggle("is-error", hasInvalidDirty && dirtyCount > 0);
         applyAllButton.title = hasInvalidDirty
           ? "Fix all invalid name/expression rows before Apply All."
           : "";
@@ -8451,9 +8498,16 @@
         setGlobalStatus(message || "Contract validation failed. UI frozen.", "error");
       }
 
+      function hasObjectStatePayload(value) {
+        return !!(value && typeof value === "object" && !Array.isArray(value));
+      }
+
       function validateEnvelope(envelope, context = {}) {
         const source = context.source || "response";
         const action = context.action || "";
+        const requestData = context.requestData && typeof context.requestData === "object"
+          ? context.requestData
+          : {};
         if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
           return { ok: false, message: "Envelope is not an object." };
         }
@@ -8472,10 +8526,18 @@
         if (typeof envelope.message !== "string") {
           return { ok: false, message: 'Envelope field "message" must be string.' };
         }
-        const hasStateObject = envelope.state && typeof envelope.state === "object" && !Array.isArray(envelope.state);
-        const shouldHaveStateObject = source === "push" || (MUTATING_ACTIONS.has(action) && envelope.ok === true);
+        const hasStateObject = hasObjectStatePayload(envelope.state);
+        const stateOptionalForMutating = source === "response" && STATE_OPTIONAL_MUTATING_ACTIONS.has(action);
+        const shouldHaveStateObject = source === "push" || (MUTATING_ACTIONS.has(action) && envelope.ok === true && !stateOptionalForMutating);
         if (shouldHaveStateObject && !hasStateObject) {
           return { ok: false, message: "Mutating/push envelope must include object state." };
+        }
+        if (stateOptionalForMutating && envelope.ok === true && !hasStateObject) {
+          const requestDryRun = requestData.dryRun === true;
+          const responseDryRun = envelope.dryRun === true;
+          if (!requestDryRun && !responseDryRun) {
+            appendStatusHistory(`Contract compat: "${action}" returned ok=true with state=null; FE will refresh state.`, "warning");
+          }
         }
         if (READ_ONLY_OR_VALIDATION_ACTIONS.has(action) && envelope.state !== null) {
           return { ok: false, message: "Read-only/validation envelope must have state=null." };
@@ -8536,28 +8598,22 @@
         return {
           async fusionSendData(action, _jsonPayload) {
             const fixtureMode = String(window.__BP_MOCK_FIXTURE_MODE || "").trim().toLowerCase();
-            if (fixtureMode === "malformed_missing_state") {
-              return { ok: true, message: "mock malformed" };
-            }
-            if (fixtureMode === "malformed_bad_api") {
-              return { ok: true, message: "", state: { ...buildMockStatePayload(), apiVersion: 999 } };
-            }
-            if (fixtureMode === "error_mutating" && MUTATING_ACTIONS.has(action)) {
-              return { ok: false, message: `Mock mutating failure: ${action}`, errorCode: "TRANSPORT_ERROR", state: null, traceback: "" };
-            }
-            if (fixtureMode === "error_readonly" && action === ACTION.GET_TEXT_TUNER_STATE) {
-              return { ok: false, message: "Mock read-only failure: getTextTunerState", errorCode: "TRANSPORT_ERROR", state: null, traceback: "" };
-            }
-            if (fixtureMode === "error_validation" && READ_ONLY_OR_VALIDATION_ACTIONS.has(action) && action !== ACTION.GET_TEXT_TUNER_STATE) {
-              return { ok: false, message: `Mock validation failure: ${action}`, errorCode: "VALIDATION_ERROR", state: null, traceback: "" };
-            }
-            if (
-              fixtureMode === "error_metadata"
-              && (action === ACTION.SYNC_METADATA_JSON_TO_FUSION || action === ACTION.SYNC_METADATA_FUSION_TO_JSON || action === ACTION.REPAIR_METADATA)
-            ) {
-              return { ok: false, message: `Mock metadata failure: ${action}`, errorCode: "TRANSPORT_ERROR", state: null, traceback: "" };
-            }
             const statePayload = buildMockStatePayload();
+            const mockHelper = window.__BP_MOCK_FIXTURE_HELPER;
+            if (mockHelper && typeof mockHelper.resolve === "function") {
+              const fixtureResponse = mockHelper.resolve({
+                action,
+                payloadJson: _jsonPayload,
+                fixtureMode,
+                statePayload,
+                actionMap: ACTION,
+                mutatingActions: Array.from(MUTATING_ACTIONS),
+                readOnlyOrValidationActions: Array.from(READ_ONLY_OR_VALIDATION_ACTIONS)
+              });
+              if (fixtureResponse && typeof fixtureResponse === "object" && Object.prototype.hasOwnProperty.call(fixtureResponse, "ok")) {
+                return fixtureResponse;
+              }
+            }
 
             if (action === ACTION.GET_BACKEND_CONTRACT_INFO) {
               return {
@@ -8595,209 +8651,13 @@
                 results: [{ name: "mock.smoke", passed: true, failures: [] }]
               };
             }
-
-            if (action === ACTION.IMPORT_PARAMETERS) {
-              const isDryRun = _jsonPayload && typeof _jsonPayload === "string"
-                ? (JSON.parse(_jsonPayload || "{}").dryRun === true)
-                : false;
-              if (fixtureMode === "m4_import_cancel") {
-                return { ok: false, message: "Import cancelled.", errorCode: "DIALOG_CANCELLED", state: null, importedCount: 0, skippedCount: 0, failedCount: 0, failedRows: [], filePath: "" };
-              }
-              if (isDryRun) {
-                return {
-                  ok: true,
-                  message: "",
-                  state: null,
-                  dryRun: true,
-                  filePath: "C:\\mock\\BetterParameters-import.csv",
-                  importedCount: 2,
-                  skippedCount: 1,
-                  failedCount: 0,
-                  failedRows: []
-                };
-              }
-              return {
-                ok: true,
-                message: "",
-                state: statePayload,
-                dryRun: false,
-                importedCount: 2,
-                skippedCount: 1,
-                failedCount: 0,
-                failedRows: []
-              };
-            }
-
-            if (action === ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT) {
-              if (fixtureMode === "m6_validate_cancel") {
-                return { ok: false, message: "Import cancelled.", errorCode: "DIALOG_CANCELLED", state: null, preview: null, filePath: "" };
-              }
-              if (fixtureMode === "m6_validate_success_with_warnings") {
-                return {
-                  ok: true,
-                  message: "",
-                  state: null,
-                  filePath: "C:\\mock\\BetterParameters-import.bpmeta.json",
-                  preview: {
-                    addCount: 2,
-                    updateCount: 3,
-                    skipCount: 1,
-                    potentialFailCount: 1,
-                    warnings: ["1 row may fail because expression validation is uncertain until apply."],
-                    failedRows: []
-                  }
-                };
-              }
-              if (fixtureMode === "m6_validate_success_with_fail_rows") {
-                return {
-                  ok: true,
-                  message: "",
-                  state: null,
-                  filePath: "C:\\mock\\BetterParameters-import.bpmeta.json",
-                  preview: {
-                    addCount: 1,
-                    updateCount: 2,
-                    skipCount: 0,
-                    potentialFailCount: 1,
-                    warnings: [],
-                    failedRows: [{ row: 4, name: "bad", message: "Expression is required to create a new parameter." }]
-                  }
-                };
-              }
-              return {
-                ok: true,
-                message: "",
-                state: null,
-                filePath: "C:\\mock\\BetterParameters-import.bpmeta.json",
-                preview: {
-                  addCount: 2,
-                  updateCount: 3,
-                  skipCount: 1,
-                  potentialFailCount: 0,
-                  warnings: [],
-                  failedRows: []
-                }
-              };
-            }
-
-            if (action === ACTION.EXPORT_PARAMETERS_PACKAGE) {
-              if (fixtureMode === "m6_export_cancel") {
-                return { ok: false, message: "Export cancelled.", errorCode: "DIALOG_CANCELLED", state: null, exportedCount: 0, filePath: "", format: "bpmeta.json" };
-              }
-              return {
-                ok: true,
-                message: "",
-                state: null,
-                exportedCount: Array.isArray(statePayload.parameters) ? statePayload.parameters.length : 0,
-                filePath: "C:\\mock\\BetterParameters-export.bpmeta.json",
-                format: "bpmeta.json"
-              };
-            }
-
-            if (action === ACTION.IMPORT_PARAMETERS_PACKAGE) {
-              const requestPayload = _jsonPayload && typeof _jsonPayload === "string"
-                ? JSON.parse(_jsonPayload || "{}")
-                : {};
-              const isDryRun = requestPayload.dryRun === true;
-              if (fixtureMode === "m6_import_cancel") {
-                return { ok: false, message: "Import cancelled.", errorCode: "DIALOG_CANCELLED", state: null, importedCount: 0, updatedCount: 0, skippedCount: 0, failedCount: 0, failedRows: [], filePath: "" };
-              }
-              if (isDryRun) {
-                return {
-                  ok: true,
-                  message: "",
-                  state: null,
-                  dryRun: true,
-                  filePath: "C:\\mock\\BetterParameters-import.bpmeta.json",
-                  importedCount: 2,
-                  updatedCount: 3,
-                  skippedCount: 1,
-                  failedCount: 0,
-                  failedRows: []
-                };
-              }
-              if (fixtureMode === "m6_import_all_fail") {
-                return {
-                  ok: false,
-                  message: "No parameters were imported.",
-                  errorCode: "VALIDATION_ERROR",
-                  state: null,
-                  importedCount: 0,
-                  updatedCount: 0,
-                  skippedCount: 0,
-                  failedCount: 2,
-                  failedRows: [
-                    { row: 3, name: "badA", message: "Invalid expression." },
-                    { row: 4, name: "badB", message: "Name is required." }
-                  ]
-                };
-              }
-              if (fixtureMode === "m6_import_partial_fail") {
-                return {
-                  ok: true,
-                  message: "",
-                  state: statePayload,
-                  dryRun: false,
-                  importedCount: 2,
-                  updatedCount: 1,
-                  skippedCount: 0,
-                  failedCount: 1,
-                  failedRows: [{ row: 5, name: "bad", message: "Invalid expression." }]
-                };
-              }
-              if (fixtureMode === "m6_import_all_skipped") {
-                return {
-                  ok: true,
-                  message: "",
-                  state: statePayload,
-                  dryRun: false,
-                  importedCount: 0,
-                  updatedCount: 0,
-                  skippedCount: 3,
-                  failedCount: 0,
-                  failedRows: []
-                };
-              }
-              return {
-                ok: true,
-                message: "",
-                state: statePayload,
-                dryRun: false,
-                importedCount: 2,
-                updatedCount: 3,
-                skippedCount: 1,
-                failedCount: 0,
-                failedRows: []
-              };
+            if (!NORMATIVE_ACTIONS.has(action)) {
+              return { ok: false, message: `Unknown action: ${action}`, errorCode: "CONTRACT_ERROR", state: null, traceback: "" };
             }
             if (MUTATING_ACTIONS.has(action)) {
               return { ok: true, message: "", state: statePayload };
             }
-            if (action === ACTION.GET_TEXT_TUNER_STATE) {
-              return { ok: true, message: "", state: null, values: statePayload.textTunerState || {} };
-            }
-            if (action === ACTION.EXPORT_PARAMETERS) {
-              if (fixtureMode === "m4_export_cancel") {
-                return { ok: false, message: "Export cancelled.", errorCode: "DIALOG_CANCELLED", state: null, exportedCount: 0, filePath: "" };
-              }
-              return {
-                ok: true,
-                message: "",
-                state: null,
-                exportedCount: Array.isArray(statePayload.parameters) ? statePayload.parameters.length : 0,
-                filePath: "C:\\mock\\BetterParameters-export.csv"
-              };
-            }
-            if (action === ACTION.OPEN_HELP_URL) {
-              return { ok: true, message: "", state: null };
-            }
-            if (action === ACTION.PREVIEW_EXPRESSION) {
-              return { ok: true, message: "", state: null, preview: "0 mm" };
-            }
-            if (action === ACTION.VALIDATE_EXPRESSION || action === ACTION.VALIDATE_PARAMETER_NAME || action === ACTION.VALIDATE_UNIT) {
-              return { ok: true, message: "", state: null };
-            }
-            return { ok: false, message: `Unknown action: ${action}`, errorCode: "CONTRACT_ERROR", state: null, traceback: "" };
+            return { ok: true, message: "", state: null };
           }
         };
       }
@@ -8897,7 +8757,7 @@
         });
         const envelope = parseBridgePayload(rawResponse);
         appendRawTrace("bridge.response.parsed", { action, envelope });
-        const validation = validateEnvelope(envelope, { source: "response", action });
+        const validation = validateEnvelope(envelope, { source: "response", action, requestData: data });
         if (!validation.ok) {
           const message = `Backend contract error (${action}): ${validation.message}`;
           appendRawTrace("bridge.response.invalid", { action, validation });
@@ -11960,7 +11820,12 @@
             return;
           }
 
-          applyStateFromFusion(response, { source: "response", action: ACTION.IMPORT_PARAMETERS });
+          if (hasObjectStatePayload(response.state)) {
+            applyStateFromFusion(response, { source: "response", action: ACTION.IMPORT_PARAMETERS });
+          } else {
+            appendStatusHistory('CSV import response omitted state; running refresh for compatibility.', "warning");
+            await refreshParameters();
+          }
           const imported = Number(response.importedCount || 0);
           const skipped = Number(response.skippedCount || 0);
           const failed = Number(response.failedCount || 0);
@@ -12017,7 +11882,7 @@
             ...buildPackageImportRequest(""),
             dryRun: true
           };
-          const previewResponse = await sendToFusion(ACTION.IMPORT_PARAMETERS_PACKAGE, previewPayload);
+          const previewResponse = await sendToFusion(ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, previewPayload);
           if (isDialogCancelledResponse(previewResponse)) {
             return;
           }
@@ -12108,7 +11973,12 @@
             return;
           }
 
-          applyStateFromFusion(importResponse, { source: "response", action: ACTION.IMPORT_PARAMETERS_PACKAGE });
+          if (hasObjectStatePayload(importResponse.state)) {
+            applyStateFromFusion(importResponse, { source: "response", action: ACTION.IMPORT_PARAMETERS_PACKAGE });
+          } else {
+            appendStatusHistory('Package import response omitted state; running refresh for compatibility.', "warning");
+            await refreshParameters();
+          }
           const imported = Number(importResponse.importedCount || 0);
           const updated = Number(importResponse.updatedCount || 0);
           const skipped = Number(importResponse.skippedCount || 0);
