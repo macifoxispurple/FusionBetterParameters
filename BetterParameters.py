@@ -170,6 +170,74 @@ TARGET_PANEL_IDS = [
 ]
 
 
+CONTRACT_VERSION = "2026-04-17"
+
+_READ_ONLY_ACTIONS = [
+    "ready", "refresh", "validateParameterName", "validateExpression",
+    "previewExpression", "validateUnit", "openHelpUrl",
+    "getActiveDocumentInfo", "checkForUpdates", "getMetadataDebugSnapshot",
+    "validateParametersPackageImport", "exportParameters", "exportParametersPackage",
+    "getParameterDependencyGraph", "getBackendContractInfo", "runSelfTestSuite",
+]
+
+_MUTATING_ACTIONS = [
+    "updateParameter", "revertParameter", "setParameterFavorite",
+    "setParameterGroup", "renameGroup", "deleteGroup",
+    "saveParameterOrder", "saveGroupUiState", "createParameter",
+    "deleteParameter", "deleteParameters", "renameParameter",
+    "updateModelParameter", "copyParameter", "sortByTimelineOrder",
+    "importParameters", "saveSettings", "savePaletteGeometry",
+    "saveTextTunerState", "downloadAndStageUpdate",
+    "syncMetadataJsonToFusion", "syncMetadataFusionToJson", "repairMetadata",
+    "importParametersPackage", "seedTestParameters", "resetTestState",
+]
+
+# ---------------------------------------------------------------------------
+# Error codes — stable identifiers for ok:false responses.
+# ---------------------------------------------------------------------------
+ERROR_VALIDATION = "VALIDATION_ERROR"
+ERROR_CONFLICT = "CONFLICT_ERROR"
+ERROR_NOT_FOUND = "NOT_FOUND"
+ERROR_IO = "IO_ERROR"
+ERROR_DIALOG_CANCELLED = "DIALOG_CANCELLED"
+ERROR_TRANSPORT = "TRANSPORT_ERROR"
+ERROR_CONTRACT = "CONTRACT_ERROR"
+ERROR_NO_DESIGN = "NO_DESIGN"
+ERROR_UNKNOWN = "UNKNOWN_ERROR"
+
+
+class BPError(Exception):
+    """BetterParameters exception carrying a stable error code."""
+    def __init__(self, message, code=None):
+        super().__init__(message)
+        self.bp_code = code or ERROR_UNKNOWN
+
+
+class BPValidationError(BPError):
+    def __init__(self, message):
+        super().__init__(message, ERROR_VALIDATION)
+
+
+class BPConflictError(BPError):
+    def __init__(self, message):
+        super().__init__(message, ERROR_CONFLICT)
+
+
+class BPNotFoundError(BPError):
+    def __init__(self, message):
+        super().__init__(message, ERROR_NOT_FOUND)
+
+
+class BPIOError(BPError):
+    def __init__(self, message):
+        super().__init__(message, ERROR_IO)
+
+
+class BPNoDesignError(BPError):
+    def __init__(self):
+        super().__init__("Open a Fusion design before using Better Parameters.", ERROR_NO_DESIGN)
+
+
 handlers = []
 app = adsk.core.Application.cast(None)
 ui = adsk.core.UserInterface.cast(None)
@@ -305,6 +373,7 @@ class PaletteIncomingHandler(adsk.core.HTMLEventHandler):
                     {
                         "ok": False,
                         "message": str(exc),
+                        "errorCode": getattr(exc, "bp_code", ERROR_UNKNOWN),
                         "traceback": traceback.format_exc(),
                         "state": None,
                     }
@@ -481,12 +550,13 @@ def _handle_palette_action(action, data):
     if action == "exportParameters":
         result = _export_parameters(data)
         if result.get("cancelled"):
-            return {"ok": False, "message": "Export cancelled.", "state": None, "exportedCount": 0, "filePath": ""}
+            return {"ok": False, "message": "Export cancelled.", "errorCode": ERROR_DIALOG_CANCELLED, "state": None, "exportedCount": 0, "filePath": ""}
         return _ok_data(exportedCount=result["exportedCount"], filePath=result["filePath"])
 
     if action == "importParameters":
-        result = _import_parameters(data)
-        state = _current_state_payload() if result["ok"] else None
+        dry_run = bool(data.get("dryRun", False))
+        result = _import_parameters(data, dry_run=dry_run)
+        state = _current_state_payload() if (result["ok"] and not dry_run) else None
         return {
             "ok": result["ok"],
             "message": result["message"],
@@ -495,28 +565,31 @@ def _handle_palette_action(action, data):
             "skippedCount": result["skippedCount"],
             "failedCount": result["failedCount"],
             "failedRows": result["failedRows"],
+            "dryRun": dry_run,
         }
 
     if action == "exportParametersPackage":
         result = _export_parameters_package(data)
         if result.get("cancelled"):
-            return {"ok": False, "message": "Export cancelled.", "state": None, "exportedCount": 0, "filePath": "", "format": "bpmeta.json"}
+            return {"ok": False, "message": "Export cancelled.", "errorCode": ERROR_DIALOG_CANCELLED, "state": None, "exportedCount": 0, "filePath": "", "format": "bpmeta.json"}
         return _ok_data(exportedCount=result["exportedCount"], filePath=result["filePath"], format="bpmeta.json")
 
     if action == "validateParametersPackageImport":
         result = _validate_parameters_package_import(data)
         if result.get("cancelled"):
-            return {"ok": False, "message": "Import cancelled.", "state": None, "filePath": "", "preview": None}
+            return {"ok": False, "message": "Import cancelled.", "errorCode": ERROR_DIALOG_CANCELLED, "state": None, "filePath": "", "preview": None}
         return {"ok": True, "message": "", "state": None, "filePath": result["filePath"], "preview": result["preview"]}
 
     if action == "importParametersPackage":
-        result = _import_parameters_package(data)
+        dry_run = bool(data.get("dryRun", False))
+        result = _import_parameters_package(data, dry_run=dry_run)
         if result.get("cancelled"):
             return {
-                "ok": False, "message": "Import cancelled.", "state": None,
+                "ok": False, "message": "Import cancelled.", "errorCode": ERROR_DIALOG_CANCELLED, "state": None,
                 "importedCount": 0, "updatedCount": 0, "skippedCount": 0, "failedCount": 0, "failedRows": [],
+                "dryRun": dry_run,
             }
-        state = _current_state_payload() if result["ok"] else None
+        state = _current_state_payload() if (result["ok"] and not dry_run) else None
         return {
             "ok": result["ok"],
             "message": result["message"],
@@ -526,6 +599,7 @@ def _handle_palette_action(action, data):
             "skippedCount": result["skippedCount"],
             "failedCount": result["failedCount"],
             "failedRows": result["failedRows"],
+            "dryRun": dry_run,
         }
 
     if action == "saveSettings":
@@ -614,7 +688,41 @@ def _handle_palette_action(action, data):
             "debugMetadata": _collect_metadata_debug_snapshot(),
         }
 
-    return {"ok": False, "message": f"Unknown action: {action}", "state": None}
+    if action == "getParameterDependencyGraph":
+        graph = _get_parameter_dependency_graph()
+        return _ok_data(nodes=graph["nodes"], edges=graph["edges"])
+
+    if action == "getBackendContractInfo":
+        return _ok_data(**_get_backend_contract_info())
+
+    if action == "seedTestParameters":
+        result = _seed_test_parameters(data)
+        state = _current_state_payload() if result["ok"] else None
+        return {
+            "ok": result["ok"],
+            "message": result["message"],
+            "state": state,
+            "seededCount": result["seededCount"],
+            "failedRows": result["failedRows"],
+        }
+
+    if action == "resetTestState":
+        result = _reset_test_state(data)
+        return {
+            **_ok_state(_current_state_payload()),
+            "clearedCount": result["clearedCount"],
+        }
+
+    if action == "runSelfTestSuite":
+        result = _run_self_test_suite(data)
+        return _ok_data(
+            totalCount=result["totalCount"],
+            passedCount=result["passedCount"],
+            failedCount=result["failedCount"],
+            results=result["results"],
+        )
+
+    return {"ok": False, "message": f"Unknown action: {action}", "errorCode": ERROR_CONTRACT, "state": None}
 
 
 def _push_parameter_list():
@@ -2563,12 +2671,15 @@ def _export_parameters(data):
     return {"cancelled": False, "filePath": file_path, "exportedCount": len(parameters)}
 
 
-def _import_parameters(data):
+def _import_parameters(data, dry_run=False):
     """Import user parameters from a CSV file.
 
     If data['filePath'] is provided, reads directly without a dialog.
     Conflict policy: 'skip' (default) leaves existing parameters unchanged;
     'overwrite' updates expression and comment of existing parameters.
+
+    dry_run=True runs the full decision logic (validation, conflict checks) without
+    applying any mutations to the design. Counts reflect what *would* happen.
 
     Returns dict with: ok, message, importedCount, skippedCount, failedCount, failedRows.
     Does NOT return state — the action handler adds it.
@@ -2635,16 +2746,19 @@ def _import_parameters(data):
                 skipped_count += 1
                 continue
             # overwrite: update expression and comment.
-            try:
-                existing.expression = expression
-                if comment:
-                    existing.comment = comment
-                # Update group if specified.
-                if group:
-                    _set_parameter_group({"name": name, "group": group})
+            if dry_run:
                 imported_count += 1
-            except Exception as exc:
-                failed_rows.append({"row": row_index + 2, "name": name, "message": str(exc)})
+            else:
+                try:
+                    existing.expression = expression
+                    if comment:
+                        existing.comment = comment
+                    # Update group if specified.
+                    if group:
+                        _set_parameter_group({"name": name, "group": group})
+                    imported_count += 1
+                except Exception as exc:
+                    failed_rows.append({"row": row_index + 2, "name": name, "message": str(exc)})
         else:
             # Validate before creating.
             name_check = _validate_parameter_name_response(name)
@@ -2657,16 +2771,19 @@ def _import_parameters(data):
                 failed_rows.append({"row": row_index + 2, "name": name, "message": expr_check["message"]})
                 continue
 
-            try:
-                value_input = adsk.core.ValueInput.createByString(expression)
-                created = design.userParameters.add(name, value_input, unit, comment)
-                if not created:
-                    raise ValueError("Fusion rejected the parameter.")
-                if group:
-                    _set_parameter_group({"name": name, "group": group})
+            if dry_run:
                 imported_count += 1
-            except Exception as exc:
-                failed_rows.append({"row": row_index + 2, "name": name, "message": str(exc)})
+            else:
+                try:
+                    value_input = adsk.core.ValueInput.createByString(expression)
+                    created = design.userParameters.add(name, value_input, unit, comment)
+                    if not created:
+                        raise ValueError("Fusion rejected the parameter.")
+                    if group:
+                        _set_parameter_group({"name": name, "group": group})
+                    imported_count += 1
+                except Exception as exc:
+                    failed_rows.append({"row": row_index + 2, "name": name, "message": str(exc)})
 
     failed_count = len(failed_rows)
     ok = True  # file was read and processed successfully even if some rows failed
@@ -2979,10 +3096,12 @@ def _validate_parameters_package_import(data):
     }
 
 
-def _import_parameters_package(data):
+def _import_parameters_package(data, dry_run=False):
     """Import user parameters from a .bpmeta.json package.
 
     Opens OS dialog if data['filePath'] is absent.
+    dry_run=True runs full decision/validation logic without applying mutations.
+
     Returns dict with: cancelled, ok, message, importedCount, updatedCount, skippedCount, failedCount, failedRows.
     Does NOT return state — the action handler adds it.
     """
@@ -3045,23 +3164,28 @@ def _import_parameters_package(data):
                 skipped_count += 1
                 continue
             # overwrite or merge-safe: apply each checked field independently.
-            try:
-                if apply_knobs["applyExpressionsUnits"] and expression:
-                    existing.expression = expression
-                if apply_knobs["applyComments"]:
-                    existing.comment = comment
-                if apply_knobs["applyFavorites"]:
-                    try:
-                        existing.isFavorite = is_favorite
-                    except Exception:
-                        pass
-                if apply_knobs["applyGroups"] and group:
-                    _set_parameter_group({"name": name, "group": group})
+            if dry_run:
                 updated_count += 1
                 if apply_knobs["applyOrder"] and display_order is not None:
                     order_updates.append((int(display_order), name))
-            except Exception as exc:
-                failed_rows.append({"row": idx + 1, "name": name, "message": str(exc)})
+            else:
+                try:
+                    if apply_knobs["applyExpressionsUnits"] and expression:
+                        existing.expression = expression
+                    if apply_knobs["applyComments"]:
+                        existing.comment = comment
+                    if apply_knobs["applyFavorites"]:
+                        try:
+                            existing.isFavorite = is_favorite
+                        except Exception:
+                            pass
+                    if apply_knobs["applyGroups"] and group:
+                        _set_parameter_group({"name": name, "group": group})
+                    updated_count += 1
+                    if apply_knobs["applyOrder"] and display_order is not None:
+                        order_updates.append((int(display_order), name))
+                except Exception as exc:
+                    failed_rows.append({"row": idx + 1, "name": name, "message": str(exc)})
         else:
             # New parameter: expression is always required.
             if not expression:
@@ -3071,30 +3195,35 @@ def _import_parameters_package(data):
             if not name_check["ok"]:
                 failed_rows.append({"row": idx + 1, "name": name, "message": name_check["message"]})
                 continue
-            try:
-                value_input = adsk.core.ValueInput.createByString(expression)
-                created = design.userParameters.add(
-                    name,
-                    value_input,
-                    unit,
-                    comment if apply_knobs["applyComments"] else "",
-                )
-                if not created:
-                    raise ValueError("Fusion rejected the parameter.")
-                if apply_knobs["applyFavorites"]:
-                    try:
-                        created.isFavorite = is_favorite
-                    except Exception:
-                        pass
-                if apply_knobs["applyGroups"] and group:
-                    _set_parameter_group({"name": name, "group": group})
+            if dry_run:
                 imported_count += 1
                 if apply_knobs["applyOrder"] and display_order is not None:
                     order_updates.append((int(display_order), name))
-            except Exception as exc:
-                failed_rows.append({"row": idx + 1, "name": name, "message": str(exc)})
+            else:
+                try:
+                    value_input = adsk.core.ValueInput.createByString(expression)
+                    created = design.userParameters.add(
+                        name,
+                        value_input,
+                        unit,
+                        comment if apply_knobs["applyComments"] else "",
+                    )
+                    if not created:
+                        raise ValueError("Fusion rejected the parameter.")
+                    if apply_knobs["applyFavorites"]:
+                        try:
+                            created.isFavorite = is_favorite
+                        except Exception:
+                            pass
+                    if apply_knobs["applyGroups"] and group:
+                        _set_parameter_group({"name": name, "group": group})
+                    imported_count += 1
+                    if apply_knobs["applyOrder"] and display_order is not None:
+                        order_updates.append((int(display_order), name))
+                except Exception as exc:
+                    failed_rows.append({"row": idx + 1, "name": name, "message": str(exc)})
 
-    if apply_knobs["applyOrder"] and order_updates:
+    if not dry_run and apply_knobs["applyOrder"] and order_updates:
         try:
             _apply_package_display_order(design, order_updates, previous_state)
         except Exception:
@@ -3128,6 +3257,327 @@ def _import_parameters_package(data):
         "skippedCount": skipped_count,
         "failedCount": failed_count,
         "failedRows": failed_rows,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Dependency graph
+# ---------------------------------------------------------------------------
+
+def _get_parameter_dependency_graph():
+    """Return dependency graph of user parameters derived from expression token references.
+
+    Nodes: list of {name, expression} for each user parameter.
+    Edges: list of {from: name, to: referencedName} pairs, only where the referenced
+           name is a known parameter (user or model).
+
+    Returns dict with: nodes, edges.
+    """
+    design = _require_design()
+    user_params = design.userParameters
+    known_names = set(_collect_all_parameter_names())
+
+    nodes = []
+    edges = []
+
+    for i in range(user_params.count):
+        param = user_params.item(i)
+        if not param:
+            continue
+        name = param.name
+        expression = param.expression or ""
+        nodes.append({"name": name, "expression": expression})
+        for match in EXPRESSION_TOKEN_PATTERN.finditer(expression):
+            token = match.group(0)
+            if token != name and token in known_names:
+                edges.append({"from": name, "to": token})
+
+    return {"nodes": nodes, "edges": edges}
+
+
+# ---------------------------------------------------------------------------
+# Backend contract info
+# ---------------------------------------------------------------------------
+
+def _get_backend_contract_info():
+    """Return stable metadata describing this backend's API surface.
+
+    Useful for FE feature detection and version compatibility checks.
+    Returns dict with: contractVersion, bpmetaSchemaVersion, metadataSchemaVersion, actions.
+    """
+    return {
+        "contractVersion": CONTRACT_VERSION,
+        "bpmetaSchemaVersion": BPMETA_SCHEMA_VERSION,
+        "metadataSchemaVersion": METADATA_SCHEMA_VERSION,
+        "actions": {
+            "readOnly": list(_READ_ONLY_ACTIONS),
+            "mutating": list(_MUTATING_ACTIONS),
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Test-support: seed and reset
+# ---------------------------------------------------------------------------
+
+_BPTEST_PREFIX = "_bptest_"
+
+
+def _seed_test_parameters(data):
+    """Create or update test parameters in the current design.
+
+    data['parameters'] must be a list of {name, expression, unit, comment?, group?, isFavorite?}.
+    Parameters are prefixed with _BPTEST_PREFIX to avoid collisions unless name already starts
+    with the prefix.
+
+    Returns dict with: ok, message, seededCount, failedRows.
+    """
+    design = _require_design()
+    seed_records = data.get("parameters") or []
+    if not isinstance(seed_records, list):
+        raise BPValidationError('"parameters" must be an array.')
+
+    seeded_count = 0
+    failed_rows = []
+
+    for idx, record in enumerate(seed_records):
+        raw_name = str(record.get("name") or "").strip()
+        if not raw_name:
+            failed_rows.append({"row": idx + 1, "name": "", "message": "Name is required."})
+            continue
+        name = raw_name if raw_name.startswith(_BPTEST_PREFIX) else (_BPTEST_PREFIX + raw_name)
+        expression = str(record.get("expression") or "").strip()
+        unit = str(record.get("unit") or "").strip()
+        comment = str(record.get("comment") or "")
+        group = _normalize_group_name(str(record.get("group") or ""))
+        is_favorite = bool(record.get("isFavorite", False))
+
+        if not expression:
+            failed_rows.append({"row": idx + 1, "name": name, "message": "Expression is required."})
+            continue
+
+        try:
+            existing = design.userParameters.itemByName(name)
+            if existing:
+                existing.expression = expression
+                existing.comment = comment
+                try:
+                    existing.isFavorite = is_favorite
+                except Exception:
+                    pass
+            else:
+                value_input = adsk.core.ValueInput.createByString(expression)
+                created = design.userParameters.add(name, value_input, unit, comment)
+                if not created:
+                    raise ValueError("Fusion rejected the parameter.")
+                try:
+                    created.isFavorite = is_favorite
+                except Exception:
+                    pass
+            if group:
+                _set_parameter_group({"name": name, "group": group})
+            seeded_count += 1
+        except Exception as exc:
+            failed_rows.append({"row": idx + 1, "name": name, "message": str(exc)})
+
+    failed_count = len(failed_rows)
+    ok = seeded_count > 0 or failed_count == 0
+    message = f"{failed_count} seed record(s) failed." if failed_count else ""
+    return {"ok": ok, "message": message, "seededCount": seeded_count, "failedRows": failed_rows}
+
+
+def _reset_test_state(data):
+    """Delete all _bptest_* parameters from the current design and clear their metadata.
+
+    Requires data['confirm'] == "RESET" as a safety guard.
+
+    Returns dict with: ok, message, clearedCount.
+    """
+    if str(data.get("confirm") or "") != "RESET":
+        raise BPValidationError('Must set confirm="RESET" to perform reset.')
+
+    design = _require_design()
+    params = design.userParameters
+    to_delete = []
+    for i in range(params.count):
+        param = params.item(i)
+        if param and param.name and param.name.startswith(_BPTEST_PREFIX):
+            to_delete.append(param.name)
+
+    cleared_count = 0
+    for name in to_delete:
+        try:
+            param = design.userParameters.itemByName(name)
+            if param:
+                param.deleteMe()
+                cleared_count += 1
+        except Exception:
+            pass
+
+    return {"ok": True, "message": "", "clearedCount": cleared_count}
+
+
+# ---------------------------------------------------------------------------
+# Self-test framework
+# ---------------------------------------------------------------------------
+
+class _BPTestContext:
+    """Lightweight test result accumulator used by _bptest_* functions."""
+
+    def __init__(self, name):
+        self.name = name
+        self.passed = True
+        self.failures = []
+
+    def assert_equal(self, actual, expected, label=""):
+        if actual != expected:
+            msg = f"{label}: expected {expected!r}, got {actual!r}" if label else f"expected {expected!r}, got {actual!r}"
+            self.failures.append(msg)
+            self.passed = False
+
+    def assert_true(self, condition, label=""):
+        if not condition:
+            msg = label or "expected True, got False"
+            self.failures.append(msg)
+            self.passed = False
+
+    def assert_false(self, condition, label=""):
+        if condition:
+            msg = label or "expected False, got True"
+            self.failures.append(msg)
+            self.passed = False
+
+    def assert_in(self, item, container, label=""):
+        if item not in container:
+            msg = f"{label}: {item!r} not in {container!r}" if label else f"{item!r} not in collection"
+            self.failures.append(msg)
+            self.passed = False
+
+    def result(self):
+        return {
+            "name": self.name,
+            "passed": self.passed,
+            "failures": self.failures,
+        }
+
+
+def _bptest_smoke_contract_info(ctx):
+    """Smoke: getBackendContractInfo returns expected keys."""
+    info = _get_backend_contract_info()
+    ctx.assert_in("contractVersion", info, "contractVersion present")
+    ctx.assert_in("bpmetaSchemaVersion", info, "bpmetaSchemaVersion present")
+    ctx.assert_in("actions", info, "actions present")
+    ctx.assert_in("readOnly", info["actions"], "actions.readOnly present")
+    ctx.assert_in("mutating", info["actions"], "actions.mutating present")
+    ctx.assert_true(isinstance(info["actions"]["readOnly"], list), "readOnly is list")
+    ctx.assert_true(isinstance(info["actions"]["mutating"], list), "mutating is list")
+
+
+def _bptest_smoke_dependency_graph(ctx):
+    """Smoke: getParameterDependencyGraph returns nodes/edges when design is open."""
+    graph = _get_parameter_dependency_graph()
+    ctx.assert_in("nodes", graph, "nodes key present")
+    ctx.assert_in("edges", graph, "edges key present")
+    ctx.assert_true(isinstance(graph["nodes"], list), "nodes is list")
+    ctx.assert_true(isinstance(graph["edges"], list), "edges is list")
+
+
+def _bptest_smoke_dry_run_import_csv(ctx):
+    """Smoke: dry_run=True on importParameters does not mutate design."""
+    design = _design()
+    if not design:
+        ctx.assert_true(False, "No design open — skip")
+        return
+    before_count = design.userParameters.count
+    # Build a minimal in-memory CSV for a param that should not exist.
+    test_name = _BPTEST_PREFIX + "dryrun_csv_smoke"
+    existing = design.userParameters.itemByName(test_name)
+    if existing:
+        # If somehow present, skip to avoid false positive.
+        return
+    import io
+    csv_content = f"name,expression,unit,comment,group\n{test_name},5 mm,mm,,\n"
+    import tempfile, os
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="utf-8")
+    try:
+        tmp.write(csv_content)
+        tmp.close()
+        result = _import_parameters({"filePath": tmp.name, "conflictPolicy": "overwrite"}, dry_run=True)
+        ctx.assert_true(result["ok"], "dry_run import ok")
+        ctx.assert_equal(result["importedCount"], 1, "importedCount=1")
+        after_count = design.userParameters.count
+        ctx.assert_equal(after_count, before_count, "parameter count unchanged after dry_run")
+        still_absent = design.userParameters.itemByName(test_name)
+        ctx.assert_true(still_absent is None, "test param not created by dry_run")
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except Exception:
+            pass
+
+
+def _bptest_smoke_validate_name(ctx):
+    """Smoke: _validate_parameter_name_response accepts valid names and rejects empty."""
+    ok_result = _validate_parameter_name_response("width")
+    ctx.assert_true(ok_result["ok"], "valid name accepted")
+    bad_result = _validate_parameter_name_response("")
+    ctx.assert_false(bad_result["ok"], "empty name rejected")
+    digit_result = _validate_parameter_name_response("1bad")
+    ctx.assert_false(digit_result["ok"], "digit-start name rejected")
+
+
+def _bptest_smoke_bpmeta_parse(ctx):
+    """Smoke: _parse_bpmeta_package accepts valid and rejects bad input."""
+    valid_json = json.dumps({
+        "schemaVersion": 1,
+        "exportedAt": "2026-01-01T00:00:00Z",
+        "sourceDocument": {"name": "Test"},
+        "parameters": [],
+    })
+    pkg, err = _parse_bpmeta_package(valid_json)
+    ctx.assert_true(pkg is not None, "valid package parsed")
+    ctx.assert_equal(err, "", "no error for valid package")
+    bad_pkg, bad_err = _parse_bpmeta_package("not json")
+    ctx.assert_true(bad_pkg is None, "invalid JSON → None")
+    ctx.assert_true(len(bad_err) > 0, "error message non-empty")
+
+
+_BP_TEST_REGISTRY = [
+    ("smoke/contract_info", _bptest_smoke_contract_info),
+    ("smoke/dependency_graph", _bptest_smoke_dependency_graph),
+    ("smoke/dry_run_import_csv", _bptest_smoke_dry_run_import_csv),
+    ("smoke/validate_name", _bptest_smoke_validate_name),
+    ("smoke/bpmeta_parse", _bptest_smoke_bpmeta_parse),
+]
+
+
+def _run_self_test_suite(data):
+    """Run all registered in-process self-tests.
+
+    data['filter'] (optional): only run tests whose name contains this substring.
+
+    Returns dict with: totalCount, passedCount, failedCount, results[].
+    """
+    filter_str = str(data.get("filter") or "").strip().lower()
+    results = []
+    for test_name, test_fn in _BP_TEST_REGISTRY:
+        if filter_str and filter_str not in test_name.lower():
+            continue
+        ctx = _BPTestContext(test_name)
+        try:
+            test_fn(ctx)
+        except Exception as exc:
+            ctx.passed = False
+            ctx.failures.append(f"Exception: {exc}")
+        results.append(ctx.result())
+
+    passed_count = sum(1 for r in results if r["passed"])
+    failed_count = len(results) - passed_count
+    return {
+        "totalCount": len(results),
+        "passedCount": passed_count,
+        "failedCount": failed_count,
+        "results": results,
     }
 
 
@@ -3416,7 +3866,7 @@ def _validate_unit_response(unit_text):
 def _require_design():
     design = _design()
     if not design:
-        raise RuntimeError("Open a Fusion design before using Better Parameters.")
+        raise BPNoDesignError()
     return design
 
 

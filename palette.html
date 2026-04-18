@@ -3461,6 +3461,11 @@
         COPY_PARAMETER: "copyParameter",
         DELETE_PARAMETERS: "deleteParameters",
         SORT_BY_TIMELINE_ORDER: "sortByTimelineOrder",
+        GET_BACKEND_CONTRACT_INFO: "getBackendContractInfo",
+        GET_PARAMETER_DEPENDENCY_GRAPH: "getParameterDependencyGraph",
+        RUN_SELF_TEST_SUITE: "runSelfTestSuite",
+        SEED_TEST_PARAMETERS: "seedTestParameters",
+        RESET_TEST_STATE: "resetTestState",
         IMPORT_PARAMETERS: "importParameters",
         EXPORT_PARAMETERS: "exportParameters",
         EXPORT_PARAMETERS_PACKAGE: "exportParametersPackage",
@@ -3480,6 +3485,8 @@
         ACTION.GET_TEXT_TUNER_STATE, ACTION.SAVE_TEXT_TUNER_STATE,
         ACTION.VALIDATE_PARAMETER_NAME, ACTION.VALIDATE_EXPRESSION, ACTION.PREVIEW_EXPRESSION, ACTION.VALIDATE_UNIT,
         ACTION.RENAME_PARAMETER, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
+        ACTION.GET_BACKEND_CONTRACT_INFO, ACTION.GET_PARAMETER_DEPENDENCY_GRAPH, ACTION.RUN_SELF_TEST_SUITE,
+        ACTION.SEED_TEST_PARAMETERS, ACTION.RESET_TEST_STATE,
         ACTION.IMPORT_PARAMETERS, ACTION.EXPORT_PARAMETERS,
         ACTION.EXPORT_PARAMETERS_PACKAGE, ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, ACTION.IMPORT_PARAMETERS_PACKAGE,
         ACTION.OPEN_HELP_URL,
@@ -3491,13 +3498,15 @@
         ACTION.SET_PARAMETER_FAVORITE, ACTION.SET_PARAMETER_GROUP, ACTION.RENAME_GROUP, ACTION.DELETE_GROUP,
         ACTION.SAVE_PARAMETER_ORDER, ACTION.SAVE_GROUP_UI_STATE, ACTION.SAVE_SETTINGS, ACTION.SAVE_PALETTE_GEOMETRY,
         ACTION.RENAME_PARAMETER, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
+        ACTION.SEED_TEST_PARAMETERS, ACTION.RESET_TEST_STATE,
         ACTION.IMPORT_PARAMETERS, ACTION.IMPORT_PARAMETERS_PACKAGE,
         ACTION.SAVE_TEXT_TUNER_STATE, ACTION.CHECK_FOR_UPDATES, ACTION.DOWNLOAD_AND_STAGE_UPDATE,
         ACTION.SYNC_METADATA_JSON_TO_FUSION, ACTION.SYNC_METADATA_FUSION_TO_JSON, ACTION.REPAIR_METADATA
       ]);
       const READ_ONLY_OR_VALIDATION_ACTIONS = new Set([
         ACTION.GET_TEXT_TUNER_STATE, ACTION.VALIDATE_PARAMETER_NAME, ACTION.VALIDATE_EXPRESSION, ACTION.PREVIEW_EXPRESSION, ACTION.VALIDATE_UNIT,
-        ACTION.EXPORT_PARAMETERS, ACTION.EXPORT_PARAMETERS_PACKAGE, ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, ACTION.OPEN_HELP_URL
+        ACTION.EXPORT_PARAMETERS, ACTION.EXPORT_PARAMETERS_PACKAGE, ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, ACTION.OPEN_HELP_URL,
+        ACTION.GET_BACKEND_CONTRACT_INFO, ACTION.GET_PARAMETER_DEPENDENCY_GRAPH, ACTION.RUN_SELF_TEST_SUITE
       ]);
       // REVIEW: Mock bridge is intentionally kept behind explicit opt-in for local fixture testing.
       const MOCK_BRIDGE_ENABLED = !!window.__BP_USE_MOCK_BRIDGE;
@@ -3873,6 +3882,7 @@
         pendingRenderPushEnvelope: null,
         pendingRenderPushAction: "",
         pendingRenderPushNoticeShown: false,
+        backendContractInfo: null,
         pendingTableScrollAnchor: null,
         suppressNextFieldFocus: false,
         suppressNextRowClickSelectionKey: "",
@@ -4593,10 +4603,6 @@
         return lines.join("\n");
       }
 
-      function isExpectedCancelResponse(response, expectedMessage) {
-        return !response?.ok && String(response?.message || "") === expectedMessage;
-      }
-
       function getDirtyParameterRows() {
         return Array.from(document.querySelectorAll("#parameterRows tr.parameter-row.is-dirty[data-parameter-key]"));
       }
@@ -4715,7 +4721,9 @@
           const expressionInput = row.querySelector(".expression-input");
           const commentInput = row.querySelector(".comment-input");
           const previewCell = row.querySelector(".preview-cell");
-          const errorNode = expressionInput?.parentElement?.querySelector(".expression-field-error");
+          const fieldShell = expressionInput?.closest?.(".field-shell");
+          const errorNode = fieldShell?.querySelector(".expression-field-error")
+            || expressionInput?.parentElement?.querySelector(".expression-field-error");
           const nameErrorNode = row.querySelector(".name-field-error");
           if (!nameInput || !expressionInput || !commentInput || !previewCell) {
             return;
@@ -4787,9 +4795,14 @@
         commentInput.value = String(draft.comment ?? commentInput.value ?? "");
         previewCell.setAttribute("data-draft-preview", String(draft.draftPreview || ""));
 
-        const errorNode = expressionInput.parentElement
-          ? expressionInput.parentElement.querySelector(".expression-field-error")
-          : null;
+        const fieldShell = expressionInput.closest ? expressionInput.closest(".field-shell") : null;
+        const errorNode = fieldShell
+          ? fieldShell.querySelector(".expression-field-error")
+          : (
+              expressionInput.parentElement
+                ? expressionInput.parentElement.querySelector(".expression-field-error")
+                : null
+            );
         const message = String(draft.errorMessage || "");
         const hasError = !!(draft.ariaInvalid || message);
         expressionInput.setAttribute("aria-invalid", hasError ? "true" : "false");
@@ -5067,6 +5080,18 @@
           return true;
         }
         return false;
+      }
+
+      function isDialogCancelledResponse(response) {
+        if (!response || response.ok !== false) {
+          return false;
+        }
+        const code = String(response.errorCode || "").trim().toUpperCase();
+        if (code === "DIALOG_CANCELLED") {
+          return true;
+        }
+        const message = String(response.message || "").trim().toLowerCase();
+        return message === "import cancelled." || message === "export cancelled.";
       }
 
       function setGlobalStatus(message, kind = "") {
@@ -6002,9 +6027,11 @@
                   >${unitLabel}</span>
                 </td>
                 <td>
-                  <div class="field-shell dirty-field-shell">
-                    <input id="expressionRow${renderRowCounter}" class="mono expression-input" data-parameter-name="${safeName}" data-parameter-unit="${escapeHtml(param.unit || "")}" data-saved-expression="${safeExpression}" value="${safeExpression}" autocomplete="off" />
-                    <button class="field-discard-button" type="button" data-discard-field="expression" title="Discard unsaved expression edit." aria-label="Discard unsaved expression edit.">&#8630;</button>
+                  <div class="field-shell">
+                    <div class="dirty-field-shell expression-input-shell">
+                      <input id="expressionRow${renderRowCounter}" class="mono expression-input" data-parameter-name="${safeName}" data-parameter-unit="${escapeHtml(param.unit || "")}" data-saved-expression="${safeExpression}" value="${safeExpression}" autocomplete="off" />
+                      <button class="field-discard-button" type="button" data-discard-field="expression" title="Discard unsaved expression edit." aria-label="Discard unsaved expression edit.">&#8630;</button>
+                    </div>
                     <div class="field-error expression-field-error" aria-live="polite"></div>
                   </div>
                 </td>
@@ -7737,25 +7764,94 @@
               return { ok: true, message: "", state: { ...buildMockStatePayload(), apiVersion: 999 } };
             }
             if (fixtureMode === "error_mutating" && MUTATING_ACTIONS.has(action)) {
-              return { ok: false, message: `Mock mutating failure: ${action}`, state: null, traceback: "" };
+              return { ok: false, message: `Mock mutating failure: ${action}`, errorCode: "TRANSPORT_ERROR", state: null, traceback: "" };
             }
             if (fixtureMode === "error_readonly" && action === ACTION.GET_TEXT_TUNER_STATE) {
-              return { ok: false, message: "Mock read-only failure: getTextTunerState", state: null, traceback: "" };
+              return { ok: false, message: "Mock read-only failure: getTextTunerState", errorCode: "TRANSPORT_ERROR", state: null, traceback: "" };
             }
             if (fixtureMode === "error_validation" && READ_ONLY_OR_VALIDATION_ACTIONS.has(action) && action !== ACTION.GET_TEXT_TUNER_STATE) {
-              return { ok: false, message: `Mock validation failure: ${action}`, state: null, traceback: "" };
+              return { ok: false, message: `Mock validation failure: ${action}`, errorCode: "VALIDATION_ERROR", state: null, traceback: "" };
             }
             if (
               fixtureMode === "error_metadata"
               && (action === ACTION.SYNC_METADATA_JSON_TO_FUSION || action === ACTION.SYNC_METADATA_FUSION_TO_JSON || action === ACTION.REPAIR_METADATA)
             ) {
-              return { ok: false, message: `Mock metadata failure: ${action}`, state: null, traceback: "" };
+              return { ok: false, message: `Mock metadata failure: ${action}`, errorCode: "TRANSPORT_ERROR", state: null, traceback: "" };
             }
             const statePayload = buildMockStatePayload();
 
+            if (action === ACTION.GET_BACKEND_CONTRACT_INFO) {
+              return {
+                ok: true,
+                message: "",
+                state: null,
+                contractVersion: "2026-04-17",
+                bpmetaSchemaVersion: 1,
+                metadataSchemaVersion: 2,
+                actions: {
+                  readOnly: Array.from(READ_ONLY_OR_VALIDATION_ACTIONS),
+                  mutating: Array.from(MUTATING_ACTIONS)
+                }
+              };
+            }
+
+            if (action === ACTION.GET_PARAMETER_DEPENDENCY_GRAPH) {
+              return {
+                ok: true,
+                message: "",
+                state: null,
+                nodes: [],
+                edges: []
+              };
+            }
+
+            if (action === ACTION.RUN_SELF_TEST_SUITE) {
+              return {
+                ok: true,
+                message: "",
+                state: null,
+                totalCount: 1,
+                passedCount: 1,
+                failedCount: 0,
+                results: [{ name: "mock.smoke", passed: true, failures: [] }]
+              };
+            }
+
+            if (action === ACTION.IMPORT_PARAMETERS) {
+              const isDryRun = _jsonPayload && typeof _jsonPayload === "string"
+                ? (JSON.parse(_jsonPayload || "{}").dryRun === true)
+                : false;
+              if (fixtureMode === "m4_import_cancel") {
+                return { ok: false, message: "Import cancelled.", errorCode: "DIALOG_CANCELLED", state: null, importedCount: 0, skippedCount: 0, failedCount: 0, failedRows: [], filePath: "" };
+              }
+              if (isDryRun) {
+                return {
+                  ok: true,
+                  message: "",
+                  state: null,
+                  dryRun: true,
+                  filePath: "C:\\mock\\BetterParameters-import.csv",
+                  importedCount: 2,
+                  skippedCount: 1,
+                  failedCount: 0,
+                  failedRows: []
+                };
+              }
+              return {
+                ok: true,
+                message: "",
+                state: statePayload,
+                dryRun: false,
+                importedCount: 2,
+                skippedCount: 1,
+                failedCount: 0,
+                failedRows: []
+              };
+            }
+
             if (action === ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT) {
               if (fixtureMode === "m6_validate_cancel") {
-                return { ok: false, message: "Import cancelled.", state: null, preview: null, filePath: "" };
+                return { ok: false, message: "Import cancelled.", errorCode: "DIALOG_CANCELLED", state: null, preview: null, filePath: "" };
               }
               if (fixtureMode === "m6_validate_success_with_warnings") {
                 return {
@@ -7807,7 +7903,7 @@
 
             if (action === ACTION.EXPORT_PARAMETERS_PACKAGE) {
               if (fixtureMode === "m6_export_cancel") {
-                return { ok: false, message: "Export cancelled.", state: null, exportedCount: 0, filePath: "", format: "bpmeta.json" };
+                return { ok: false, message: "Export cancelled.", errorCode: "DIALOG_CANCELLED", state: null, exportedCount: 0, filePath: "", format: "bpmeta.json" };
               }
               return {
                 ok: true,
@@ -7820,13 +7916,32 @@
             }
 
             if (action === ACTION.IMPORT_PARAMETERS_PACKAGE) {
+              const requestPayload = _jsonPayload && typeof _jsonPayload === "string"
+                ? JSON.parse(_jsonPayload || "{}")
+                : {};
+              const isDryRun = requestPayload.dryRun === true;
               if (fixtureMode === "m6_import_cancel") {
-                return { ok: false, message: "Import cancelled.", state: null, importedCount: 0, updatedCount: 0, skippedCount: 0, failedCount: 0, failedRows: [] };
+                return { ok: false, message: "Import cancelled.", errorCode: "DIALOG_CANCELLED", state: null, importedCount: 0, updatedCount: 0, skippedCount: 0, failedCount: 0, failedRows: [], filePath: "" };
+              }
+              if (isDryRun) {
+                return {
+                  ok: true,
+                  message: "",
+                  state: null,
+                  dryRun: true,
+                  filePath: "C:\\mock\\BetterParameters-import.bpmeta.json",
+                  importedCount: 2,
+                  updatedCount: 3,
+                  skippedCount: 1,
+                  failedCount: 0,
+                  failedRows: []
+                };
               }
               if (fixtureMode === "m6_import_all_fail") {
                 return {
                   ok: false,
                   message: "No parameters were imported.",
+                  errorCode: "VALIDATION_ERROR",
                   state: null,
                   importedCount: 0,
                   updatedCount: 0,
@@ -7843,6 +7958,7 @@
                   ok: true,
                   message: "",
                   state: statePayload,
+                  dryRun: false,
                   importedCount: 2,
                   updatedCount: 1,
                   skippedCount: 0,
@@ -7855,6 +7971,7 @@
                   ok: true,
                   message: "",
                   state: statePayload,
+                  dryRun: false,
                   importedCount: 0,
                   updatedCount: 0,
                   skippedCount: 3,
@@ -7866,6 +7983,7 @@
                 ok: true,
                 message: "",
                 state: statePayload,
+                dryRun: false,
                 importedCount: 2,
                 updatedCount: 3,
                 skippedCount: 1,
@@ -7880,6 +7998,9 @@
               return { ok: true, message: "", state: null, values: statePayload.textTunerState || {} };
             }
             if (action === ACTION.EXPORT_PARAMETERS) {
+              if (fixtureMode === "m4_export_cancel") {
+                return { ok: false, message: "Export cancelled.", errorCode: "DIALOG_CANCELLED", state: null, exportedCount: 0, filePath: "" };
+              }
               return {
                 ok: true,
                 message: "",
@@ -7897,7 +8018,7 @@
             if (action === ACTION.VALIDATE_EXPRESSION || action === ACTION.VALIDATE_PARAMETER_NAME || action === ACTION.VALIDATE_UNIT) {
               return { ok: true, message: "", state: null };
             }
-            return { ok: false, message: `Unknown action: ${action}`, state: null, traceback: "" };
+            return { ok: false, message: `Unknown action: ${action}`, errorCode: "CONTRACT_ERROR", state: null, traceback: "" };
           }
         };
       }
@@ -7944,6 +8065,9 @@
         }
 
         if (!envelope.ok) {
+          if (isDialogCancelledResponse(envelope)) {
+            return envelope;
+          }
           setGlobalStatus(envelope.message || "Action failed.", "error");
           if (state.debugMetadataSnapshot) {
             renderMetadataDebug(state.debugMetadataSnapshot, state.lastSyncResult);
@@ -8005,6 +8129,29 @@
         }
 
         return false;
+      }
+
+      async function loadBackendContractInfo() {
+        try {
+          const response = await sendToFusion(ACTION.GET_BACKEND_CONTRACT_INFO, {});
+          if (!response || response.ok !== true) {
+            return null;
+          }
+          state.backendContractInfo = {
+            contractVersion: String(response.contractVersion || ""),
+            bpmetaSchemaVersion: Number(response.bpmetaSchemaVersion || 0),
+            metadataSchemaVersion: Number(response.metadataSchemaVersion || 0),
+            actions: response.actions && typeof response.actions === "object"
+              ? {
+                  readOnly: Array.isArray(response.actions.readOnly) ? response.actions.readOnly.slice() : [],
+                  mutating: Array.isArray(response.actions.mutating) ? response.actions.mutating.slice() : []
+                }
+              : { readOnly: [], mutating: [] }
+          };
+          return state.backendContractInfo;
+        } catch (_error) {
+          return null;
+        }
       }
 
       async function saveSettingsPartial(partialSettings, statusMessage = "") {
@@ -8481,7 +8628,10 @@
           return;
         }
 
-        const errorNode = input.parentElement ? input.parentElement.querySelector(".expression-field-error") : null;
+        const fieldShell = input.closest ? input.closest(".field-shell") : null;
+        const errorNode = fieldShell
+          ? fieldShell.querySelector(".expression-field-error")
+          : (input.parentElement ? input.parentElement.querySelector(".expression-field-error") : null);
         if (errorNode) {
           const visibleMessage = (kind === "success") ? "" : (message || "");
           errorNode.textContent = visibleMessage;
@@ -8599,9 +8749,14 @@
         row.classList.toggle("has-visible-actions", hasVisibleSave || hasVisibleRevert);
         const draftKey = getRowDraftKey(row);
         if (draftKey) {
-          const errorNode = expressionInput.parentElement
-            ? expressionInput.parentElement.querySelector(".expression-field-error")
-            : null;
+          const fieldShell = expressionInput.closest ? expressionInput.closest(".field-shell") : null;
+          const errorNode = fieldShell
+            ? fieldShell.querySelector(".expression-field-error")
+            : (
+                expressionInput.parentElement
+                  ? expressionInput.parentElement.querySelector(".expression-field-error")
+                  : null
+              );
           const nameErrorNode = row.querySelector(".name-field-error");
           const errorMessage = String(errorNode?.textContent || "").trim();
           const nameErrorMessage = String(nameErrorNode?.textContent || "").trim();
@@ -10845,16 +11000,57 @@
       document.getElementById("importParametersButton").addEventListener("click", async () => {
         const policy = normalizeConflictPolicy(state.importConflictPolicy);
         setParameterFileSummary("");
-        setGlobalStatus("Importing parameters from CSV...");
+        setGlobalStatus("Previewing CSV import...");
         try {
-          const response = await sendToFusion(ACTION.IMPORT_PARAMETERS, {
-            conflictPolicy: policy
+          const previewResponse = await sendToFusion(ACTION.IMPORT_PARAMETERS, {
+            conflictPolicy: policy,
+            dryRun: true
           });
-          if (!response.ok && response.message === "Import cancelled.") {
+          if (isDialogCancelledResponse(previewResponse)) {
+            return;
+          }
+          if (!previewResponse.ok) {
+            throw new Error(previewResponse.message || "Import preview failed.");
+          }
+          const resolvedFilePath = String(previewResponse.filePath || "").trim();
+          const previewImported = Number(previewResponse.importedCount || 0);
+          const previewSkipped = Number(previewResponse.skippedCount || 0);
+          const previewFailed = Number(previewResponse.failedCount || 0);
+          const previewFailedRows = Array.isArray(previewResponse.failedRows) ? previewResponse.failedRows : [];
+          const previewLines = [
+            `Will add/update: ${previewImported}`,
+            `Will skip: ${previewSkipped}`,
+            `Potential failures: ${previewFailed}`,
+            resolvedFilePath ? `File: ${resolvedFilePath}` : ""
+          ].filter(Boolean);
+          const previewRowDetailLines = buildRowsNeedingAttentionLines(previewFailedRows);
+          if (previewRowDetailLines.length) {
+            previewLines.push("");
+            previewLines.push(...previewRowDetailLines);
+          }
+          setParameterFileSummary(previewLines.join("\n"), (previewFailed > 0) ? "warning" : "success");
+
+          const confirmed = window.confirm(
+            `Import CSV?\n\nWill add/update ${previewImported}, skip ${previewSkipped}, potential failures ${previewFailed}.`
+          );
+          if (!confirmed) {
+            return;
+          }
+
+          setGlobalStatus("Importing parameters from CSV...");
+          const response = await sendToFusion(ACTION.IMPORT_PARAMETERS, {
+            conflictPolicy: policy,
+            dryRun: false,
+            filePath: resolvedFilePath
+          });
+          if (isDialogCancelledResponse(response)) {
             return;
           }
           if (!response.ok) {
             throw new Error(response.message || "Import failed.");
+          }
+          if (response.dryRun === true) {
+            return;
           }
 
           applyStateFromFusion(response, { source: "response", action: ACTION.IMPORT_PARAMETERS });
@@ -10886,7 +11082,7 @@
         setGlobalStatus("Exporting parameters to CSV...");
         try {
           const response = await sendToFusion(ACTION.EXPORT_PARAMETERS, {});
-          if (!response.ok && response.message === "Export cancelled.") {
+          if (isDialogCancelledResponse(response)) {
             return;
           }
           if (!response.ok) {
@@ -10910,25 +11106,25 @@
         setParameterFileSummary("");
         setGlobalStatus("Previewing BP package import...");
         try {
-          const validatePayload = buildPackageImportRequest("");
-          const previewResponse = await sendToFusion(ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, validatePayload);
-          if (isExpectedCancelResponse(previewResponse, "Import cancelled.")) {
+          const previewPayload = {
+            ...buildPackageImportRequest(""),
+            dryRun: true
+          };
+          const previewResponse = await sendToFusion(ACTION.IMPORT_PARAMETERS_PACKAGE, previewPayload);
+          if (isDialogCancelledResponse(previewResponse)) {
             return;
           }
           if (!previewResponse.ok) {
             throw new Error(previewResponse.message || "Package preflight failed.");
           }
 
-          const preview = previewResponse.preview && typeof previewResponse.preview === "object"
-            ? previewResponse.preview
-            : {};
           const filePath = String(previewResponse.filePath || "").trim();
-          const addCount = Number(preview.addCount || 0);
-          const updateCount = Number(preview.updateCount || 0);
-          const skipCount = Number(preview.skipCount || 0);
-          const potentialFailCount = Number(preview.potentialFailCount || 0);
-          const previewWarnings = Array.isArray(preview.warnings) ? preview.warnings : [];
-          const previewFailedRows = Array.isArray(preview.failedRows) ? preview.failedRows : [];
+          const addCount = Number(previewResponse.importedCount || 0);
+          const updateCount = Number(previewResponse.updatedCount || 0);
+          const skipCount = Number(previewResponse.skippedCount || 0);
+          const potentialFailCount = Number(previewResponse.failedCount || 0);
+          const previewWarnings = [];
+          const previewFailedRows = Array.isArray(previewResponse.failedRows) ? previewResponse.failedRows : [];
           const previewLines = [
             `Will add: ${addCount}`,
             `Will update: ${updateCount}`,
@@ -10946,7 +11142,7 @@
             });
           }
           if (skipCount > 0) {
-            const policy = normalizePackageConflictPolicy(validatePayload.conflictPolicy);
+            const policy = normalizePackageConflictPolicy(previewPayload.conflictPolicy);
             previewLines.push("");
             if (policy === "skip") {
               previewLines.push('Skip reason: conflict policy is "Skip existing" for matching parameter names.');
@@ -10966,16 +11162,26 @@
           const hasPreviewCaution = potentialFailCount > 0 || previewWarnings.length > 0 || previewFailedRows.length > 0;
           setParameterFileSummary(previewLines.join("\n"), hasPreviewCaution ? "warning" : "success");
 
-          const confirmSummary = buildPackageImportConfirmationMessage(preview, validatePayload);
+          const confirmSummary = buildPackageImportConfirmationMessage({
+            addCount,
+            updateCount,
+            skipCount,
+            potentialFailCount,
+            warnings: previewWarnings,
+            failedRows: previewFailedRows
+          }, previewPayload);
           const confirmed = window.confirm(confirmSummary);
           if (!confirmed) {
             return;
           }
 
           setGlobalStatus("Importing BP package...");
-          const importPayload = buildPackageImportRequest(filePath);
+          const importPayload = {
+            ...buildPackageImportRequest(filePath),
+            dryRun: false
+          };
           const importResponse = await sendToFusion(ACTION.IMPORT_PARAMETERS_PACKAGE, importPayload);
-          if (isExpectedCancelResponse(importResponse, "Import cancelled.")) {
+          if (isDialogCancelledResponse(importResponse)) {
             return;
           }
           if (!importResponse.ok) {
@@ -10990,6 +11196,9 @@
               setParameterFileSummary(lines.join("\n"), "error");
             }
             throw new Error(importResponse.message || "Package import failed.");
+          }
+          if (importResponse.dryRun === true) {
+            return;
           }
 
           applyStateFromFusion(importResponse, { source: "response", action: ACTION.IMPORT_PARAMETERS_PACKAGE });
@@ -11024,7 +11233,7 @@
         setGlobalStatus("Exporting BP package...");
         try {
           const response = await sendToFusion(ACTION.EXPORT_PARAMETERS_PACKAGE, buildPackageExportRequest(""));
-          if (isExpectedCancelResponse(response, "Export cancelled.")) {
+          if (isDialogCancelledResponse(response)) {
             return;
           }
           if (!response.ok) {
@@ -11535,6 +11744,8 @@
             throw new Error("Fusion palette bridge is not available.");
           }
 
+          await loadBackendContractInfo();
+
           if (TEMP_TEXT_TUNER_ENABLED && !state.textTunerStateLoaded) {
             try {
               const tunerResponse = await sendToFusion(ACTION.GET_TEXT_TUNER_STATE);
@@ -11640,3 +11851,4 @@
     </script>
   </body>
 </html>
+
