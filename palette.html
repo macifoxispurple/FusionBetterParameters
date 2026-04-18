@@ -777,7 +777,11 @@
         vertical-align: middle;
       }
 
-      #parameterRows tr.parameter-row td,
+      #parameterRows tr.parameter-row td {
+        min-height: var(--table-row-height);
+        height: auto;
+      }
+
       #parameterRows tr.group-header-row td {
         height: var(--table-row-height);
       }
@@ -937,6 +941,12 @@
         pointer-events: none;
       }
 
+      .save-button-inline {
+        display: none;
+        margin: 0;
+        align-self: center;
+      }
+
       .save-button.is-dirty {
         visibility: visible;
         opacity: 1;
@@ -965,6 +975,15 @@
 
       body.compute-mode-auto #parameterRows tr.parameter-row .row-actions .save-button {
         display: none;
+      }
+
+      body.compute-mode-auto #parameterRows tr.parameter-row .save-button-inline {
+        display: none !important;
+      }
+
+      body.compute-mode-manual.hide-comment #parameterRows tr.parameter-row .save-button-inline,
+      body.compute-mode-manual.auto-hide-comments #parameterRows tr.parameter-row .save-button-inline {
+        display: inline-block;
       }
 
       .row-actions {
@@ -1283,6 +1302,41 @@
 
       .hide-comment td.comments-cell {
         display: none;
+      }
+
+      body.hide-comment #parameterRows tr.parameter-row td.value-cell,
+      body.auto-hide-comments #parameterRows tr.parameter-row td.value-cell {
+        display: table-cell;
+      }
+
+      body.hide-comment #parameterRows tr.parameter-row td.value-cell .value-cell-layout,
+      body.auto-hide-comments #parameterRows tr.parameter-row td.value-cell .value-cell-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .value-cell-inline-actions {
+        display: grid;
+        justify-items: end;
+        align-items: center;
+        align-self: center;
+      }
+
+      body.hide-comment #parameterRows tr.parameter-row td.value-cell .preview-value,
+      body.auto-hide-comments #parameterRows tr.parameter-row td.value-cell .preview-value {
+        align-self: center;
+      }
+
+      body.hide-comment #parameterRows tr.parameter-row td.value-cell .preview-current,
+      body.hide-comment #parameterRows tr.parameter-row td.value-cell .preview-new,
+      body.auto-hide-comments #parameterRows tr.parameter-row td.value-cell .preview-current,
+      body.auto-hide-comments #parameterRows tr.parameter-row td.value-cell .preview-new {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        overflow-wrap: anywhere;
       }
 
       body.auto-hide-comments .comment-col {
@@ -4064,6 +4118,44 @@
       let textTunerPersistTimer = null;
       let selectedActionInFlight = false;
 
+      function reportBackgroundFailure(contextLabel, error) {
+        const reason = String(error?.message || error || "Unknown error");
+        appendStatusHistory(`${contextLabel} failed (${reason}).`, "warning");
+      }
+
+      function runBackgroundTask(taskPromise, contextLabel) {
+        Promise.resolve(taskPromise).catch((error) => {
+          reportBackgroundFailure(contextLabel, error);
+        });
+      }
+
+      function readResponseCountField(payload, fieldName, contextLabel) {
+        const raw = payload && Object.prototype.hasOwnProperty.call(payload, fieldName)
+          ? payload[fieldName]
+          : 0;
+        if (raw === "" || raw === null || raw === undefined) {
+          return 0;
+        }
+        const parsed = Number(raw);
+        if (!Number.isFinite(parsed)) {
+          appendStatusHistory(`${contextLabel} returned non-numeric ${fieldName}; defaulted to 0.`, "warning");
+          return 0;
+        }
+        return parsed;
+      }
+
+      function readResponseArrayField(payload, fieldName, contextLabel) {
+        const value = payload ? payload[fieldName] : undefined;
+        if (value === undefined || value === null) {
+          return [];
+        }
+        if (!Array.isArray(value)) {
+          appendStatusHistory(`${contextLabel} returned invalid ${fieldName}; expected array.`, "warning");
+          return [];
+        }
+        return value;
+      }
+
       function migrateColumnWidths(stored) {
         if (!stored || typeof stored !== "object") return { ...DEFAULT_TABLE_COLUMNS };
         const vals = Object.values(stored).map(Number);
@@ -4319,7 +4411,7 @@
             state.settings.parameterTableColumns = nextColumns;
             applyColumnWidths();
             if (state.settings.autoFitColumns === true) {
-              saveSettingsPartial({ parameterTableColumns: nextColumns }).catch(() => {});
+              runBackgroundTask(saveSettingsPartial({ parameterTableColumns: nextColumns }), "Auto-fit column width save");
             }
           });
         }
@@ -4648,9 +4740,25 @@
 
       function syncRowCommitButtonLabels() {
         const label = isManualComputeMode() ? "Apply" : "Save";
-        document.querySelectorAll("#parameterRows .save-button").forEach((button) => {
+        document.querySelectorAll("#parameterRows .save-button, #parameterRows .save-button-inline").forEach((button) => {
           button.textContent = label;
         });
+      }
+
+      function getRowSaveButtons(row) {
+        if (!row) {
+          return [];
+        }
+        return Array.from(row.querySelectorAll(".save-button, .save-button-inline"));
+      }
+
+      function getRowPrimarySaveButton(row) {
+        const buttons = getRowSaveButtons(row);
+        if (!buttons.length) {
+          return null;
+        }
+        const visible = buttons.find((button) => button.offsetParent !== null && getComputedStyle(button).display !== "none");
+        return visible || buttons[0];
       }
 
       function setComputeMode(mode) {
@@ -4905,6 +5013,18 @@
         return !!document.querySelector("#parameterRows tr.parameter-row.is-dirty[data-parameter-key]");
       }
 
+      function isParameterRowAttached(row) {
+        if (!row || typeof row.matches !== "function") {
+          return false;
+        }
+        const container = document.getElementById("parameterRows");
+        return !!(container && container.contains(row) && row.matches("tr.parameter-row[data-parameter-key]"));
+      }
+
+      function hasAnyRowApplyInFlight() {
+        return !!document.querySelector('#parameterRows tr.parameter-row[data-row-applying="true"]');
+      }
+
       function hasBlockingLocalEdits() {
         if (hasLocalDirtyRowsInDom()) {
           return true;
@@ -5142,6 +5262,12 @@
         applyAllButton.title = hasInvalidDirty
           ? "Fix all invalid name/expression rows before Apply All."
           : "";
+        const computeModeButton = document.getElementById("computeModeButton");
+        if (computeModeButton) {
+          const computeModeBlocked = state.applyAllRunning || hasAnyRowApplyInFlight();
+          computeModeButton.disabled = computeModeBlocked;
+          computeModeButton.title = computeModeBlocked ? "Wait for active apply to finish." : "";
+        }
         renderSelectedActionButtons();
       }
 
@@ -6773,7 +6899,12 @@
                   </div>
                 </td>
                 <td class="mono preview-cell value-cell" data-saved-preview="${safePreview}">
-                  <div class="preview-value"></div>
+                  <div class="value-cell-layout">
+                    <div class="preview-value"></div>
+                    <div class="value-cell-inline-actions">
+                      <button class="save-button save-button-inline" type="button" disabled>${rowCommitLabel}</button>
+                    </div>
+                  </div>
                 </td>
                 <td class="comment-col comments-cell">
                   <div class="comment-shell">
@@ -7023,7 +7154,7 @@
         }
 
         const previewCell = row.querySelector(".preview-cell");
-        const saveButton = row.querySelector(".save-button");
+        const saveButton = getRowPrimarySaveButton(row);
         const isDirty = row.classList.contains("is-dirty");
         const canSave = !!(saveButton && !saveButton.disabled && saveButton.classList.contains("is-ready"));
 
@@ -7810,7 +7941,7 @@
             state.initialLayoutDone = true;
 
             if (!areColumnWidthsSimilar(previousColumns, nextColumns)) {
-              saveSettingsPartial({ parameterTableColumns: nextColumns }).catch(() => {});
+              runBackgroundTask(saveSettingsPartial({ parameterTableColumns: nextColumns }), "Initial column width save");
             }
           });
         });
@@ -8475,7 +8606,7 @@
                 state.settings.parameterTableColumns = nextColumns;
                 applyColumnWidths();
                 if (state.settings.autoFitColumns === true) {
-                  saveSettingsPartial({ parameterTableColumns: nextColumns }).catch(() => {});
+                  runBackgroundTask(saveSettingsPartial({ parameterTableColumns: nextColumns }), "Narrow-layout column width save");
                 }
               });
             }
@@ -9372,13 +9503,13 @@
         const nameInput = row.querySelector(".param-name-input");
         const expressionInput = row.querySelector(".expression-input");
         const commentInput = row.querySelector(".comment-input");
-        const saveButton = row.querySelector(".save-button");
+        const saveButtons = getRowSaveButtons(row);
         const nameDiscardButton = row.querySelector(".field-discard-button[data-discard-field='name']");
         const expressionDiscardButton = row.querySelector(".field-discard-button[data-discard-field='expression']");
         const commentDiscardButton = row.querySelector(".field-discard-button[data-discard-field='comment']");
         const revertButton = row.querySelector(".revert-button");
         const rowActions = row.querySelector(".row-actions");
-        if (!nameInput || !expressionInput || !commentInput || !saveButton) {
+        if (!nameInput || !expressionInput || !commentInput || !saveButtons.length) {
           return;
         }
 
@@ -9390,10 +9521,12 @@
         const expressionHasError = expressionInput.getAttribute("aria-invalid") === "true";
         const canSave = isDirty && !expressionHasError && !nameHasError;
         row.classList.toggle("is-dirty", isDirty);
-        saveButton.disabled = !canSave;
-        saveButton.classList.toggle("is-dirty", isDirty);
-        saveButton.classList.toggle("is-ready", isDirty && !expressionHasError && !nameHasError);
-        saveButton.classList.toggle("is-error", isDirty && (expressionHasError || nameHasError));
+        saveButtons.forEach((saveButton) => {
+          saveButton.disabled = !canSave;
+          saveButton.classList.toggle("is-dirty", isDirty);
+          saveButton.classList.toggle("is-ready", isDirty && !expressionHasError && !nameHasError);
+          saveButton.classList.toggle("is-error", isDirty && (expressionHasError || nameHasError));
+        });
         if (nameDiscardButton) {
           nameDiscardButton.classList.toggle("is-dirty", nameDirty);
         }
@@ -9412,7 +9545,7 @@
         if (rowActions) {
           rowActions.classList.toggle("has-revert-action", !!revertButton);
         }
-        const hasVisibleSave = isManualComputeMode() && saveButton.classList.contains("is-dirty");
+        const hasVisibleSave = isManualComputeMode() && isDirty;
         const hasVisibleRevert = !!revertButton;
         row.classList.toggle("has-visible-actions", hasVisibleSave || hasVisibleRevert);
         const draftKey = getRowDraftKey(row);
@@ -9702,6 +9835,13 @@
         if (!row) {
           return { ok: false, message: "Row not found." };
         }
+        if (row.getAttribute("data-row-applying") === "true") {
+          return { ok: false, skipped: true, message: "Apply already in progress for this row." };
+        }
+        row.setAttribute("data-row-applying", "true");
+        refreshBatchActionBar();
+
+        try {
 
         const parameter = getParameterForRow(row);
         if (!parameter) {
@@ -9710,7 +9850,7 @@
 
         let nameInput = row.querySelector(".param-name-input");
         let expressionInput = row.querySelector(".expression-input");
-        const commentInput = row.querySelector(".comment-input");
+        let commentInput = row.querySelector(".comment-input");
         if (!nameInput || !expressionInput || !commentInput) {
           return { ok: false, message: "Row inputs are not available." };
         }
@@ -9765,9 +9905,16 @@
             if (parameterKey) {
               const refreshedRow = getParameterRowByKey(parameterKey);
               if (refreshedRow) {
+                const refreshedNameInput = refreshedRow.querySelector(".param-name-input");
+                const refreshedExpressionInput = refreshedRow.querySelector(".expression-input");
+                const refreshedCommentInput = refreshedRow.querySelector(".comment-input");
+                if (!refreshedNameInput || !refreshedExpressionInput || !refreshedCommentInput) {
+                  return { ok: false, key: parameterKey, name: currentName, message: "Row inputs unavailable after rename refresh.", errorField: "expression" };
+                }
                 row = refreshedRow;
-                nameInput = row.querySelector(".param-name-input");
-                expressionInput = row.querySelector(".expression-input");
+                nameInput = refreshedNameInput;
+                expressionInput = refreshedExpressionInput;
+                commentInput = refreshedCommentInput;
               }
             }
           }
@@ -9837,6 +9984,10 @@
           const failureMessage = error.message || "Apply failed.";
           const fatal = /Fusion palette bridge is not available|Backend contract error|API version mismatch/i.test(failureMessage);
           return { ok: false, key: parameterKey, name: parameter.name, message: failureMessage, fatal, errorField: nameDirty ? "name" : "expression" };
+        }
+        } finally {
+          row.removeAttribute("data-row-applying");
+          refreshBatchActionBar();
         }
       }
 
@@ -9980,6 +10131,11 @@
           }
 
           for (const op of renameOps) {
+            if (!state.parameters.some((item) => String(item?.key || "") === op.key)) {
+              markFailure(op, "Parameter no longer exists.", "name");
+              restorePendingDirtyOps(pending);
+              continue;
+            }
             const row = getParameterRowByKey(op.key);
             if (!row) {
               markFailure(op, "Row not found.", "name");
@@ -10205,7 +10361,7 @@
               const nextColumns = buildAutoFitColumnWidths();
               state.settings.parameterTableColumns = nextColumns;
               applyColumnWidths();
-              saveSettingsPartial({ parameterTableColumns: nextColumns }).catch(() => {});
+              runBackgroundTask(saveSettingsPartial({ parameterTableColumns: nextColumns }), "Refresh column width save");
             });
           }
         } catch (error) {
@@ -10557,7 +10713,7 @@
         }
 
         nameValidationTimer = window.setTimeout(() => {
-          validateCreateNameAgainstFusion(value);
+          void validateCreateNameAgainstFusion(value).catch(() => {});
         }, 180);
       });
 
@@ -10585,7 +10741,7 @@
         }
 
         expressionValidationTimer = window.setTimeout(() => {
-          validateExpressionAgainstFusion(input);
+          void validateExpressionAgainstFusion(input).catch(() => {});
         }, ROW_EXPRESSION_PREVIEW_DEBOUNCE_MS);
       });
 
@@ -10816,7 +10972,7 @@
           } else {
             setRowNameValidationState(nameInput, "", "success");
             rowNameValidationTimer = window.setTimeout(() => {
-              validateRowNameInput(nameInput);
+              void validateRowNameInput(nameInput).catch(() => {});
             }, ROW_NAME_VALIDATION_DEBOUNCE_MS);
           }
           return;
@@ -10851,7 +11007,7 @@
 
         updateRowSaveState(input.closest("tr"));
         rowExpressionValidationTimer = window.setTimeout(() => {
-          previewRowExpression(input);
+          void previewRowExpression(input).catch(() => {});
         }, ROW_EXPRESSION_PREVIEW_DEBOUNCE_MS);
       });
 
@@ -10865,7 +11021,7 @@
           const groupLabel = groupToggle.getAttribute("data-group-toggle") || "";
           const key = groupSortKey(groupLabel);
           state.groupUi.collapsed[key] = !isGroupCollapsed(groupLabel);
-          saveGroupUiState().catch(() => {});
+          runBackgroundTask(saveGroupUiState(), "Group UI state save");
           renderParameters(state.parameters);
           return;
         }
@@ -10912,8 +11068,8 @@
               return;
             }
             if (isManualComputeMode()) {
-              const saveButton = row.querySelector(".save-button");
-              if (saveButton && !saveButton.disabled) {
+              const saveButton = getRowPrimarySaveButton(row);
+              if (saveButton && !saveButton.disabled && row.getAttribute("data-row-applying") !== "true") {
                 saveButton.click();
               }
             } else {
@@ -10958,8 +11114,8 @@
             event.preventDefault();
             if (isManualComputeMode()) {
               const row = input.closest("tr.parameter-row[data-parameter-key]");
-              const saveButton = row ? row.querySelector(".save-button") : null;
-              if (saveButton && !saveButton.disabled) {
+              const saveButton = row ? getRowPrimarySaveButton(row) : null;
+              if (saveButton && !saveButton.disabled && row?.getAttribute("data-row-applying") !== "true") {
                 saveButton.click();
               }
             } else {
@@ -11039,9 +11195,18 @@
         if (discardIntentOnSameRow) {
           return;
         }
+        if (!isParameterRowAttached(rowForFocusout)) {
+          return;
+        }
 
         if (nameInput) {
+          if (!isParameterRowAttached(rowForFocusout)) {
+            return;
+          }
           const nameIsValid = await validateRowNameInput(nameInput);
+          if (!isParameterRowAttached(rowForFocusout)) {
+            return;
+          }
           if (nameIsValid) {
             await autoApplyRowIfNeeded(nameInput, "blur");
           }
@@ -11053,7 +11218,14 @@
         if (!expressionInput) {
           return;
         }
+        const expressionRow = expressionInput.closest("tr.parameter-row[data-parameter-key]");
+        if (!isParameterRowAttached(expressionRow)) {
+          return;
+        }
         const isValid = await validateExpressionAgainstFusion(expressionInput);
+        if (!isParameterRowAttached(expressionRow)) {
+          return;
+        }
         if (isValid) {
           await autoApplyRowIfNeeded(expressionInput, "blur");
         }
@@ -11229,6 +11401,10 @@
       parameterRows.addEventListener("mousedown", (event) => {
         const groupRow = event.target.closest("tr.group-header-row[data-group-draggable='true']");
         if (groupRow) {
+          if (hasBlockingLocalEdits()) {
+            setGlobalStatus("Save or discard pending row edits before reordering groups.", "warning");
+            return;
+          }
           if (state.searchQuery.trim()) {
             setGlobalStatus("Clear search to reorder groups.");
             return;
@@ -11264,6 +11440,10 @@
           setGlobalStatus("Drag reorder is disabled in condensed view. Use row menu (\u22ee) to reorder.");
           return;
         }
+        if (hasBlockingLocalEdits()) {
+          setGlobalStatus("Save or discard pending row edits before reordering parameters.", "warning");
+          return;
+        }
 
         if (state.searchQuery.trim()) {
           setGlobalStatus("Reorder disabled while search is active.");
@@ -11293,6 +11473,10 @@
 
         const row = handle.closest("tr[data-parameter-key]");
         if (!row) {
+          return;
+        }
+        if (hasBlockingLocalEdits()) {
+          setGlobalStatus("Save or discard pending row edits before using reorder actions.", "warning");
           return;
         }
 
@@ -11562,7 +11746,7 @@
             const nextColumns = buildAutoFitColumnWidths();
             state.settings.parameterTableColumns = nextColumns;
             applyColumnWidths();
-            saveSettingsPartial({ parameterTableColumns: nextColumns }).catch(() => {});
+            runBackgroundTask(saveSettingsPartial({ parameterTableColumns: nextColumns }), "Resize column width save");
           }
         }, 160);
       });
@@ -11693,7 +11877,7 @@
         if (fitted[colKey] !== undefined) {
           state.settings.parameterTableColumns[colKey] = fitted[colKey];
           applyColumnWidths();
-          saveSettingsPartial({ parameterTableColumns: state.settings.parameterTableColumns }).catch(() => {});
+          runBackgroundTask(saveSettingsPartial({ parameterTableColumns: state.settings.parameterTableColumns }), "Column resize save");
         }
       });
 
@@ -11780,8 +11964,20 @@
         await setTextTunerSidebarPreferenceVisible(nextValue);
       });
 
-      document.getElementById("computeModeButton").addEventListener("click", () => {
-        const nextMode = isManualComputeMode() ? "auto" : "manual";
+      document.getElementById("computeModeButton").addEventListener("click", async () => {
+        if (state.applyAllRunning || hasAnyRowApplyInFlight()) {
+          setGlobalStatus("Wait for active apply operation to finish before changing compute mode.", "warning");
+          return;
+        }
+        const currentlyManual = isManualComputeMode();
+        const nextMode = currentlyManual ? "auto" : "manual";
+        if (currentlyManual && hasBlockingLocalEdits()) {
+          await applyAllDirtyRows();
+          if (hasBlockingLocalEdits()) {
+            setGlobalStatus("Could not switch to Auto: some pending edits could not be applied. Resolve row errors first.", "warning");
+            return;
+          }
+        }
         setComputeMode(nextMode);
         setGlobalStatus(`Compute mode set to ${nextMode === "manual" ? "Manual" : "Auto"}.`, "success");
       });
@@ -11914,10 +12110,13 @@
             throw new Error(previewResponse.message || "Import preview failed.");
           }
           const resolvedFilePath = String(previewResponse.filePath || "").trim();
-          const previewImported = Number(previewResponse.importedCount || 0);
-          const previewSkipped = Number(previewResponse.skippedCount || 0);
-          const previewFailed = Number(previewResponse.failedCount || 0);
-          const previewFailedRows = Array.isArray(previewResponse.failedRows) ? previewResponse.failedRows : [];
+          if (!resolvedFilePath) {
+            appendStatusHistory("CSV preview did not return filePath; commit import may prompt for file selection again.", "warning");
+          }
+          const previewImported = readResponseCountField(previewResponse, "importedCount", "CSV preview");
+          const previewSkipped = readResponseCountField(previewResponse, "skippedCount", "CSV preview");
+          const previewFailed = readResponseCountField(previewResponse, "failedCount", "CSV preview");
+          const previewFailedRows = readResponseArrayField(previewResponse, "failedRows", "CSV preview");
           const previewLines = [
             `Will add/update: ${previewImported}`,
             `Will skip: ${previewSkipped}`,
@@ -11951,6 +12150,8 @@
             throw new Error(response.message || "Import failed.");
           }
           if (response.dryRun === true) {
+            appendStatusHistory("CSV import returned dryRun=true during commit call; import was not applied.", "warning");
+            setGlobalStatus("CSV import did not apply (backend returned dryRun=true).", "warning");
             return;
           }
 
@@ -11960,10 +12161,10 @@
             appendStatusHistory('CSV import response omitted state; running refresh for compatibility.', "warning");
             await refreshParameters();
           }
-          const imported = Number(response.importedCount || 0);
-          const skipped = Number(response.skippedCount || 0);
-          const failed = Number(response.failedCount || 0);
-          const failedRows = Array.isArray(response.failedRows) ? response.failedRows : [];
+          const imported = readResponseCountField(response, "importedCount", "CSV import");
+          const skipped = readResponseCountField(response, "skippedCount", "CSV import");
+          const failed = readResponseCountField(response, "failedCount", "CSV import");
+          const failedRows = readResponseArrayField(response, "failedRows", "CSV import");
           const lines = [
             `Added/Updated: ${imported}`,
             `Skipped: ${skipped}`,
@@ -12025,12 +12226,15 @@
           }
 
           const filePath = String(previewResponse.filePath || "").trim();
-          const addCount = Number(previewResponse.importedCount || 0);
-          const updateCount = Number(previewResponse.updatedCount || 0);
-          const skipCount = Number(previewResponse.skippedCount || 0);
-          const potentialFailCount = Number(previewResponse.failedCount || 0);
-          const previewWarnings = [];
-          const previewFailedRows = Array.isArray(previewResponse.failedRows) ? previewResponse.failedRows : [];
+          const previewData = (previewResponse.preview && typeof previewResponse.preview === "object")
+            ? previewResponse.preview
+            : previewResponse;
+          const addCount = readResponseCountField(previewData, "addCount", "Package preflight");
+          const updateCount = readResponseCountField(previewData, "updateCount", "Package preflight");
+          const skipCount = readResponseCountField(previewData, "skipCount", "Package preflight");
+          const potentialFailCount = readResponseCountField(previewData, "potentialFailCount", "Package preflight");
+          const previewWarnings = readResponseArrayField(previewData, "warnings", "Package preflight");
+          const previewFailedRows = readResponseArrayField(previewData, "failedRows", "Package preflight");
           const previewLines = [
             `Will add: ${addCount}`,
             `Will update: ${updateCount}`,
@@ -12091,7 +12295,7 @@
             return;
           }
           if (!importResponse.ok) {
-            const failedRows = Array.isArray(importResponse.failedRows) ? importResponse.failedRows : [];
+            const failedRows = readResponseArrayField(importResponse, "failedRows", "Package import");
             const detailLines = buildRowsNeedingAttentionLines(failedRows);
             if (detailLines.length) {
               const lines = [
@@ -12104,6 +12308,8 @@
             throw new Error(importResponse.message || "Package import failed.");
           }
           if (importResponse.dryRun === true) {
+            appendStatusHistory("Package import returned dryRun=true during commit call; import was not applied.", "warning");
+            setGlobalStatus("Package import did not apply (backend returned dryRun=true).", "warning");
             return;
           }
 
@@ -12113,11 +12319,11 @@
             appendStatusHistory('Package import response omitted state; running refresh for compatibility.', "warning");
             await refreshParameters();
           }
-          const imported = Number(importResponse.importedCount || 0);
-          const updated = Number(importResponse.updatedCount || 0);
-          const skipped = Number(importResponse.skippedCount || 0);
-          const failed = Number(importResponse.failedCount || 0);
-          const failedRows = Array.isArray(importResponse.failedRows) ? importResponse.failedRows : [];
+          const imported = readResponseCountField(importResponse, "importedCount", "Package import");
+          const updated = readResponseCountField(importResponse, "updatedCount", "Package import");
+          const skipped = readResponseCountField(importResponse, "skippedCount", "Package import");
+          const failed = readResponseCountField(importResponse, "failedCount", "Package import");
+          const failedRows = readResponseArrayField(importResponse, "failedRows", "Package import");
           const summary = `Import complete. Added ${imported}, updated ${updated}, skipped ${skipped}.${failed > 0 ? ` Failed: ${failed}.` : ""}`;
           setGlobalStatus(summary, failed > 0 ? "warning" : "success");
 
@@ -12230,6 +12436,10 @@
           if (!row) {
             return;
           }
+          if (hasBlockingLocalEdits()) {
+            setGlobalStatus("Save or discard pending row edits before using reorder actions.", "warning");
+            return;
+          }
           event.preventDefault();
           cancelReorderMenuClose();
           const rect = narrowReorder.getBoundingClientRect();
@@ -12310,7 +12520,7 @@
         }
 
         const fieldDiscardButton = event.target.closest(".field-discard-button[data-discard-field]");
-        const button = event.target.closest(".save-button");
+        const button = event.target.closest(".save-button, .save-button-inline");
         if (!button && !fieldDiscardButton) {
           return;
         }
@@ -12324,6 +12534,9 @@
         }
 
         const row = button.closest("tr");
+        if (row && row.getAttribute("data-row-applying") === "true") {
+          return;
+        }
         await applyRowDraft(row, {
           showProgress: true,
           showSuccess: true,
@@ -12620,9 +12833,12 @@
           const data = dataString ? JSON.parse(dataString) : {};
           appendRawTrace("push.parsed", { action, data });
           if (action === "renderState" || action === "renderParameters") {
-            if (hasBlockingLocalEdits()) {
+            if (hasBlockingLocalEdits() || state.activeRowDrag || state.activeGroupDrag || hasAnyRowApplyInFlight()) {
               queuePendingStateEnvelope(data, action);
-              appendRawTrace("push.queued", { action, reason: "blocking local edits" });
+              appendRawTrace("push.queued", {
+                action,
+                reason: (state.activeRowDrag || state.activeGroupDrag) ? "drag active" : "blocking local edits"
+              });
               return "OK";
             }
             applyStateFromFusion(data, { source: "push", action });

@@ -567,6 +567,7 @@ def _handle_palette_action(action, data):
             "ok": result["ok"],
             "message": result["message"],
             "state": state,
+            "filePath": result.get("filePath", ""),
             "importedCount": result["importedCount"],
             "skippedCount": result["skippedCount"],
             "failedCount": result["failedCount"],
@@ -592,6 +593,7 @@ def _handle_palette_action(action, data):
         if result.get("cancelled"):
             return {
                 "ok": False, "message": "Import cancelled.", "errorCode": ERROR_DIALOG_CANCELLED, "state": None,
+                "filePath": "",
                 "importedCount": 0, "updatedCount": 0, "skippedCount": 0, "failedCount": 0, "failedRows": [],
                 "dryRun": dry_run,
             }
@@ -600,6 +602,7 @@ def _handle_palette_action(action, data):
             "ok": result["ok"],
             "message": result["message"],
             "state": state,
+            "filePath": result.get("filePath", ""),
             "importedCount": result["importedCount"],
             "updatedCount": result["updatedCount"],
             "skippedCount": result["skippedCount"],
@@ -2822,12 +2825,14 @@ def _import_parameters(data, dry_run=False):
         if result != adsk.core.DialogResults.DialogOK:
             return {
                 "ok": False, "message": "Import cancelled.",
+                "filePath": "",
                 "importedCount": 0, "skippedCount": 0, "failedCount": 0, "failedRows": [],
             }
         file_path = str(dialog.filename or "").strip()
         if not file_path:
             return {
                 "ok": False, "message": "Import cancelled.",
+                "filePath": "",
                 "importedCount": 0, "skippedCount": 0, "failedCount": 0, "failedRows": [],
             }
 
@@ -2921,6 +2926,7 @@ def _import_parameters(data, dry_run=False):
     return {
         "ok": ok,
         "message": message,
+        "filePath": file_path,
         "importedCount": imported_count,
         "skippedCount": skipped_count,
         "failedCount": failed_count,
@@ -3373,6 +3379,7 @@ def _import_parameters_package(data, dry_run=False):
         "cancelled": False,
         "ok": ok,
         "message": message,
+        "filePath": file_path,
         "importedCount": imported_count,
         "updatedCount": updated_count,
         "skippedCount": skipped_count,
