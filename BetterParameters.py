@@ -961,10 +961,14 @@ def _model_parameter_count():
         return 0
 
 
-def _serialize_model_parameter(param, units_manager, component_name=""):
+def _serialize_model_parameter(param, units_manager, component_name="", component_id=""):
     """Return the serialized dict for a single ModelParameter.
 
     component_name: display name of the owning component. Empty string for root.
+    component_id:   stable identity token for the owning component
+                    (Component.entityToken). Empty string when unavailable —
+                    never fabricated. FE uses this for persistent group-order
+                    identity that survives component renames.
     """
     return {
         "key": _parameter_entity_token(param),
@@ -977,6 +981,7 @@ def _serialize_model_parameter(param, units_manager, component_name=""):
         "isDeletable": False,
         "createdBy": _created_by_label(param),
         "componentName": component_name,
+        "componentId": component_id,
     }
 
 
@@ -1015,7 +1020,8 @@ def _get_model_parameters(data):
     except Exception:
         return {"ok": True, "totalCount": 0, "parameters": [], "offset": offset, "limit": limit}
 
-    # Collect from all components — (param, component_name) tuples.
+    # Collect from all components — (param, component_name, component_id) tuples.
+    # component_id is Component.entityToken — stable across renames within a session.
     # Linear scan across all components is unavoidable for arbitrary filter text.
     candidates = []
     for comp_idx in range(all_comps.count):
@@ -1023,6 +1029,7 @@ def _get_model_parameters(data):
         if not comp:
             continue
         comp_name = comp.name or ""
+        comp_id = _component_entity_token(comp)
         try:
             param_collection = comp.modelParameters
         except Exception:
@@ -1037,14 +1044,15 @@ def _get_model_parameters(data):
                 comp_cf = comp_name.casefold()
                 if filter_str not in name_cf and filter_str not in expr_cf and filter_str not in comp_cf:
                     continue
-            candidates.append((param, comp_name))
+            candidates.append((param, comp_name, comp_id))
 
     # Sort by component name then parameter name, both case-insensitive.
     candidates.sort(key=lambda t: (t[1].casefold(), (t[0].name or "").casefold()))
     filtered_count = len(candidates)
 
     page = candidates[offset: offset + limit]
-    results = [_serialize_model_parameter(p, units_manager, comp_name) for p, comp_name in page]
+    results = [_serialize_model_parameter(p, units_manager, comp_name, comp_id)
+               for p, comp_name, comp_id in page]
 
     return {
         "ok": True,
@@ -1301,6 +1309,23 @@ def _parameter_entity_token(param):
         return param.entityToken or param.name or ""
     except Exception:
         return getattr(param, "name", "") or ""
+
+
+def _component_entity_token(comp):
+    """Return a stable identity string for a Fusion Component.
+
+    Uses Component.entityToken — Fusion's own stable persistent identifier,
+    which survives component renames within the same design session.
+    Returns empty string if the token is unavailable or inaccessible; never
+    fabricates an unstable identifier (e.g. name-derived, random).
+    """
+    if not comp:
+        return ""
+    try:
+        token = comp.entityToken
+        return token if token else ""
+    except Exception:
+        return ""
 
 
 def _resolve_document_order_records(design, records):

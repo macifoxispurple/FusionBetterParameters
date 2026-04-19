@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en" style="background:#252525">
   <head>
     <meta charset="utf-8" />
@@ -16,13 +16,13 @@
         --ui-text-color-light: #2b2b2b;
         --ui-text-color-dark: #d9e1ed;
         --ui-text-color: var(--ui-text-color-light);
-        --glyph-icon-btn: 14px;       /* gear, refresh, close panel — toolbar/panel SVG icon buttons */
-        --glyph-clear: 12px;          /* × — search field clear */
-        --glyph-search: 16px;         /* magnifier — search field */
-        --glyph-theme: 12px;          /* ☀ ☾ — theme toggle sun/moon */
-        --glyph-star: 12px;           /* ★ ☆ — favorite star */
-        --glyph-drag: 16px;           /* ⠿ — row drag handle dot pattern */
-        --glyph-chevron: 12px;        /* ▸ ▾ — group toggle, unit picker, create toggle, settings */
+        --glyph-icon-btn: 14px;       /* gear, refresh, close panel â€” toolbar/panel SVG icon buttons */
+        --glyph-clear: 12px;          /* Ã— â€” search field clear */
+        --glyph-search: 16px;         /* magnifier â€” search field */
+        --glyph-theme: 12px;          /* â˜€ â˜¾ â€” theme toggle sun/moon */
+        --glyph-star: 12px;           /* â˜… â˜† â€” favorite star */
+        --glyph-drag: 16px;           /* â ¿ â€” row drag handle dot pattern */
+        --glyph-chevron: 12px;        /* â–¸ â–¾ â€” group toggle, unit picker, create toggle, settings */
         --row-collapse-arrow-size: 16px; /* group toggle button container */
         --table-row-height: 30px;
         --bg-light: #ebebeb;
@@ -168,7 +168,7 @@
         opacity: 1 !important;
       }
 
-      /* Glyph sizing — one token per functional glyph */
+      /* Glyph sizing â€” one token per functional glyph */
       .icon-btn svg,
       .native-icon-btn svg {
         width: var(--glyph-icon-btn) !important;
@@ -1912,56 +1912,6 @@
         border-color: var(--error);
       }
 
-      .model-parameters-section {
-        border-top: 1px solid var(--line-subtle);
-        padding: 8px;
-        display: grid;
-        gap: 8px;
-        background: color-mix(in srgb, var(--panel-raised) 92%, transparent);
-      }
-
-      .model-parameters-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-      }
-
-      .model-parameters-body {
-        display: grid;
-        gap: 8px;
-      }
-
-      .model-parameters-toolbar {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        flex-wrap: wrap;
-      }
-
-      .model-parameters-toolbar .search-input {
-        min-width: 220px;
-        max-width: 340px;
-      }
-
-      .model-parameters-table-wrap {
-        border: 1px solid var(--line-subtle);
-        border-radius: 6px;
-        overflow: auto;
-        max-height: 300px;
-        background: var(--panel);
-      }
-
-      .model-parameters-table-wrap .model-group-header-row td {
-        background: var(--group-row-bg);
-        color: var(--ink);
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 0.01em;
-        padding: 5px 8px;
-        border-bottom: 1px solid var(--line-subtle);
-      }
-
       .search-icon {
         position: absolute;
         left: 7px;
@@ -2084,11 +2034,6 @@
       .group-header-actions {
         display: flex;
         gap: 3px;
-        opacity: 0;
-        transition: opacity 80ms ease;
-      }
-
-      .group-header:hover .group-header-actions {
         opacity: 1;
       }
 
@@ -2425,7 +2370,7 @@
       }
 
       .unit-picker-button::after {
-        content: "▾";
+        content: "\25BE";
         color: var(--muted);
         font-size: var(--glyph-chevron);
       }
@@ -2470,6 +2415,54 @@
 
       .overlay-root .reorder-menu {
         pointer-events: auto;
+      }
+
+      .busy-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 2400;
+        background: color-mix(in srgb, var(--overlay) 65%, transparent);
+        display: grid;
+        place-items: center;
+      }
+
+      .busy-overlay[hidden] {
+        display: none;
+      }
+
+      .busy-overlay-card {
+        min-width: 220px;
+        max-width: min(92vw, 360px);
+        background: var(--panel-raised);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px 14px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+      }
+
+      .busy-spinner {
+        width: 16px;
+        height: 16px;
+        border-radius: 999px;
+        border: 2px solid color-mix(in srgb, var(--muted) 45%, transparent);
+        border-top-color: var(--accent);
+        animation: busy-spin 640ms linear infinite;
+        flex: 0 0 auto;
+      }
+
+      .busy-overlay-message {
+        font-size: 12px;
+        color: var(--ink);
+        font-weight: 600;
+        letter-spacing: 0.01em;
+      }
+
+      @keyframes busy-spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
       }
 
       body.settings-open {
@@ -2705,7 +2698,7 @@
       }
 
       .unit-category-header::after {
-        content: "▾";
+        content: "\25BE";
         color: var(--muted);
         font-size: var(--glyph-chevron);
         transition: transform 80ms ease;
@@ -3110,12 +3103,12 @@
           <details class="tuner-section" open>
             <summary>Glyphs</summary>
             <div class="tuner-kv"><label for="textTunerGlyphIconBtn">Icon Btn</label><input id="textTunerGlyphIconBtn" type="text" /></div>
-            <div class="tuner-kv"><label for="textTunerGlyphClear">Clear ×</label><input id="textTunerGlyphClear" type="text" /></div>
+            <div class="tuner-kv"><label for="textTunerGlyphClear">Clear Ã—</label><input id="textTunerGlyphClear" type="text" /></div>
             <div class="tuner-kv"><label for="textTunerGlyphSearch">Search</label><input id="textTunerGlyphSearch" type="text" /></div>
-            <div class="tuner-kv"><label for="textTunerGlyphTheme">Theme ☀☾</label><input id="textTunerGlyphTheme" type="text" /></div>
-            <div class="tuner-kv"><label for="textTunerGlyphStar">Star ★</label><input id="textTunerGlyphStar" type="text" /></div>
-            <div class="tuner-kv"><label for="textTunerGlyphDrag">Drag ⠿</label><input id="textTunerGlyphDrag" type="text" /></div>
-            <div class="tuner-kv"><label for="textTunerGlyphChevron">Chevron ▸</label><input id="textTunerGlyphChevron" type="text" /></div>
+            <div class="tuner-kv"><label for="textTunerGlyphTheme">Theme â˜€â˜¾</label><input id="textTunerGlyphTheme" type="text" /></div>
+            <div class="tuner-kv"><label for="textTunerGlyphStar">Star â˜…</label><input id="textTunerGlyphStar" type="text" /></div>
+            <div class="tuner-kv"><label for="textTunerGlyphDrag">Drag â ¿</label><input id="textTunerGlyphDrag" type="text" /></div>
+            <div class="tuner-kv"><label for="textTunerGlyphChevron">Chevron â–¸</label><input id="textTunerGlyphChevron" type="text" /></div>
           </details>
           <details class="tuner-section" open>
             <summary>Colors (<span id="textTunerColorModeLabel">Light</span>)</summary>
@@ -3293,42 +3286,6 @@
               <button id="applyAllButton" class="primary" type="button">Apply All</button>
             </div>
           </div>
-          <div id="modelParametersSection" class="model-parameters-section" hidden>
-            <div class="model-parameters-header">
-              <button id="modelParametersToggle" class="ghost" type="button" aria-expanded="false">Model Parameters</button>
-              <span id="modelParametersCount" class="section-meta">0</span>
-            </div>
-            <div id="modelParametersBody" class="model-parameters-body" hidden>
-              <div class="model-parameters-toolbar">
-                <input id="modelParametersFilter" class="search-input" type="search" placeholder="Filter model parameters" autocomplete="off" aria-label="Filter model parameters" />
-                <button id="modelParametersSearchButton" class="ghost" type="button">Search</button>
-                <button id="modelParametersClearButton" class="ghost" type="button">Clear</button>
-                <button id="modelParametersPrevButton" class="ghost" type="button">Prev</button>
-                <button id="modelParametersNextButton" class="ghost" type="button">Next</button>
-                <span id="modelParametersPageInfo" class="section-meta"></span>
-              </div>
-              <div id="modelParametersStatus" class="section-meta"></div>
-              <div class="model-parameters-table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th class="parameter-col">Parameter</th>
-                      <th>Name</th>
-                      <th class="unit-col">Unit</th>
-                      <th>Expression</th>
-                      <th class="value-col">Value</th>
-                      <th class="comment-col comments-col">Comments</th>
-                    </tr>
-                  </thead>
-                  <tbody id="modelParameterRows">
-                    <tr>
-                      <td colspan="6" class="empty">Expand to load model parameters.</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
         </section>
 
       </div>
@@ -3497,6 +3454,12 @@
         </div>
       </aside>
       <div id="overlayRoot" class="overlay-root"></div>
+      <div id="busyOverlay" class="busy-overlay" hidden aria-live="polite" aria-busy="false">
+        <div class="busy-overlay-card" role="status">
+          <span class="busy-spinner" aria-hidden="true"></span>
+          <span id="busyOverlayMessage" class="busy-overlay-message">Working...</span>
+        </div>
+      </div>
       <div id="functionHelper" class="function-helper" hidden></div>
       <div id="reorderMenu" class="reorder-menu" hidden>
         <div class="reorder-menu-actions">
@@ -3508,9 +3471,9 @@
           <button id="moveRowNumberButton" class="primary" type="button">Move</button>
         </div>
         <div class="reorder-menu-section">
-          <label class="reorder-menu-label">Groups</label>
+          <label id="moveRowGroupListLabel" class="reorder-menu-label">Groups</label>
           <div id="moveRowGroupPills" class="group-pill-list"></div>
-          <label class="reorder-menu-label" for="moveRowNewGroupInput">Add New Group</label>
+          <label id="moveRowNewGroupLabel" class="reorder-menu-label" for="moveRowNewGroupInput">Add New Group</label>
           <input id="moveRowNewGroupInput" type="text" placeholder="Type new group name" />
           <button id="moveRowGroupButton" class="primary" type="button">Create + Assign</button>
         </div>
@@ -3671,13 +3634,15 @@
       };
       const NARROW_NAME_EXPRESSION_ONLY_PX = 520;
 
-      // Maps new column key names → old names stored before the rename.
+      // Maps new column key names â†’ old names stored before the rename.
       // Used in migrateColumnWidths to upgrade persisted settings transparently.
       const COLUMN_KEY_OLD_NAMES = { parameter: "name", name: "expression", unit: "preview", expression: "comment", value: "actions" };
 
       const COLUMN_KEYS = ["parameter", "name", "unit", "expression", "value"];
       const UNGROUPED_GROUP_LABEL = "Ungrouped";
       const FAVORITES_GROUP_LABEL = "\u2605 Favorites";
+      const SYSTEM_GROUP_ID_UNGROUPED = "s:ungrouped";
+      const SYSTEM_GROUP_ID_FAVORITES = "s:favorites";
       const API_VERSION_EXPECTED = 1;
       const DEFAULT_COMPUTE_MODE = "auto";
       const COMPUTE_MODE_STORAGE_KEY = "bp_compute_mode";
@@ -4086,6 +4051,7 @@
       const state = {
         parameters: [],
         modelParameterCount: 0,
+        suppressModelPageInvalidationCount: 0,
         modelParameterPage: {
           rows: [],
           totalCount: 0,
@@ -4096,6 +4062,9 @@
           loading: false,
           error: ""
         },
+        modelComponentGroups: [],
+        modelComponentGroupsLoaded: false,
+        modelComponentGroupsLoading: false,
         searchQuery: "",
         groups: [],
         parameterNames: [],
@@ -4159,6 +4128,13 @@
         activeColumnResize: null,
         activeRowDrag: null,
         activeGroupDrag: null,
+        activeGroupDragFinishing: false,
+        busyOverlay: {
+          sequence: 0,
+          activeToken: "",
+          shownAtMs: 0,
+          hideTimer: null
+        },
         groupUi: {
           collapsed: {}
         },
@@ -4251,8 +4227,7 @@
           }
         }()),
         layoutDebugUpdatePending: false,
-        importConflictPolicy: "skip",
-        modelParametersCollapsed: false
+        importConflictPolicy: "skip"
       };
       let textTunerLiveApplyTimer = null;
       let textTunerPersistTimer = null;
@@ -4342,7 +4317,7 @@
       function migrateColumnWidths(stored) {
         if (!stored || typeof stored !== "object") return { ...DEFAULT_TABLE_COLUMNS };
         const vals = Object.values(stored).map(Number);
-        // Old storage was %-based (all values ≤ 100) — reset to px defaults
+        // Old storage was %-based (all values â‰¤ 100) â€” reset to px defaults
         if (vals.length === 0 || vals.every(v => v <= 100)) return { ...DEFAULT_TABLE_COLUMNS };
         const result = { ...DEFAULT_TABLE_COLUMNS };
         for (const k of COLUMN_KEYS) {
@@ -5087,10 +5062,10 @@
               const rowLabel = Number.isFinite(Number(item?.row)) ? `Row ${Number(item.row)}` : "Row ?";
               const name = String(item?.name || "").trim();
               const message = String(item?.message || "Unknown issue.");
-              lines.push(`  • ${rowLabel}${name ? ` (${name})` : ""}: ${message}`);
+              lines.push(`  â€¢ ${rowLabel}${name ? ` (${name})` : ""}: ${message}`);
             });
             if (failedRows.length > 3) {
-              lines.push(`  • Additional failed rows: ${failedRows.length - 3}`);
+              lines.push(`  â€¢ Additional failed rows: ${failedRows.length - 3}`);
             }
           }
         }
@@ -5201,8 +5176,7 @@
           return false;
         }
         const userContainer = document.getElementById("parameterRows");
-        const modelContainer = document.getElementById("modelParameterRows");
-        const attached = (userContainer && userContainer.contains(row)) || (modelContainer && modelContainer.contains(row));
+        const attached = (userContainer && userContainer.contains(row));
         return !!(attached && row.matches("tr.parameter-row[data-parameter-key]"));
       }
 
@@ -5400,7 +5374,7 @@
         if (!state.pendingRenderPushEnvelope) {
           return;
         }
-        if (!force && hasBlockingLocalEdits()) {
+        if (!force && (hasBlockingLocalEdits() || state.activeRowDrag || state.activeGroupDrag || state.activeGroupDragFinishing)) {
           return;
         }
 
@@ -5412,10 +5386,15 @@
         applyStateFromFusion(pendingEnvelope, { source: "push", action: pendingAction });
       }
 
-      function queuePendingStateEnvelope(envelope, action = "renderState") {
+      function hasActiveDragInteraction() {
+        return !!(state.activeRowDrag || state.activeGroupDrag || state.activeGroupDragFinishing);
+      }
+
+      function queuePendingStateEnvelope(envelope, action = "renderState", options = {}) {
+        const suppressNotice = !!(options && options.suppressNotice);
         state.pendingRenderPushEnvelope = envelope;
         state.pendingRenderPushAction = action;
-        if (!state.pendingRenderPushNoticeShown) {
+        if (!suppressNotice && !state.pendingRenderPushNoticeShown) {
           state.pendingRenderPushNoticeShown = true;
           setGlobalStatus("Background update queued while editing. It will apply after edits are saved or discarded.", "warning");
         }
@@ -6152,10 +6131,44 @@
             param.expression,
             param.comment,
             param.unit,
-            param.valuePreview
+            param.valuePreview,
+            param.componentName,
+            param.createdBy
           ].map((value) => String(value || "").toLowerCase()).join("\n");
           return haystack.includes(needle);
         });
+      }
+
+      function normalizeModelParameterForMainTable(param) {
+        const componentName = String(param?.componentName || "").trim();
+        const groupLabel = componentName || "Root Component";
+        const componentStableId = getModelComponentStableId(param);
+        return {
+          key: String(param?.key || param?.name || ""),
+          name: String(param?.name || ""),
+          expression: String(param?.expression || ""),
+          comment: String(param?.comment || ""),
+          unit: String(param?.unit || ""),
+          valuePreview: String(param?.valuePreview || ""),
+          isFavorite: param?.isFavorite === true,
+          isDeletable: false,
+          isUserParameter: false,
+          parameterKind: "Model Parameter",
+          createdBy: String(param?.createdBy || ""),
+          componentName,
+          componentId: componentStableId,
+          group: groupLabel,
+          _componentStableId: componentStableId,
+          _rowScope: "model",
+          _isModelGroup: true
+        };
+      }
+
+      function getCombinedParametersForMainTable() {
+        const users = Array.isArray(state.parameters) ? state.parameters.slice() : [];
+        const modelsRaw = Array.isArray(state.modelParameterPage?.rows) ? state.modelParameterPage.rows : [];
+        const models = modelsRaw.map(normalizeModelParameterForMainTable);
+        return users.concat(models);
       }
 
       function getSortValueForParam(param, column) {
@@ -6189,6 +6202,25 @@
         return String(value || "").replace(/\s+/g, " ").trim();
       }
 
+      function normalizeGroupIdToken(value) {
+        const raw = String(value || "").trim().toLowerCase();
+        if (!raw) {
+          return "";
+        }
+        if (/^(u|c|s|x):.+$/.test(raw)) {
+          return raw;
+        }
+        if (raw.startsWith("legacy:")) {
+          let legacyBody = raw;
+          while (legacyBody.startsWith("legacy:")) {
+            legacyBody = legacyBody.slice("legacy:".length);
+          }
+          const canonicalLegacy = canonicalGroupName(legacyBody);
+          return canonicalLegacy ? `legacy:${canonicalLegacy.toLowerCase()}` : "";
+        }
+        return "";
+      }
+
       function canonicalGroupName(value) {
         const normalized = normalizeGroupName(value);
         if (!normalized || normalized.toLowerCase() === UNGROUPED_GROUP_LABEL.toLowerCase()) {
@@ -6202,16 +6234,77 @@
         return canonical || UNGROUPED_GROUP_LABEL;
       }
 
-      function groupSortKey(label) {
-        const display = displayGroupName(label);
-        if (display === UNGROUPED_GROUP_LABEL) {
-          return "";
-        }
-        return display.toLowerCase();
+      function isSystemGroupId(groupId) {
+        const normalized = normalizeGroupIdToken(groupId);
+        return normalized === SYSTEM_GROUP_ID_FAVORITES || normalized === SYSTEM_GROUP_ID_UNGROUPED;
       }
 
-      function ensureGroupUiState(groupLabel) {
-        const key = groupSortKey(groupLabel);
+      function makeUserGroupIdFromLabel(label) {
+        const canonical = canonicalGroupName(label);
+        if (!canonical) {
+          return SYSTEM_GROUP_ID_UNGROUPED;
+        }
+        return `u:${canonical.toLowerCase()}`;
+      }
+
+      function getModelComponentStableId(value) {
+        const candidate = String(
+          value?.componentId
+          || value?.componentToken
+          || value?.componentKey
+          || ""
+        ).trim();
+        return candidate;
+      }
+
+      function makeModelGroupDescriptorFromValue(value) {
+        const label = displayGroupName(String(value?.componentName || value?.label || ""));
+        const stableComponentId = getModelComponentStableId(value);
+        const stableGroupId = stableComponentId ? `c:${stableComponentId.toLowerCase()}` : "";
+        const fallbackGroupId = stableGroupId || `x:${label.toLowerCase()}`;
+        return {
+          groupId: fallbackGroupId,
+          groupType: "component",
+          label,
+          stableComponentId,
+          persistable: !!stableGroupId
+        };
+      }
+
+      function getGroupIdentityForParameter(parameter) {
+        const isModelRow = String(parameter?._rowScope || "").toLowerCase() === "model" || parameter?.isUserParameter === false;
+        if (isModelRow) {
+          const descriptor = makeModelGroupDescriptorFromValue({
+            componentName: String(parameter?.componentName || parameter?.group || ""),
+            componentId: parameter?._componentStableId || parameter?.componentId || ""
+          });
+          return descriptor;
+        }
+        const label = displayGroupName(parameter?.group);
+        const groupId = makeUserGroupIdFromLabel(label);
+        return {
+          groupId,
+          groupType: isSystemGroupId(groupId) ? "system" : "user",
+          label,
+          stableComponentId: "",
+          persistable: true
+        };
+      }
+
+      function getGroupCollapseKey(groupLabel, groupId = "") {
+        const idToken = normalizeGroupIdToken(groupId);
+        if (idToken) {
+          return idToken;
+        }
+        const display = displayGroupName(groupLabel);
+        if (display === UNGROUPED_GROUP_LABEL) {
+          return SYSTEM_GROUP_ID_UNGROUPED;
+        }
+        return `legacy:${display.toLowerCase()}`;
+      }
+
+      function ensureGroupUiState(groupLabel, groupId = "") {
+        const key = getGroupCollapseKey(groupLabel, groupId);
         if (!(key in state.groupUi.collapsed)) {
           state.groupUi.collapsed[key] = false;
         }
@@ -6228,28 +6321,45 @@
         const order = Array.isArray(value.order) ? value.order : [];
         const seen = new Set();
         order.forEach((candidate) => {
+          const idToken = normalizeGroupIdToken(candidate);
+          if (idToken) {
+            if (seen.has(idToken)) {
+              return;
+            }
+            seen.add(idToken);
+            normalized.order.push(idToken);
+            return;
+          }
           const canonical = canonicalGroupName(candidate);
-          const key = (canonical || "").toLowerCase();
+          const key = canonical ? `legacy:${canonical.toLowerCase()}` : "";
           if (seen.has(key)) {
             return;
           }
           seen.add(key);
-          normalized.order.push(canonical);
+          if (key) {
+            normalized.order.push(key);
+          }
         });
         const collapsed = value.collapsed && typeof value.collapsed === "object" ? value.collapsed : {};
         Object.entries(collapsed).forEach(([key, raw]) => {
-          const folded = String(key || "").trim().toLowerCase();
-          if (!folded && String(key || "").trim() !== "") {
+          const normalizedKey = normalizeGroupIdToken(key) || (() => {
+            const legacyLabel = canonicalGroupName(key);
+            if (!legacyLabel && String(key || "").trim() !== "") {
+              return "";
+            }
+            return legacyLabel ? `legacy:${legacyLabel.toLowerCase()}` : "";
+          })();
+          if (!normalizedKey && String(key || "").trim() !== "") {
             return;
           }
-          normalized.collapsed[folded] = !!raw;
+          normalized.collapsed[normalizedKey] = !!raw;
         });
         return normalized;
       }
 
-      function isGroupCollapsed(groupLabel) {
-        ensureGroupUiState(groupLabel);
-        return !!state.groupUi.collapsed[groupSortKey(groupLabel)];
+      function isGroupCollapsed(groupLabel, groupId = "") {
+        ensureGroupUiState(groupLabel, groupId);
+        return !!state.groupUi.collapsed[getGroupCollapseKey(groupLabel, groupId)];
       }
 
       function collectKnownGroups() {
@@ -6270,82 +6380,188 @@
 
         (state.groups || []).forEach((name) => register(name));
         (state.parameters || []).forEach((param) => register(param.group));
+        (state.modelComponentGroups || []).forEach((group) => register(group?.label || group));
         names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
         return names;
       }
 
-      function getGroupCounts(parameters) {
+      function getGroupCountsById(parameters) {
         const counts = new Map();
         for (const parameter of (parameters || [])) {
-          const label = displayGroupName(parameter.group);
-          counts.set(label, (counts.get(label) || 0) + 1);
+          const identity = getGroupIdentityForParameter(parameter);
+          counts.set(identity.groupId, (counts.get(identity.groupId) || 0) + 1);
         }
-        if (!counts.has(UNGROUPED_GROUP_LABEL)) {
-          counts.set(UNGROUPED_GROUP_LABEL, 0);
+        if (!counts.has(SYSTEM_GROUP_ID_UNGROUPED)) {
+          counts.set(SYSTEM_GROUP_ID_UNGROUPED, 0);
         }
         return counts;
       }
 
       function buildGroupedParameters(parameters) {
         const groups = new Map();
+        const groupMetaById = new Map();
         const favorites = [];
-        const allCounts = getGroupCounts(state.parameters || []);
-        const filteredCounts = getGroupCounts(parameters || []);
+        const allCounts = getGroupCountsById(parameters || []);
+        const filteredCounts = getGroupCountsById(parameters || []);
+
+        const registerGroupMeta = (meta) => {
+          if (!meta || !meta.groupId) {
+            return;
+          }
+          if (!groupMetaById.has(meta.groupId)) {
+            groupMetaById.set(meta.groupId, {
+              groupId: meta.groupId,
+              groupType: meta.groupType || "user",
+              label: displayGroupName(meta.label),
+              persistable: meta.persistable !== false,
+              stableComponentId: String(meta.stableComponentId || "")
+            });
+            return;
+          }
+          const existing = groupMetaById.get(meta.groupId);
+          if (!existing.label && meta.label) {
+            existing.label = displayGroupName(meta.label);
+          }
+        };
+
         for (const parameter of (parameters || [])) {
           if (parameter && parameter.isFavorite) {
             favorites.push(parameter);
           }
-          const label = displayGroupName(parameter.group);
-          if (!groups.has(label)) {
-            groups.set(label, []);
+          const identity = getGroupIdentityForParameter(parameter);
+          const groupId = identity.groupId;
+          if (!groups.has(groupId)) {
+            groups.set(groupId, []);
           }
-          groups.get(label).push(parameter);
+          groups.get(groupId).push(parameter);
+          registerGroupMeta(identity);
         }
-        const orderedLabels = [];
+
+        (state.modelComponentGroups || []).forEach((componentGroup) => {
+          registerGroupMeta(makeModelGroupDescriptorFromValue(componentGroup || {}));
+        });
+
+        const orderedIds = [];
         const seen = new Set();
-        const pushLabel = (candidate) => {
-          const label = displayGroupName(candidate);
-          const key = label.toLowerCase();
-          if (seen.has(key)) {
+        const pushId = (candidate) => {
+          const id = normalizeGroupIdToken(candidate) || String(candidate || "").trim();
+          if (!id || seen.has(id)) {
             return;
           }
-          seen.add(key);
-          orderedLabels.push(label);
+          seen.add(id);
+          orderedIds.push(id);
+        };
+
+        const resolveLegacyStoredOrderToken = (token) => {
+          const raw = String(token || "").trim();
+          if (!raw) {
+            return "";
+          }
+          const tokenId = normalizeGroupIdToken(raw);
+          if (tokenId && groupMetaById.has(tokenId)) {
+            return tokenId;
+          }
+          const legacyLabel = raw.startsWith("legacy:")
+            ? canonicalGroupName(raw.slice("legacy:".length))
+            : canonicalGroupName(raw);
+          if (!legacyLabel) {
+            return "";
+          }
+          const targetLower = legacyLabel.toLowerCase();
+          const userMatch = Array.from(groupMetaById.values())
+            .find((meta) => meta.groupType === "user" && String(meta.label || "").toLowerCase() === targetLower);
+          if (userMatch) {
+            return userMatch.groupId;
+          }
+          const componentMatches = Array.from(groupMetaById.values())
+            .filter((meta) => meta.groupType === "component" && !!meta.stableComponentId && String(meta.label || "").toLowerCase() === targetLower);
+          if (componentMatches.length === 1) {
+            return componentMatches[0].groupId;
+          }
+          return "";
         };
 
         for (const storedGroup of (state.groupUi.order || [])) {
-          pushLabel(storedGroup);
-        }
-        for (const parameter of (state.parameters || [])) {
-          pushLabel(parameter.group);
-        }
-        for (const parameter of (parameters || [])) {
-          pushLabel(parameter.group);
+          pushId(resolveLegacyStoredOrderToken(storedGroup));
         }
 
-        const labels = orderedLabels.filter((label) => groups.has(label));
+        for (const meta of groupMetaById.values()) {
+          if (meta.groupType === "system") {
+            continue;
+          }
+          pushId(meta.groupId);
+        }
 
         const activeSortColumn = String(state.tableSort?.column || "");
         const activeSortDirection = String(state.tableSort?.direction || "asc");
-        const result = labels.map((label) => ({
-          label,
-          parameters: activeSortColumn
-            ? sortParametersForColumn(groups.get(label) || [], activeSortColumn, activeSortDirection)
-            : (groups.get(label) || []),
-          allCount: allCounts.get(label) || 0,
-          filteredCount: filteredCounts.get(label) || 0,
-          isFavoritesGroup: false
-        }));
+        const result = orderedIds
+          .filter((groupId) => groups.has(groupId) || groupMetaById.has(groupId))
+          .map((groupId) => {
+            const meta = groupMetaById.get(groupId) || {
+              groupId,
+              groupType: "user",
+              label: UNGROUPED_GROUP_LABEL,
+              persistable: true
+            };
+            const label = displayGroupName(meta.label);
+            const isModelGroup = meta.groupType === "component";
+            const isSystemGroup = meta.groupType === "system";
+            return {
+              groupId,
+              groupType: meta.groupType,
+              label,
+              persistable: meta.persistable !== false,
+              stableComponentId: meta.stableComponentId || "",
+              isSystemGroup,
+              isModelGroup,
+              isFavoritesGroup: false,
+              parameters: activeSortColumn
+                ? sortParametersForColumn(groups.get(groupId) || [], activeSortColumn, activeSortDirection)
+                : (groups.get(groupId) || []),
+              allCount: allCounts.get(groupId) || 0,
+              filteredCount: filteredCounts.get(groupId) || 0
+            };
+          });
+
+        const ungroupedMeta = groupMetaById.get(SYSTEM_GROUP_ID_UNGROUPED) || {
+          groupId: SYSTEM_GROUP_ID_UNGROUPED,
+          groupType: "system",
+          label: UNGROUPED_GROUP_LABEL,
+          persistable: false
+        };
+        if ((groups.get(SYSTEM_GROUP_ID_UNGROUPED) || []).length > 0) {
+          result.push({
+            groupId: SYSTEM_GROUP_ID_UNGROUPED,
+            groupType: "system",
+            label: displayGroupName(ungroupedMeta.label),
+            persistable: false,
+            stableComponentId: "",
+            isSystemGroup: true,
+            isModelGroup: false,
+            isFavoritesGroup: false,
+            parameters: activeSortColumn
+              ? sortParametersForColumn(groups.get(SYSTEM_GROUP_ID_UNGROUPED) || [], activeSortColumn, activeSortDirection)
+              : (groups.get(SYSTEM_GROUP_ID_UNGROUPED) || []),
+            allCount: allCounts.get(SYSTEM_GROUP_ID_UNGROUPED) || 0,
+            filteredCount: filteredCounts.get(SYSTEM_GROUP_ID_UNGROUPED) || 0
+          });
+        }
 
         if (favorites.length) {
           result.unshift({
+            groupId: SYSTEM_GROUP_ID_FAVORITES,
+            groupType: "system",
             label: FAVORITES_GROUP_LABEL,
+            persistable: false,
+            stableComponentId: "",
+            isSystemGroup: true,
+            isModelGroup: false,
+            isFavoritesGroup: true,
             parameters: activeSortColumn
               ? sortParametersForColumn(favorites, activeSortColumn, activeSortDirection)
               : favorites,
             allCount: favorites.length,
-            filteredCount: favorites.length,
-            isFavoritesGroup: true
+            filteredCount: favorites.length
           });
         }
 
@@ -6418,6 +6634,8 @@
         renderParameters(state.parameters);
         setParameterSummary(state.parameters);
         setReorderMenuMode();
+        void ensureModelComponentGroupsLoaded();
+        void ensureModelParametersForCurrentQuery();
       }
 
       function setFavoritesOnlyFilter(nextValue) {
@@ -6426,6 +6644,8 @@
         renderParameters(state.parameters);
         setParameterSummary(state.parameters);
         setReorderMenuMode();
+        void ensureModelComponentGroupsLoaded();
+        void ensureModelParametersForCurrentQuery();
       }
 
       function setUserOnlyFilter(nextValue) {
@@ -6434,38 +6654,124 @@
         renderParameters(state.parameters);
         setParameterSummary(state.parameters);
         setReorderMenuMode();
+        void ensureModelComponentGroupsLoaded();
+        void ensureModelParametersForCurrentQuery();
       }
 
-      async function toggleModelParametersSection() {
-        state.modelParametersCollapsed = !state.modelParametersCollapsed;
-        renderModelParametersSection();
-        if (!state.modelParametersCollapsed && state.modelParameterPage.loaded !== true) {
-          await fetchModelParametersPage({ offset: 0, limit: state.modelParameterPage.limit, filter: state.modelParameterPage.filter });
+      async function fetchAllModelParameters(filter = "") {
+        const normalizedFilter = String(filter || "").trim();
+        const pageSize = 1000;
+        let offset = 0;
+        let expectedTotal = null;
+        const aggregated = [];
+        let guard = 0;
+
+        while (guard < 1000) {
+          guard += 1;
+          const response = await sendToFusion(ACTION.GET_MODEL_PARAMETERS, {
+            offset,
+            limit: pageSize,
+            filter: normalizedFilter
+          });
+          if (!response || response.ok !== true) {
+            throw new Error(response?.message || "Failed to load model parameters.");
+          }
+          const rows = Array.isArray(response.parameters) ? response.parameters : [];
+          const totalCount = Math.max(0, Number(response.totalCount || 0));
+          if (expectedTotal == null) {
+            expectedTotal = totalCount;
+          }
+          aggregated.push(...rows);
+          offset += rows.length;
+          if (rows.length <= 0 || offset >= totalCount) {
+            return { rows: aggregated, totalCount };
+          }
         }
+        throw new Error("Model parameter paging exceeded safety guard.");
       }
 
-      async function searchModelParameters() {
-        const input = document.getElementById("modelParametersFilter");
-        const filter = String(input?.value || "").trim();
-        await fetchModelParametersPage({ offset: 0, limit: state.modelParameterPage.limit, filter });
-      }
-
-      async function pageModelParameters(direction) {
+      async function ensureModelParametersForCurrentQuery(force = false) {
+        if (state.filters.userOnly === true) {
+          return;
+        }
+        const query = String(state.searchQuery || "").trim();
         const page = state.modelParameterPage || {};
-        const limit = getModelPageSize();
-        const total = Math.max(0, Number(page.totalCount || 0));
-        let nextOffset = Number(page.offset || 0);
-        if (direction > 0) {
-          nextOffset += limit;
-        } else if (direction < 0) {
-          nextOffset -= limit;
+        if (!force && page.loaded === true && String(page.filter || "") === query && page.loading !== true) {
+          return;
         }
-        nextOffset = normalizeModelPageOffset(nextOffset, total);
-        await fetchModelParametersPage({
-          offset: nextOffset,
-          limit,
-          filter: page.filter || ""
-        });
+        if (page.loading === true) {
+          return;
+        }
+        state.modelParameterPage = {
+          ...page,
+          loading: true,
+          error: "",
+          filter: query
+        };
+        try {
+          const loaded = await fetchAllModelParameters(query);
+          state.modelParameterPage = {
+            ...state.modelParameterPage,
+            rows: loaded.rows,
+            totalCount: loaded.totalCount,
+            loaded: true,
+            loading: false,
+            filter: query,
+            offset: 0,
+            limit: 1000,
+            error: ""
+          };
+          if (!query) {
+            state.modelParameterCount = Math.max(0, Number(loaded.totalCount || 0));
+          }
+        } catch (error) {
+          state.modelParameterPage = {
+            ...state.modelParameterPage,
+            rows: [],
+            totalCount: 0,
+            loaded: true,
+            loading: false,
+            filter: query,
+            error: String(error?.message || "Failed to load model parameters.")
+          };
+        }
+        if (!hasActiveDragInteraction()) {
+          renderParameters(state.parameters);
+        }
+      }
+
+      async function ensureModelComponentGroupsLoaded(force = false) {
+        if (!force && (state.modelComponentGroupsLoaded === true || state.modelComponentGroupsLoading === true)) {
+          return;
+        }
+        state.modelComponentGroupsLoading = true;
+        try {
+          const loaded = await fetchAllModelParameters("");
+          const seen = new Set();
+          const groups = [];
+          (loaded.rows || []).forEach((item) => {
+            const descriptor = makeModelGroupDescriptorFromValue(item || {});
+            const key = descriptor.groupId;
+            if (seen.has(key)) {
+              return;
+            }
+            seen.add(key);
+            groups.push(descriptor);
+          });
+          groups.sort((a, b) => String(a.label || "").localeCompare(String(b.label || ""), undefined, { sensitivity: "base" }));
+          state.modelComponentGroups = groups;
+          state.modelComponentGroupsLoaded = true;
+          state.modelParameterCount = Math.max(0, Number(loaded.totalCount || 0));
+        } catch (error) {
+          state.modelComponentGroups = [];
+          state.modelComponentGroupsLoaded = false;
+          appendStatusHistory(`Model component group preload failed: ${String(error?.message || error)}`, "warning");
+        } finally {
+          state.modelComponentGroupsLoading = false;
+          if (!hasActiveDragInteraction()) {
+            renderParameters(state.parameters);
+          }
+        }
       }
 
       function toggleTableSortForColumn(column) {
@@ -6971,54 +7277,50 @@
         renderRailFilters();
         renderSortIndicators();
 
-        if (!state.parameters.length) {
-          tbody.innerHTML = `<tr><td colspan="${visibleColspan}" class="empty">No user parameters were found in the active design.</td></tr>`;
-          renderReorderMenuGroupOptions();
-          applySelectedRowState();
-          renderModelParametersSection();
-          restorePendingTableScrollAnchor();
-          scheduleLayoutDebugPanelUpdate();
-          return;
-        }
-
-        const filteredParameters = getFilteredParameters(state.parameters);
-        if (!filteredParameters.length) {
+        const combinedParameters = getCombinedParametersForMainTable();
+        const filteredParameters = getFilteredParameters(combinedParameters);
+        const grouped = buildGroupedParameters(filteredParameters);
+        const hasRenderableGroups = grouped.length > 0;
+        if (!hasRenderableGroups && !filteredParameters.length) {
           tbody.innerHTML = `<tr><td colspan="${visibleColspan}" class="empty">No parameters match your search.</td></tr>`;
           renderReorderMenuGroupOptions();
           applySelectedRowState();
-          renderModelParametersSection();
           restorePendingTableScrollAnchor();
           scheduleLayoutDebugPanelUpdate();
           return;
         }
 
         const isSearchActive = !!state.searchQuery.trim();
-        const grouped = buildGroupedParameters(filteredParameters);
         const rowCommitLabel = isManualComputeMode() ? "Apply" : "Save";
         const pieces = [];
         let renderRowCounter = 0;
         let nonFavoritesStripeCursor = 0;
         for (const groupBlock of grouped) {
-          ensureGroupUiState(groupBlock.label);
-          const groupCollapsed = isGroupCollapsed(groupBlock.label);
+          ensureGroupUiState(groupBlock.label, groupBlock.groupId);
+          const groupCollapsed = isGroupCollapsed(groupBlock.label, groupBlock.groupId);
           const safeGroupLabel = escapeHtml(groupBlock.label);
+          const safeGroupId = escapeHtml(groupBlock.groupId || "");
           const isFavoritesGroup = groupBlock.isFavoritesGroup === true;
+          const isModelGroup = groupBlock.isModelGroup === true;
+          const isSystemGroup = groupBlock.isSystemGroup === true;
+          const groupCount = Math.max(0, Number(groupBlock.parameters?.length || 0));
           const groupNameHtml = isFavoritesGroup
             ? "Favorites"
             : renderLabelWithLeadingStarIcon(groupBlock.label);
           const isUngrouped = groupBlock.label === UNGROUPED_GROUP_LABEL;
-          const toggleGlyph = groupCollapsed ? "▸" : "▾";
+          const isGroupDraggable = !isFavoritesGroup && !isSystemGroup;
+          const toggleGlyph = groupCollapsed ? "\u25b8" : "\u25be";
           pieces.push(`
-            <tr class="group-header-row" data-group-header="${safeGroupLabel}"${isFavoritesGroup ? ' data-favorites-group="true"' : ' data-group-draggable="true"'}>
+            <tr class="group-header-row" data-group-header="${safeGroupLabel}" data-group-id="${safeGroupId}"${isFavoritesGroup ? ' data-favorites-group="true"' : ''}${isGroupDraggable ? ' data-group-draggable="true"' : ''}>
               <td colspan="${visibleColspan}">
-                <div class="group-header${isFavoritesGroup ? "" : " is-draggable"}">
+                <div class="group-header${isGroupDraggable ? " is-draggable" : ""}">
                   <div class="group-header-left">
-                    <button class="group-toggle" type="button" data-group-toggle="${safeGroupLabel}" aria-expanded="${groupCollapsed ? "false" : "true"}">${toggleGlyph}</button>
-                    <span class="group-name">${groupNameHtml}</span>
+                    <button class="group-toggle" type="button" data-group-toggle="${safeGroupLabel}" data-group-id="${safeGroupId}" aria-expanded="${groupCollapsed ? "false" : "true"}">${toggleGlyph}</button>
+                    <span class="group-name">${groupNameHtml} <span class="group-meta">(${groupCount})</span></span>
                   </div>
                   <div class="group-header-actions">
-                    ${(isUngrouped || isFavoritesGroup) ? "" : `<button class="group-action" type="button" data-group-rename="${safeGroupLabel}">Rename</button>`}
-                    ${(isUngrouped || isFavoritesGroup) ? "" : `<button class="group-action delete" type="button" data-group-delete="${safeGroupLabel}">Delete</button>`}
+                    ${(isUngrouped || isFavoritesGroup || isModelGroup || isSystemGroup) ? "" : `<button class="group-action" type="button" data-group-rename="${safeGroupLabel}">Rename</button>`}
+                    ${(isUngrouped || isFavoritesGroup || isModelGroup || isSystemGroup) ? "" : `<button class="group-action delete" type="button" data-group-delete="${safeGroupLabel}">Delete</button>`}
                   </div>
                 </div>
               </td>
@@ -7039,13 +7341,16 @@
             const previousValue = String(param.previousValue || "");
             const safePreviousExpression = escapeHtml(previousExpression);
             const unitLabel = escapeHtml(param.unit || "No Units");
-            const favoriteTitle = param.isFavorite ? "Remove from favorites" : "Add to favorites";
+            const isModelRow = String(param?._rowScope || "").toLowerCase() === "model" || param?.isUserParameter === false;
+            const favoriteTitle = isModelRow
+              ? (param.isFavorite ? "Favorite (display only)" : "Not favorite (display only)")
+              : (param.isFavorite ? "Remove from favorites" : "Add to favorites");
             const favoriteClass = param.isFavorite ? "favorite-button is-on" : "favorite-button";
             const favoriteIconEntity = param.isFavorite ? "&#9733;" : "&#9734;";
             const reorderTitle = isSearchActive
               ? "Clear search to reorder parameters."
               : `Drag to reorder ${safeName}. Right-click for group + reorder options.`;
-            const showRevert = state.settings.showRevertButtons !== false;
+            const showRevert = !isModelRow && state.settings.showRevertButtons !== false;
             const compactPreviousValue = previousValue.replace(/\s+/g, " ").trim();
             const isNarrowExpanded = !!state.expandedRows[rowStateKey];
             const hasRevert = !!previousExpression;
@@ -7078,23 +7383,41 @@
             const narrowExpandedClass = isNarrowExpanded ? " is-narrow-expanded" : "";
             const narrowToggleGlyph = isNarrowExpanded ? "\u25be" : "\u25b8";
             const narrowToggleTitle = isNarrowExpanded ? "Hide comment and parameter type" : "Show comment and parameter type";
+            const rowScope = isModelRow ? "model" : "user";
+            const rowSelectable = isModelRow ? "false" : "true";
+            const kindText = isModelRow
+              ? (String(param?.createdBy || "").trim() ? `Model Parameter • ${escapeHtml(String(param.createdBy || ""))}` : "Model Parameter")
+              : "User Parameter";
+            const favoriteButtonMain = isModelRow
+              ? `<button class="${favoriteClass}" type="button" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}" disabled><span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span></button>`
+              : `<button class="${favoriteClass}" type="button" data-favorite-toggle="true" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}"><span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span></button>`;
+            const favoriteButtonNarrow = isModelRow
+              ? `<button class="${favoriteClass}" type="button" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}" disabled><span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span></button>`
+              : `<button class="${favoriteClass}" type="button" data-favorite-toggle="true" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}"><span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span></button>`;
+            const reorderHandleHtml = (isFavoritesGroup || isModelRow)
+              ? `<span class="reorder-handle-placeholder" aria-hidden="true"></span>`
+              : `<button class="reorder-handle" type="button" data-reorder-handle="true" tabindex="-1" aria-label="${reorderTitle}" title="${reorderTitle}"${isSearchActive ? " disabled" : ""}></button>`;
+            const narrowReorderButtonHtml = isModelRow
+              ? ""
+              : `<button class="ghost narrow-summary-icon-btn" type="button" data-narrow-reorder="true" title="More / reorder">&#8942;</button>`;
+            const nameReadonlyAttrs = isModelRow ? ' readonly aria-readonly="true"' : "";
 
             pieces.push(`
-              <tr class="parameter-row${stripeClass}${hiddenClass}${narrowExpandedClass}" data-parameter-scope="user" data-row-selectable="true" data-index="0" data-group-index="${index}" data-group-name="${safeGroupLabel}" data-parameter-key="${safeKey}" data-parameter-name="${safeName}" data-row-uid="row-${renderRowCounter}"${isFavoritesGroup ? ' data-favorites-row="true"' : ""}>
+              <tr class="parameter-row${stripeClass}${hiddenClass}${narrowExpandedClass}" data-parameter-scope="${rowScope}" data-row-selectable="${rowSelectable}" data-index="0" data-group-index="${index}" data-group-name="${safeGroupLabel}" data-parameter-key="${safeKey}" data-parameter-name="${safeName}" data-row-uid="row-${renderRowCounter}"${(isFavoritesGroup && !isModelRow) ? ' data-favorites-row="true"' : ""}>
                 <td class="name-cell">
                   <div class="name-cell-main">
-                    ${isFavoritesGroup ? `<span class="reorder-handle-placeholder" aria-hidden="true"></span>` : `<button class="reorder-handle" type="button" data-reorder-handle="true" tabindex="-1" aria-label="${reorderTitle}" title="${reorderTitle}"${isSearchActive ? " disabled" : ""}></button>`}
+                    ${reorderHandleHtml}
                     <div class="name-stack">
-                      <button class="${favoriteClass}" type="button" data-favorite-toggle="true" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}"><span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span></button>
-                      <span class="parameter-kind">User Parameter</span>
+                      ${favoriteButtonMain}
+                      <span class="parameter-kind">${kindText}</span>
                     </div>
                   </div>
                   <div class="narrow-summary">
                     <div class="narrow-summary-head">
-                      <button class="${favoriteClass}" type="button" data-favorite-toggle="true" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}"><span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span></button>
+                      ${favoriteButtonNarrow}
                       <strong class="narrow-summary-name">${safeName}</strong>
                       <span class="narrow-summary-state" data-narrow-summary-state>${safePreview}</span>
-                      <button class="ghost narrow-summary-icon-btn" type="button" data-narrow-reorder="true" title="More / reorder">&#8942;</button>
+                      ${narrowReorderButtonHtml}
                       <button class="ghost narrow-summary-icon-btn narrow-summary-toggle" type="button" data-narrow-toggle="true" aria-expanded="${isNarrowExpanded ? "true" : "false"}" title="${narrowToggleTitle}">${narrowToggleGlyph}</button>
                     </div>
                   </div>
@@ -7109,6 +7432,7 @@
                         data-saved-name="${safeName}"
                         value="${safeName}"
                         autocomplete="off"
+                        ${nameReadonlyAttrs}
                       />
                       <button class="field-discard-button" type="button" data-discard-field="name" title="Discard unsaved name edit." aria-label="Discard unsaved name edit.">&#8630;</button>
                     </div>
@@ -7149,7 +7473,7 @@
                       <button class="save-button" type="button" disabled>${rowCommitLabel}</button>
                     </div>
                     <div class="narrow-expanded-kind">
-                      <span class="parameter-kind">Type: User Parameter</span>
+                      <span class="parameter-kind">Type: ${kindText}</span>
                     </div>
                   </div>
                 </td>
@@ -7175,277 +7499,8 @@
         tbody.querySelectorAll("tr").forEach((row) => updateRowSaveState(row));
         applySelectedRowState();
         refreshBatchActionBar();
-        renderModelParametersSection();
         restorePendingTableScrollAnchor();
         scheduleLayoutDebugPanelUpdate();
-      }
-
-      function getModelPageSize() {
-        const raw = Number(state.modelParameterPage?.limit || 200);
-        if (!Number.isFinite(raw) || raw <= 0) {
-          return 200;
-        }
-        return Math.max(1, Math.min(1000, Math.floor(raw)));
-      }
-
-      function normalizeModelPageOffset(offset, totalCount) {
-        const total = Math.max(0, Number(totalCount || 0));
-        if (total <= 0) {
-          return 0;
-        }
-        const pageSize = getModelPageSize();
-        const raw = Number(offset || 0);
-        const safe = Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : 0;
-        const maxStart = Math.max(0, total - (total % pageSize || pageSize));
-        return Math.min(safe, maxStart);
-      }
-
-      function renderModelParametersSection() {
-        const section = document.getElementById("modelParametersSection");
-        const body = document.getElementById("modelParametersBody");
-        const toggle = document.getElementById("modelParametersToggle");
-        const countNode = document.getElementById("modelParametersCount");
-        const statusNode = document.getElementById("modelParametersStatus");
-        const pageInfo = document.getElementById("modelParametersPageInfo");
-        const nextButton = document.getElementById("modelParametersNextButton");
-        const prevButton = document.getElementById("modelParametersPrevButton");
-        const filterInput = document.getElementById("modelParametersFilter");
-        if (!section || !body || !toggle || !countNode || !statusNode || !pageInfo || !nextButton || !prevButton || !filterInput) {
-          return;
-        }
-
-        const count = Math.max(0, Number(state.modelParameterCount || 0));
-        const hiddenByFilter = state.filters.userOnly === true;
-        section.hidden = hiddenByFilter;
-        countNode.textContent = `${count}`;
-
-        const expanded = !state.modelParametersCollapsed;
-        body.hidden = !expanded;
-        toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
-        toggle.textContent = `${expanded ? "▾" : "▸"} Model Parameters`;
-
-        const page = state.modelParameterPage || {};
-        const rows = Array.isArray(page.rows) ? page.rows : [];
-        const totalCount = Math.max(0, Number(page.totalCount || 0));
-        const offset = Math.max(0, Number(page.offset || 0));
-        const limit = getModelPageSize();
-        const end = rows.length > 0 ? offset + rows.length : Math.min(offset, totalCount);
-        pageInfo.textContent = totalCount > 0
-          ? `${Math.min(offset + 1, totalCount)}-${end} of ${totalCount}`
-          : "0 of 0";
-
-        filterInput.value = String(page.filter || "");
-        prevButton.disabled = page.loading === true || offset <= 0;
-        nextButton.disabled = page.loading === true || end >= totalCount;
-
-        if (page.loading === true) {
-          statusNode.textContent = "Loading model parameters...";
-        } else if (page.error) {
-          statusNode.textContent = String(page.error);
-        } else if (!page.loaded) {
-          statusNode.textContent = "Expand to load model parameters.";
-        } else if (!rows.length) {
-          statusNode.textContent = totalCount > 0 ? "No rows on this page." : "No model parameters match the current filter.";
-        } else {
-          statusNode.textContent = "";
-        }
-
-        renderModelParameterRows();
-        if (!section.hidden && expanded && page.loaded !== true && page.loading !== true) {
-          void fetchModelParametersPage({
-            offset: page.offset || 0,
-            limit: page.limit || 200,
-            filter: page.filter || ""
-          });
-        }
-      }
-
-      function renderModelParameterRows() {
-        const tbody = document.getElementById("modelParameterRows");
-        if (!tbody) {
-          return;
-        }
-        const page = state.modelParameterPage || {};
-        const rows = Array.isArray(page.rows) ? page.rows : [];
-
-        if (page.loading === true) {
-          tbody.innerHTML = `<tr><td colspan="6" class="empty">Loading model parameters...</td></tr>`;
-          return;
-        }
-
-        if (!page.loaded) {
-          tbody.innerHTML = `<tr><td colspan="6" class="empty">Expand to load model parameters.</td></tr>`;
-          return;
-        }
-
-        if (!rows.length) {
-          const hasFilter = String(page.filter || "").trim().length > 0;
-          tbody.innerHTML = `<tr><td colspan="6" class="empty">${hasFilter ? "No model parameters match the current filter." : "No model parameters in this design."}</td></tr>`;
-          return;
-        }
-
-        const rowCommitLabel = isManualComputeMode() ? "Apply" : "Save";
-        const pieces = [];
-        let lastComponentGroup = "";
-        rows.forEach((param, index) => {
-          const componentName = String(param?.componentName || "").trim();
-          const componentLabel = componentName || "Root Component";
-          const componentGroupKey = componentLabel.toLowerCase();
-          if (componentGroupKey !== lastComponentGroup) {
-            lastComponentGroup = componentGroupKey;
-            pieces.push(`
-              <tr class="model-group-header-row">
-                <td colspan="6">${escapeHtml(componentLabel)}</td>
-              </tr>
-            `);
-          }
-          const safeKey = escapeHtml(param?.key || param?.name || "");
-          const safeName = escapeHtml(param?.name || "");
-          const safeExpression = escapeHtml(param?.expression || "");
-          const safeComment = escapeHtml(param?.comment || "");
-          const safePreview = escapeHtml(param?.valuePreview || "");
-          const safeUnit = escapeHtml(param?.unit || "No Units");
-          const createdBy = String(param?.createdBy || "").trim();
-          const kindText = createdBy ? `Model Parameter • ${escapeHtml(createdBy)}` : "Model Parameter";
-          const favoriteTitle = param?.isFavorite ? "Favorite (display only)" : "Not favorite (display only)";
-          const favoriteClass = param?.isFavorite ? "favorite-button is-on" : "favorite-button";
-          const favoriteIconEntity = param?.isFavorite ? "&#9733;" : "&#9734;";
-          const rowStateKey = String(param?.key || param?.name || "");
-          const isNarrowExpanded = !!state.expandedRows[rowStateKey];
-          const narrowExpandedClass = isNarrowExpanded ? " is-narrow-expanded" : "";
-          const narrowToggleGlyph = isNarrowExpanded ? "\u25be" : "\u25b8";
-          const narrowToggleTitle = isNarrowExpanded ? "Hide comment and parameter type" : "Show comment and parameter type";
-          const stripeClass = (index % 2 === 0) ? " is-even" : " is-odd";
-          pieces.push(`
-            <tr class="parameter-row model-parameter-row${stripeClass}${narrowExpandedClass}" data-parameter-scope="model" data-row-selectable="false" data-parameter-key="${safeKey}" data-parameter-name="${safeName}">
-              <td class="name-cell">
-                <div class="name-cell-main">
-                  <span class="reorder-handle-placeholder" aria-hidden="true"></span>
-                  <div class="name-stack">
-                    <button class="${favoriteClass}" type="button" aria-pressed="${param?.isFavorite ? "true" : "false"}" title="${favoriteTitle}" disabled>
-                      <span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span>
-                    </button>
-                    <span class="parameter-kind">${kindText}</span>
-                  </div>
-                </div>
-                <div class="narrow-summary">
-                  <div class="narrow-summary-head">
-                    <button class="${favoriteClass}" type="button" aria-pressed="${param?.isFavorite ? "true" : "false"}" title="${favoriteTitle}" disabled>
-                      <span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span>
-                    </button>
-                    <strong class="narrow-summary-name">${safeName}</strong>
-                    <span class="narrow-summary-state" data-narrow-summary-state>${safePreview}</span>
-                    <button class="ghost narrow-summary-icon-btn narrow-summary-toggle" type="button" data-narrow-toggle="true" aria-expanded="${isNarrowExpanded ? "true" : "false"}" title="${narrowToggleTitle}">${narrowToggleGlyph}</button>
-                  </div>
-                </div>
-              </td>
-              <td class="param-name-cell">
-                <div class="param-name-editor">
-                  <div class="dirty-field-shell">
-                    <input class="param-name-input" data-parameter-key="${safeKey}" data-saved-name="${safeName}" value="${safeName}" readonly aria-readonly="true" />
-                    <button class="field-discard-button" type="button" data-discard-field="name" title="Discard unsaved name edit." aria-label="Discard unsaved name edit.">&#8630;</button>
-                  </div>
-                  <div class="field-error name-field-error" aria-live="polite"></div>
-                </div>
-              </td>
-              <td class="unit-cell">
-                <span class="unit-text unit-display">${safeUnit}</span>
-              </td>
-              <td>
-                <div class="field-shell">
-                  <div class="dirty-field-shell expression-input-shell">
-                    <input class="mono expression-input" data-parameter-name="${safeName}" data-parameter-unit="${safeUnit}" data-saved-expression="${safeExpression}" value="${safeExpression}" autocomplete="off" />
-                    <button class="field-discard-button" type="button" data-discard-field="expression" title="Discard unsaved expression edit." aria-label="Discard unsaved expression edit.">&#8630;</button>
-                  </div>
-                  <div class="field-error expression-field-error" aria-live="polite"></div>
-                </div>
-              </td>
-              <td class="mono preview-cell value-cell" data-saved-preview="${safePreview}">
-                <div class="value-cell-layout">
-                  <div class="preview-value"></div>
-                  <div class="value-cell-inline-actions">
-                    <button class="save-button save-button-inline" type="button" disabled>${rowCommitLabel}</button>
-                  </div>
-                </div>
-              </td>
-              <td class="comment-col comments-cell">
-                <div class="comment-shell">
-                  <div class="dirty-field-shell">
-                    <textarea class="comment-input" data-saved-comment="${safeComment}">${safeComment}</textarea>
-                    <button class="field-discard-button" type="button" data-discard-field="comment" title="Discard unsaved comment edit." aria-label="Discard unsaved comment edit.">&#8630;</button>
-                  </div>
-                  <div class="row-actions">
-                    <button class="save-button" type="button" disabled>${rowCommitLabel}</button>
-                  </div>
-                  <div class="narrow-expanded-kind">
-                    <span class="parameter-kind">Type: ${kindText}</span>
-                  </div>
-                </div>
-              </td>
-            </tr>
-          `);
-        });
-
-        tbody.innerHTML = pieces.join("");
-        autoSizeCommentInputs(tbody);
-        applyCommentInputPlaceholders(tbody);
-        tbody.querySelectorAll(".preview-cell").forEach((previewCell) => {
-          setPreviewCellContent(previewCell, previewCell.getAttribute("data-saved-preview") || "");
-        });
-        tbody.querySelectorAll("tr.parameter-row").forEach((row) => updateRowSaveState(row));
-      }
-
-      async function fetchModelParametersPage(options = {}) {
-        const offset = Math.max(0, Number(options.offset ?? state.modelParameterPage.offset ?? 0) || 0);
-        const limit = Math.max(1, Math.min(1000, Number(options.limit ?? state.modelParameterPage.limit ?? 200) || 200));
-        const filter = String(options.filter ?? state.modelParameterPage.filter ?? "");
-        state.modelParameterPage = {
-          ...state.modelParameterPage,
-          loading: true,
-          error: "",
-          offset,
-          limit,
-          filter
-        };
-        renderModelParametersSection();
-
-        try {
-          const response = await sendToFusion(ACTION.GET_MODEL_PARAMETERS, {
-            offset,
-            limit,
-            filter
-          });
-          if (!response || response.ok !== true) {
-            throw new Error(response?.message || "Failed to load model parameters.");
-          }
-          const rows = Array.isArray(response.parameters) ? response.parameters : [];
-          const totalCount = Math.max(0, Number(response.totalCount || 0));
-          const responseOffset = normalizeModelPageOffset(response.offset ?? offset, totalCount);
-          const responseLimit = Math.max(1, Math.min(1000, Number(response.limit || limit) || limit));
-          state.modelParameterPage = {
-            ...state.modelParameterPage,
-            rows,
-            totalCount,
-            offset: responseOffset,
-            limit: responseLimit,
-            filter,
-            loaded: true,
-            loading: false,
-            error: ""
-          };
-          if (!String(filter || "").trim()) {
-            state.modelParameterCount = totalCount;
-          }
-        } catch (error) {
-          state.modelParameterPage = {
-            ...state.modelParameterPage,
-            rows: [],
-            loaded: true,
-            loading: false,
-            error: String(error?.message || "Failed to load model parameters.")
-          };
-        }
-        renderModelParametersSection();
       }
 
       function getTableWrapElement() {
@@ -7911,6 +7966,56 @@
         return getParameterRowByKey(state.reorderMenu.key);
       }
 
+      function getReorderMenuGroupAssignmentTargets() {
+        const anchorRow = getReorderMenuTargetRow();
+        if (!anchorRow) {
+          return [];
+        }
+        const anchorKey = String(anchorRow.getAttribute("data-parameter-key") || "");
+        const selectedKeys = getSelectedParameterKeys().filter(Boolean);
+        const useSelectedSet = !!(anchorKey && selectedKeys.length > 1 && selectedKeys.includes(anchorKey));
+        const candidateKeys = useSelectedSet ? selectedKeys : (anchorKey ? [anchorKey] : []);
+        const seen = new Set();
+        return candidateKeys
+          .filter((key) => {
+            const token = String(key || "");
+            if (!token || seen.has(token)) {
+              return false;
+            }
+            seen.add(token);
+            return true;
+          })
+          .map((key) => {
+            const parameter = getParameterForKey(key);
+            if (!parameter) {
+              return null;
+            }
+            return {
+              key: String(parameter.key || ""),
+              name: String(parameter.name || "")
+            };
+          })
+          .filter(Boolean);
+      }
+
+      function renderReorderMenuGroupAssignmentState() {
+        const listLabel = document.getElementById("moveRowGroupListLabel");
+        const newGroupLabel = document.getElementById("moveRowNewGroupLabel");
+        const assignButton = document.getElementById("moveRowGroupButton");
+        const count = getReorderMenuGroupAssignmentTargets().length;
+        const plural = count === 1 ? "" : "s";
+        if (listLabel) {
+          listLabel.textContent = count > 1 ? `Groups (assign ${count} selected)` : "Groups";
+        }
+        if (newGroupLabel) {
+          newGroupLabel.textContent = count > 1 ? `Add New Group (assign ${count} selected)` : "Add New Group";
+        }
+        if (assignButton) {
+          assignButton.textContent = count > 1 ? `Create + Assign ${count} Selected` : "Create + Assign";
+          assignButton.title = count > 1 ? `Create group and assign ${count} selected parameter${plural}.` : "";
+        }
+      }
+
       function getRowsInGroup(groupLabel) {
         const normalizedLabel = displayGroupName(groupLabel || "");
         return Array.from(document.querySelectorAll("#parameterRows tr[data-parameter-key][data-parameter-scope='user']"))
@@ -8002,6 +8107,86 @@
         });
       }
 
+      function setBusyOverlay(isVisible, message = "Working...") {
+        const overlay = document.getElementById("busyOverlay");
+        const messageNode = document.getElementById("busyOverlayMessage");
+        if (!overlay || !messageNode) {
+          return;
+        }
+        if (isVisible) {
+          messageNode.textContent = String(message || "Working...");
+          overlay.hidden = false;
+          overlay.setAttribute("aria-busy", "true");
+        } else {
+          overlay.hidden = true;
+          overlay.setAttribute("aria-busy", "false");
+          messageNode.textContent = "Working...";
+        }
+      }
+
+      function clearBusyOverlayHideTimer() {
+        if (!state.busyOverlay || !state.busyOverlay.hideTimer) {
+          return;
+        }
+        window.clearTimeout(state.busyOverlay.hideTimer);
+        state.busyOverlay.hideTimer = null;
+      }
+
+      function beginBusyOverlay(message = "Working...") {
+        if (!state.busyOverlay || typeof state.busyOverlay !== "object") {
+          state.busyOverlay = {
+            sequence: 0,
+            activeToken: "",
+            shownAtMs: 0,
+            hideTimer: null
+          };
+        }
+        clearBusyOverlayHideTimer();
+        state.busyOverlay.sequence = Number(state.busyOverlay.sequence || 0) + 1;
+        const token = `busy-${state.busyOverlay.sequence}`;
+        state.busyOverlay.activeToken = token;
+        state.busyOverlay.shownAtMs = Date.now();
+        setBusyOverlay(true, message);
+        appendRawTrace("overlay.show", { token, message: String(message || "Working...") });
+        return token;
+      }
+
+      async function endBusyOverlay(token, minVisibleMs = 350) {
+        if (!token || !state.busyOverlay || state.busyOverlay.activeToken !== token) {
+          return;
+        }
+
+        const elapsedMs = Math.max(0, Date.now() - Number(state.busyOverlay.shownAtMs || 0));
+        const remainingMs = Math.max(0, Number(minVisibleMs || 0) - elapsedMs);
+        if (remainingMs > 0) {
+          await new Promise((resolve) => {
+            state.busyOverlay.hideTimer = window.setTimeout(resolve, remainingMs);
+          });
+          state.busyOverlay.hideTimer = null;
+        }
+
+        if (!state.busyOverlay || state.busyOverlay.activeToken !== token) {
+          return;
+        }
+        state.busyOverlay.activeToken = "";
+        state.busyOverlay.shownAtMs = 0;
+        setBusyOverlay(false);
+        appendRawTrace("overlay.hide", { token });
+      }
+
+      async function yieldForBusyOverlayPaint() {
+        const overlay = document.getElementById("busyOverlay");
+        if (overlay) {
+          // Force style/layout flush before yielding to paint.
+          void overlay.offsetHeight;
+        }
+        await new Promise((resolve) => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(resolve);
+          });
+        });
+      }
+
       function openReorderMenu(row, clientX, clientY) {
         if (!row) {
           return;
@@ -8029,6 +8214,7 @@
           newGroupInput.value = "";
         }
         renderReorderMenuGroupOptions();
+        renderReorderMenuGroupAssignmentState();
         setReorderMenuMode();
 
         const pageRect = page.getBoundingClientRect();
@@ -8136,7 +8322,8 @@
         await persistParameterRowOrder();
       }
 
-      async function persistParameterRowOrder(statusMessage = "Parameter order updated.") {
+      async function persistParameterRowOrder(statusMessage = "Parameter order updated.", options = {}) {
+        const applyState = options.applyState !== false;
         const keys = getCurrentParameterRowOrder();
         if (!keys.length) {
           return;
@@ -8147,7 +8334,9 @@
           throw new Error(response.message || "Parameter order save failed.");
         }
 
-        applyStateFromFusion(response);
+        if (applyState) {
+          applyStateFromFusion(response, { source: "response", action: ACTION.SAVE_PARAMETER_ORDER });
+        }
         if (statusMessage) {
           setGlobalStatus(statusMessage, "success");
         }
@@ -8213,16 +8402,16 @@
         event.preventDefault();
       }
 
-      function getCurrentGroupOrder() {
+      function getCurrentGroupOrderIds() {
         return Array.from(document.querySelectorAll("#parameterRows tr.group-header-row"))
-          .map((row) => displayGroupName(row.getAttribute("data-group-header") || ""))
+          .map((row) => String(row.getAttribute("data-group-id") || "").trim().toLowerCase())
           .filter(Boolean);
       }
 
-      function getGroupHeaderByName(groupName) {
-        const target = displayGroupName(groupName || "");
+      function getGroupHeaderById(groupId) {
+        const target = String(groupId || "").trim().toLowerCase();
         return Array.from(document.querySelectorAll("#parameterRows tr.group-header-row"))
-          .find((row) => displayGroupName(row.getAttribute("data-group-header") || "") === target) || null;
+          .find((row) => String(row.getAttribute("data-group-id") || "").trim().toLowerCase() === target) || null;
       }
 
       function getGroupBlockRows(headerRow) {
@@ -8241,8 +8430,8 @@
         return rows;
       }
 
-      function moveGroupBlockBefore(groupLabel, referenceHeader) {
-        const header = getGroupHeaderByName(groupLabel);
+      function moveGroupBlockBefore(groupId, referenceHeader) {
+        const header = getGroupHeaderById(groupId);
         const tbody = document.getElementById("parameterRows");
         if (!header || !tbody) {
           return;
@@ -8258,24 +8447,30 @@
         if (referenceHeader) {
           tbody.insertBefore(fragment, referenceHeader);
         } else {
-          tbody.appendChild(fragment);
+          const pinnedUngroupedHeader = Array.from(tbody.querySelectorAll("tr.group-header-row"))
+            .find((row) => String(row.getAttribute("data-group-id") || "").trim().toLowerCase() === SYSTEM_GROUP_ID_UNGROUPED);
+          if (pinnedUngroupedHeader) {
+            tbody.insertBefore(fragment, pinnedUngroupedHeader);
+          } else {
+            tbody.appendChild(fragment);
+          }
         }
       }
 
       function reorderDraggedGroup(clientY) {
         const dragState = state.activeGroupDrag;
-        const groupLabel = dragState?.groupLabel;
-        if (!groupLabel) {
+        const groupId = dragState?.groupId;
+        if (!groupId) {
           return;
         }
 
-        const draggingHeader = getGroupHeaderByName(groupLabel);
+        const draggingHeader = getGroupHeaderById(groupId);
         if (!draggingHeader) {
           return;
         }
 
         const candidateHeaders = Array.from(document.querySelectorAll("#parameterRows tr.group-header-row"))
-          .filter((row) => row !== draggingHeader);
+          .filter((row) => row !== draggingHeader && row.getAttribute("data-group-draggable") === "true");
         const nextHeader = candidateHeaders.find((row) => {
           const rect = row.getBoundingClientRect();
           return clientY < rect.top + (rect.height / 2);
@@ -8291,8 +8486,8 @@
         // FLIP: capture before
         const beforeRects = new Map(candidateHeaders.map((h) => [h, h.getBoundingClientRect().top]));
 
-        moveGroupBlockBefore(groupLabel, nextHeader || null);
-        const refreshedHeader = getGroupHeaderByName(groupLabel);
+        moveGroupBlockBefore(groupId, nextHeader || null);
+        const refreshedHeader = getGroupHeaderById(groupId);
         if (refreshedHeader) refreshedHeader.classList.add("is-group-dragging");
 
         // FLIP: animate shifted headers
@@ -8311,23 +8506,23 @@
         });
       }
 
-      function startGroupDrag(groupLabel, event) {
-        if (!groupLabel) {
+      function startGroupDrag(groupId, event) {
+        if (!groupId) {
           return;
         }
 
         const previousCollapsed = { ...state.groupUi.collapsed };
-        const priorOrder = getCurrentGroupOrder();
+        const priorOrder = getCurrentGroupOrderIds();
         const allGroups = priorOrder;
         const collapsed = {};
-        allGroups.forEach((label) => {
-          collapsed[groupSortKey(label)] = true;
+        allGroups.forEach((id) => {
+          collapsed[String(id || "").trim().toLowerCase()] = true;
         });
         state.groupUi.collapsed = collapsed;
         renderParameters(state.parameters);
         setParameterSummary(state.parameters);
 
-        const header = getGroupHeaderByName(groupLabel);
+        const header = getGroupHeaderById(groupId);
         if (!header) {
           state.groupUi.collapsed = previousCollapsed;
           renderParameters(state.parameters);
@@ -8337,7 +8532,7 @@
 
         header.classList.add("is-group-dragging");
         state.activeGroupDrag = {
-          groupLabel: displayGroupName(groupLabel),
+          groupId: String(groupId || "").trim().toLowerCase(),
           startOrder: priorOrder,
           previousCollapsed
         };
@@ -8347,48 +8542,60 @@
 
       async function finishGroupDrag() {
         const dragState = state.activeGroupDrag;
-        if (!dragState) {
+        if (!dragState || state.activeGroupDragFinishing === true) {
           return;
         }
-
-        const draggingHeader = getGroupHeaderByName(dragState.groupLabel);
-        if (draggingHeader) {
-          draggingHeader.classList.remove("is-group-dragging");
-        }
-        document.body.classList.remove("is-group-dragging");
-
-        document.querySelectorAll("#parameterRows tr.group-header-row").forEach((h) => {
-          h.style.transition = "";
-          h.style.transform = "";
-        });
-
-        const previousCollapsed = dragState.previousCollapsed || {};
-        const startOrder = dragState.startOrder || [];
-        const nextOrder = getCurrentGroupOrder();
+        state.activeGroupDragFinishing = true;
         state.activeGroupDrag = null;
-
-        const orderChanged = startOrder.join("|") !== nextOrder.join("|");
-        state.groupUi.order = nextOrder.map((label) => canonicalGroupName(label));
-        if (!orderChanged) {
-          state.groupUi.collapsed = previousCollapsed;
-          renderParameters(state.parameters);
-          setParameterSummary(state.parameters);
-          return;
-        }
-
-        setGlobalStatus("Saving group order...");
+        let busyToken = "";
         try {
-          await persistParameterRowOrder("Group order updated.");
-          await saveGroupUiState();
+          const draggingHeader = getGroupHeaderById(dragState.groupId);
+          if (draggingHeader) {
+            draggingHeader.classList.remove("is-group-dragging");
+          }
+          document.body.classList.remove("is-group-dragging");
+
+          document.querySelectorAll("#parameterRows tr.group-header-row").forEach((h) => {
+            h.style.transition = "";
+            h.style.transform = "";
+          });
+
+          const previousCollapsed = dragState.previousCollapsed || {};
+          const startOrder = dragState.startOrder || [];
+          const nextOrder = getCurrentGroupOrderIds();
+
+          const orderChanged = startOrder.join("|") !== nextOrder.join("|");
+          state.groupUi.order = nextOrder.filter((id) => normalizeGroupIdToken(id) && !isSystemGroupId(id));
+          if (!orderChanged) {
+            state.groupUi.collapsed = previousCollapsed;
+            renderParameters(state.parameters);
+            setParameterSummary(state.parameters);
+            return;
+          }
+
+          // Never persist the temporary "collapsed-for-drag" snapshot.
           state.groupUi.collapsed = previousCollapsed;
-          renderParameters(state.parameters);
-          setParameterSummary(state.parameters);
-        } catch (error) {
-          state.groupUi.collapsed = previousCollapsed;
-          renderParameters(state.parameters);
-          setParameterSummary(state.parameters);
-          setGlobalStatus(error.message, "error");
-          await refreshParameters();
+
+          setGlobalStatus("Saving group order...");
+          busyToken = beginBusyOverlay("Applying group reorder...");
+          await yieldForBusyOverlayPaint();
+          try {
+            // Group reorder persistence is groupUi-only; avoid expensive row-order
+            // save here (that path is for parameter-row drag, not group-header drag).
+            state.suppressModelPageInvalidationCount = Math.max(0, Number(state.suppressModelPageInvalidationCount || 0)) + 1;
+            await saveGroupUiState("Group order updated.");
+            renderParameters(state.parameters);
+            setParameterSummary(state.parameters);
+          } catch (error) {
+            renderParameters(state.parameters);
+            setParameterSummary(state.parameters);
+            setGlobalStatus(error.message, "error");
+            await refreshParameters();
+          }
+        } finally {
+          await endBusyOverlay(busyToken, 450);
+          state.activeGroupDragFinishing = false;
+          flushQueuedRenderPushIfReady();
         }
       }
 
@@ -8947,18 +9154,57 @@
         if (!parameter) {
           throw new Error("Parameter row is no longer available.");
         }
-        const nextGroup = canonicalGroupName(requestedGroupName);
-        const response = await sendToFusion(ACTION.SET_PARAMETER_GROUP, {
-          key: parameter.key || "",
-          name: parameter.name || "",
-          group: nextGroup
-        });
-        if (!response.ok) {
-          throw new Error(response.message || "Failed to update parameter group.");
+        return setParameterGroupForTargets([{
+          key: String(parameter.key || ""),
+          name: String(parameter.name || "")
+        }], requestedGroupName);
+      }
+
+      async function setParameterGroupForTargets(targets, requestedGroupName) {
+        const normalizedTargets = Array.isArray(targets) ? targets.filter(Boolean) : [];
+        if (!normalizedTargets.length) {
+          throw new Error("No target parameters available for group assignment.");
         }
-        applyStateFromFusion(response);
+        const nextGroup = canonicalGroupName(requestedGroupName);
         const groupLabel = displayGroupName(nextGroup);
-        setGlobalStatus(`Assigned ${parameter.name} to ${groupLabel}.`, "success");
+        let assignedCount = 0;
+        const failures = [];
+
+        for (const target of normalizedTargets) {
+          const response = await sendToFusion(ACTION.SET_PARAMETER_GROUP, {
+            key: target.key || "",
+            name: target.name || "",
+            group: nextGroup
+          });
+          if (!response.ok) {
+            failures.push({
+              name: String(target.name || ""),
+              message: String(response.message || "Failed to update parameter group.")
+            });
+            continue;
+          }
+          assignedCount += 1;
+          applyStateFromFusion(response, { source: "response", action: ACTION.SET_PARAMETER_GROUP });
+        }
+
+        if (failures.length <= 0) {
+          if (assignedCount === 1) {
+            setGlobalStatus(`Assigned ${normalizedTargets[0].name} to ${groupLabel}.`, "success");
+          } else {
+            setGlobalStatus(`Assigned ${assignedCount} parameters to ${groupLabel}.`, "success");
+          }
+          return;
+        }
+
+        const firstFailure = failures[0];
+        if (assignedCount > 0) {
+          setGlobalStatus(
+            `Assigned ${assignedCount}, failed ${failures.length}${firstFailure?.message ? `. ${firstFailure.name ? `${firstFailure.name}: ` : ""}${firstFailure.message}` : ""}`,
+            "warning"
+          );
+          return;
+        }
+        throw new Error(firstFailure?.message || "Failed to update parameter group.");
       }
 
       async function renameGroup(oldGroupName) {
@@ -9039,18 +9285,26 @@
 
         if (Object.prototype.hasOwnProperty.call(payload, "modelParameterCount")) {
           const nextCount = Math.max(0, Number(payload.modelParameterCount || 0));
+          const previousCount = Math.max(0, Number(state.modelParameterCount || 0));
+          const suppressInvalidation = Math.max(0, Number(state.suppressModelPageInvalidationCount || 0)) > 0;
+          if (suppressInvalidation) {
+            state.suppressModelPageInvalidationCount = Math.max(0, Number(state.suppressModelPageInvalidationCount || 0) - 1);
+          }
           state.modelParameterCount = Number.isFinite(nextCount) ? nextCount : 0;
-          if (state.modelParameterCount <= 0) {
+          if (!suppressInvalidation && state.modelParameterCount !== previousCount) {
             state.modelParameterPage = {
               ...state.modelParameterPage,
-              rows: [],
-              totalCount: 0,
-              offset: 0,
               loaded: false,
-              loading: false,
-              error: ""
+              loading: false
             };
-            state.modelParametersCollapsed = true;
+          }
+          if (state.modelParameterCount <= 0) {
+            state.modelParameterPage.rows = [];
+            state.modelParameterPage.totalCount = 0;
+            state.modelParameterPage.error = "";
+          }
+          if (!suppressInvalidation && state.modelParameterCount !== previousCount) {
+            state.modelComponentGroupsLoaded = false;
           }
         }
 
@@ -9145,7 +9399,8 @@
           renderUpdateCard();
         }
 
-        renderModelParametersSection();
+        void ensureModelComponentGroupsLoaded();
+        void ensureModelParametersForCurrentQuery();
 
         if (!state.initialLayoutDone) {
           scheduleInitialLayoutPass();
@@ -9382,6 +9637,21 @@
           return envelope;
         }
 
+        const isMutatingResponseState = context.source === "response" && MUTATING_ACTIONS.has(context.action || "");
+        if (
+          envelope.state
+          && typeof envelope.state === "object"
+          && hasActiveDragInteraction()
+          && !isMutatingResponseState
+        ) {
+          queuePendingStateEnvelope(envelope, context.action || "renderState", { suppressNotice: true });
+          appendRawTrace("state.queued.drag", {
+            source: context.source || "response",
+            action: context.action || "renderState"
+          });
+          return envelope;
+        }
+
         if (
           envelope.state
           && typeof envelope.state === "object"
@@ -9541,7 +9811,7 @@
       function getExpressionTokenAtCursor(input) {
         const value = input.value;
         const cursor = input.selectionStart ?? value.length;
-        const tokenPattern = /[A-Za-z0-9_"$Â°Âµ]/;
+        const tokenPattern = /[A-Za-z0-9_"$Ã‚Â°Ã‚Âµ]/;
 
         let start = cursor;
         while (start > 0 && tokenPattern.test(value[start - 1])) {
@@ -9852,8 +10122,8 @@
           return result;
         }
 
-        // Case 1: identifier starting with a letter → parameters, functions, grouped units
-        if (/^[A-Za-z_"$Â°Âµ][A-Za-z0-9_"$Â°Âµ]*$/.test(tokenText)) {
+        // Case 1: identifier starting with a letter â†’ parameters, functions, grouped units
+        if (/^[A-Za-z_"$Ã‚Â°Ã‚Âµ][A-Za-z0-9_"$Ã‚Â°Ã‚Âµ]*$/.test(tokenText)) {
           const folded = tokenText.toLowerCase();
 
           function buildItems(pool, exclude) {
@@ -9897,7 +10167,7 @@
           return;
         }
 
-        // Case 2: token starts with a digit and has a trailing letter suffix → grouped unit completion
+        // Case 2: token starts with a digit and has a trailing letter suffix â†’ grouped unit completion
         if (/^[0-9]/.test(tokenText)) {
           let letterIdx = tokenText.length;
           for (let i = tokenText.length - 1; i >= 0; i--) {
@@ -10436,11 +10706,7 @@
             }
             applyStateFromFusion(response, { source: "response", action: ACTION.UPDATE_MODEL_PARAMETER });
             clearRowDraftByKey(parameterKey);
-            await fetchModelParametersPage({
-              offset: state.modelParameterPage.offset,
-              limit: state.modelParameterPage.limit,
-              filter: state.modelParameterPage.filter
-            });
+            await ensureModelParametersForCurrentQuery(true);
             if (showSuccess) {
               setGlobalStatus(`${isManualComputeMode() ? "Applied" : "Saved"} ${parameter.name}.`, "success");
             }
@@ -10878,8 +11144,8 @@
         if (/\s/.test(name)) {
           return "Name cannot contain spaces or other whitespace.";
         }
-        if (!/^[A-Za-z_"$°µ][A-Za-z0-9_"$°µ]*$/.test(name)) {
-          return 'Use letters, digits, and only these symbols: _, ", $, °, µ. The name must not start with a digit.';
+        if (!/^[A-Za-z_"$Â°Âµ][A-Za-z0-9_"$Â°Âµ]*$/.test(name)) {
+          return 'Use letters, digits, and only these symbols: _, ", $, Â°, Âµ. The name must not start with a digit.';
         }
         return "";
       }
@@ -11384,7 +11650,6 @@
       });
 
       const parameterRows = document.getElementById("parameterRows");
-      const modelParameterRows = document.getElementById("modelParameterRows");
       let focusRefreshTimer = null;
       const parameterSearchInput = document.getElementById("parameterSearchInput");
       const parameterSearchClear = document.getElementById("parameterSearchClear");
@@ -11405,54 +11670,6 @@
         setSearchQuery("");
         parameterSearchInput.focus();
       });
-
-      const modelParametersToggle = document.getElementById("modelParametersToggle");
-      const modelParametersSearchButton = document.getElementById("modelParametersSearchButton");
-      const modelParametersClearButton = document.getElementById("modelParametersClearButton");
-      const modelParametersPrevButton = document.getElementById("modelParametersPrevButton");
-      const modelParametersNextButton = document.getElementById("modelParametersNextButton");
-      const modelParametersFilter = document.getElementById("modelParametersFilter");
-
-      if (modelParametersToggle) {
-        modelParametersToggle.addEventListener("click", () => {
-          void toggleModelParametersSection();
-        });
-      }
-      if (modelParametersSearchButton) {
-        modelParametersSearchButton.addEventListener("click", () => {
-          void searchModelParameters();
-        });
-      }
-      if (modelParametersClearButton) {
-        modelParametersClearButton.addEventListener("click", () => {
-          if (modelParametersFilter) {
-            modelParametersFilter.value = "";
-          }
-          void fetchModelParametersPage({ offset: 0, limit: state.modelParameterPage.limit, filter: "" });
-        });
-      }
-      if (modelParametersPrevButton) {
-        modelParametersPrevButton.addEventListener("click", () => {
-          void pageModelParameters(-1);
-        });
-      }
-      if (modelParametersNextButton) {
-        modelParametersNextButton.addEventListener("click", () => {
-          void pageModelParameters(1);
-        });
-      }
-      if (modelParametersFilter) {
-        modelParametersFilter.addEventListener("keydown", (event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            void searchModelParameters();
-          } else if (event.key === "Escape") {
-            event.preventDefault();
-            modelParametersFilter.value = "";
-            void fetchModelParametersPage({ offset: 0, limit: state.modelParameterPage.limit, filter: "" });
-          }
-        });
-      }
 
       document.getElementById("favoritesFilterButton").addEventListener("click", () => {
         setFavoritesOnlyFilter(!(state.filters.favoritesOnly === true));
@@ -11628,8 +11845,9 @@
         const groupToggle = event.target.closest("[data-group-toggle]");
         if (groupToggle) {
           const groupLabel = groupToggle.getAttribute("data-group-toggle") || "";
-          const key = groupSortKey(groupLabel);
-          state.groupUi.collapsed[key] = !isGroupCollapsed(groupLabel);
+          const groupId = groupToggle.getAttribute("data-group-id") || "";
+          const key = getGroupCollapseKey(groupLabel, groupId);
+          state.groupUi.collapsed[key] = !isGroupCollapsed(groupLabel, groupId);
           runBackgroundTask(saveGroupUiState(), "Group UI state save");
           renderParameters(state.parameters);
           return;
@@ -11864,162 +12082,6 @@
         }
       });
 
-      if (modelParameterRows) {
-        modelParameterRows.addEventListener("mousedown", (event) => {
-          const discardButton = event.target.closest(".field-discard-button[data-discard-field]");
-          if (!discardButton) {
-            return;
-          }
-          const row = discardButton.closest("tr.parameter-row[data-parameter-key]");
-          if (!row) {
-            state.pendingFieldDiscardRowKey = "";
-            return;
-          }
-          state.pendingFieldDiscardRowKey = String(row.getAttribute("data-parameter-key") || "");
-        }, true);
-
-        modelParameterRows.addEventListener("input", (event) => {
-          const commentInput = event.target.closest(".comment-input");
-          if (commentInput) {
-            applyCommentInputPlaceholders(commentInput.closest("tr") || modelParameterRows);
-            autoSizeTextarea(commentInput);
-            updateRowSaveState(commentInput.closest("tr"));
-            return;
-          }
-
-          const input = event.target.closest(".expression-input");
-          if (!input) {
-            return;
-          }
-          updateExpressionSuggestions(input, input.getAttribute("data-parameter-name") || "");
-          updateFunctionHelper(input);
-
-          clearManagedRowTimer(rowExpressionValidationTimersByInput, input);
-          const value = input.value;
-          if (!value.trim()) {
-            setExpressionValidationState(input, "Expression is required.");
-            restoreRowPreview(input);
-            updateRowSaveState(input.closest("tr"));
-            return;
-          }
-          updateRowSaveState(input.closest("tr"));
-          scheduleManagedRowTimer(rowExpressionValidationTimersByInput, input, ROW_EXPRESSION_PREVIEW_DEBOUNCE_MS, () => {
-            void previewRowExpression(input).catch(() => {});
-          });
-        });
-
-        modelParameterRows.addEventListener("keydown", async (event) => {
-          const input = event.target.closest(".expression-input");
-          if (!input) {
-            return;
-          }
-          if (event.key === "Enter") {
-            event.preventDefault();
-            if (isManualComputeMode()) {
-              const row = input.closest("tr.parameter-row[data-parameter-key]");
-              const saveButton = row ? getRowPrimarySaveButton(row) : null;
-              if (saveButton && !saveButton.disabled && row?.getAttribute("data-row-applying") !== "true") {
-                saveButton.click();
-              }
-            } else {
-              await autoApplyRowIfNeeded(input, "enter");
-            }
-            return;
-          }
-          if (event.key === "Escape") {
-            event.preventDefault();
-            const row = input.closest("tr.parameter-row[data-parameter-key]");
-            if (row) {
-              discardRowDraft(row, { showStatus: false });
-            }
-            return;
-          }
-        });
-
-        modelParameterRows.addEventListener("focusout", async (event) => {
-          const input = event.target.closest(".expression-input");
-          const commentInput = event.target.closest(".comment-input");
-          if (!input && !commentInput) {
-            return;
-          }
-          const expressionInput = input
-            || (commentInput ? commentInput.closest("tr")?.querySelector(".expression-input") : null);
-          if (!expressionInput) {
-            return;
-          }
-          clearManagedRowTimer(rowExpressionValidationTimersByInput, expressionInput);
-          const row = expressionInput.closest("tr.parameter-row[data-parameter-key]");
-          const rowKey = String(row?.getAttribute("data-parameter-key") || "");
-          const relatedTarget = event.relatedTarget && typeof event.relatedTarget.closest === "function"
-            ? event.relatedTarget
-            : null;
-          const discardTarget = relatedTarget
-            ? relatedTarget.closest(".field-discard-button[data-discard-field]")
-            : null;
-          const discardTargetRowKey = discardTarget
-            ? String(discardTarget.closest("tr.parameter-row[data-parameter-key]")?.getAttribute("data-parameter-key") || "")
-            : "";
-          const discardIntentOnSameRow = (
-            !isManualComputeMode()
-            && rowKey
-            && (
-              state.pendingFieldDiscardRowKey === rowKey
-              || (discardTarget && discardTargetRowKey === rowKey)
-            )
-          );
-          if (discardIntentOnSameRow) {
-            return;
-          }
-          if (!isParameterRowAttached(row)) {
-            return;
-          }
-          const isValid = await validateExpressionAgainstFusion(expressionInput);
-          if (!isParameterRowAttached(row)) {
-            return;
-          }
-          if (isValid) {
-            await autoApplyRowIfNeeded(expressionInput, "blur");
-          }
-        });
-
-        modelParameterRows.addEventListener("click", async (event) => {
-          const narrowToggle = event.target.closest("[data-narrow-toggle]");
-          if (narrowToggle) {
-            const row = narrowToggle.closest("tr.parameter-row[data-parameter-key]");
-            if (!row) {
-              return;
-            }
-            const nextExpanded = !row.classList.contains("is-narrow-expanded");
-            setNarrowRowExpanded(row, nextExpanded);
-            return;
-          }
-
-          const fieldDiscardButton = event.target.closest(".field-discard-button[data-discard-field]");
-          const button = event.target.closest(".save-button, .save-button-inline");
-          if (!button && !fieldDiscardButton) {
-            return;
-          }
-
-          if (fieldDiscardButton) {
-            state.pendingFieldDiscardRowKey = "";
-            const row = fieldDiscardButton.closest("tr");
-            const field = fieldDiscardButton.getAttribute("data-discard-field") || "";
-            discardRowFieldDraft(row, field, { showStatus: true });
-            return;
-          }
-
-          const row = button.closest("tr");
-          if (row && row.getAttribute("data-row-applying") === "true") {
-            return;
-          }
-          await applyRowDraft(row, {
-            showProgress: true,
-            showSuccess: true,
-            showErrors: true
-          });
-        });
-      }
-
       document.getElementById("moveRowTopButton").addEventListener("click", async () => {
         cancelReorderMenuClose();
         const row = getReorderMenuTargetRow();
@@ -12090,8 +12152,8 @@
 
       document.getElementById("moveRowGroupButton").addEventListener("click", async () => {
         cancelReorderMenuClose();
-        const row = getReorderMenuTargetRow();
-        if (!row) {
+        const targets = getReorderMenuGroupAssignmentTargets();
+        if (!targets.length) {
           closeReorderMenu();
           return;
         }
@@ -12102,7 +12164,7 @@
           return;
         }
         try {
-          await setParameterGroupForRow(row, nextGroup);
+          await setParameterGroupForTargets(targets, nextGroup);
           closeReorderMenu();
         } catch (error) {
           setGlobalStatus(error.message, "error");
@@ -12122,14 +12184,14 @@
           return;
         }
         cancelReorderMenuClose();
-        const row = getReorderMenuTargetRow();
-        if (!row) {
+        const targets = getReorderMenuGroupAssignmentTargets();
+        if (!targets.length) {
           closeReorderMenu();
           return;
         }
         const selectedGroup = pill.getAttribute("data-group-pill") || "";
         try {
-          await setParameterGroupForRow(row, selectedGroup);
+          await setParameterGroupForTargets(targets, selectedGroup);
           closeReorderMenu();
         } catch (error) {
           setGlobalStatus(error.message, "error");
@@ -12182,13 +12244,13 @@
             return;
           }
 
-          const groupLabel = groupRow.getAttribute("data-group-header") || "";
-          if (!groupLabel) {
+          const groupId = String(groupRow.getAttribute("data-group-id") || "").trim().toLowerCase();
+          if (!groupId) {
             return;
           }
 
           closeReorderMenu();
-          startGroupDrag(groupLabel, event);
+          startGroupDrag(groupId, event);
           return;
         }
 
