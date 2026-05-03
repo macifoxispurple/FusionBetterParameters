@@ -3662,6 +3662,7 @@
       const RAW_TRACE_MAX_ENTRIES = 1200;
       const RAW_TRACE_MAX_PAYLOAD_CHARS = 8000;
       const TABLE_SORT_STATE_STORAGE_KEY = "bp_table_sort_state_v1";
+      const REMEMBERED_NO_UNITS_STORAGE_KEY = "bp_remembered_no_units_v1";
       const ACTION = Object.freeze({
         READY: "ready",
         REFRESH: "refresh",
@@ -4103,6 +4104,15 @@
           name: ""
         },
         createUnit: "",
+        hasRememberedUnitSelection: false,
+        explicitNoUnitsRemembered: (function () {
+          try {
+            return localStorage.getItem(REMEMBERED_NO_UNITS_STORAGE_KEY) === "1";
+          } catch (_) {
+            return false;
+          }
+        }()),
+        rememberedUnitSeededFromDocumentThisSession: false,
         isUnitMenuOpen: false,
         unitMenuScrollTop: 0,
         expressionAutocomplete: {
@@ -6248,13 +6258,21 @@
       }
 
       function getModelComponentStableId(value) {
-        const candidate = String(
+        const direct = String(
           value?.componentId
           || value?.componentToken
           || value?.componentKey
+          || value?.stableComponentId
           || ""
         ).trim();
-        return candidate;
+        if (direct) {
+          return direct;
+        }
+        const groupId = String(value?.groupId || "").trim().toLowerCase();
+        if (groupId.startsWith("c:") && groupId.length > 2) {
+          return groupId.slice(2);
+        }
+        return "";
       }
 
       function makeModelGroupDescriptorFromValue(value) {
@@ -6271,6 +6289,41 @@
         };
       }
 
+      function findUniqueStableComponentGroupByLabel(label) {
+        const target = String(displayGroupName(label) || "").trim().toLowerCase();
+        if (!target) {
+          return null;
+        }
+        const candidates = [];
+        const seenIds = new Set();
+        const tryAdd = (descriptor) => {
+          const stableId = String(descriptor?.stableComponentId || "").trim().toLowerCase();
+          const candidateLabel = String(descriptor?.label || "").trim().toLowerCase();
+          if (!stableId || candidateLabel !== target || seenIds.has(stableId)) {
+            return;
+          }
+          seenIds.add(stableId);
+          candidates.push({
+            groupId: `c:${stableId}`,
+            groupType: "component",
+            label: displayGroupName(descriptor.label || label),
+            stableComponentId: stableId,
+            persistable: true
+          });
+        };
+
+        (state.modelComponentGroups || []).forEach((group) => {
+          tryAdd(makeModelGroupDescriptorFromValue(group || {}));
+        });
+
+        // Fallback: also inspect currently loaded model rows in case component preload lags.
+        (state.modelParameterPage?.rows || []).forEach((row) => {
+          tryAdd(makeModelGroupDescriptorFromValue(row || {}));
+        });
+
+        return candidates.length === 1 ? candidates[0] : null;
+      }
+
       function getGroupIdentityForParameter(parameter) {
         const isModelRow = String(parameter?._rowScope || "").toLowerCase() === "model" || parameter?.isUserParameter === false;
         if (isModelRow) {
@@ -6281,6 +6334,10 @@
           return descriptor;
         }
         const label = displayGroupName(parameter?.group);
+        const aliasedComponentGroup = findUniqueStableComponentGroupByLabel(label);
+        if (aliasedComponentGroup) {
+          return aliasedComponentGroup;
+        }
         const groupId = makeUserGroupIdFromLabel(label);
         return {
           groupId,
@@ -7075,10 +7132,28 @@
       }
 
       function getDefaultCreateUnit() {
-        if (state.settings.rememberUnit && state.settings.lastUnit) {
-          return state.settings.lastUnit;
+        if (state.settings.rememberUnit && state.hasRememberedUnitSelection && typeof state.settings.lastUnit === "string") {
+          if (state.settings.lastUnit !== "") {
+            return state.settings.lastUnit;
+          }
+          if (state.explicitNoUnitsRemembered) {
+            return "";
+          }
         }
         return state.documentDefaults.unit || "mm";
+      }
+
+      function setExplicitNoUnitsRemembered(enabled) {
+        state.explicitNoUnitsRemembered = enabled === true;
+        try {
+          if (state.explicitNoUnitsRemembered) {
+            localStorage.setItem(REMEMBERED_NO_UNITS_STORAGE_KEY, "1");
+          } else {
+            localStorage.removeItem(REMEMBERED_NO_UNITS_STORAGE_KEY);
+          }
+        } catch (_) {
+          // best-effort local preference only
+        }
       }
 
       function applySelectedUnit(value, options = {}) {
@@ -7089,6 +7164,10 @@
 
         if (options.persistLastUnit) {
           state.settings.lastUnit = resolvedValue;
+        }
+        if (options.markRememberedSelection) {
+          state.hasRememberedUnitSelection = true;
+          setExplicitNoUnitsRemembered(resolvedValue === "");
         }
       }
 
@@ -8665,6 +8744,7 @@
 
       function applySettings(settings, options = {}) {
         const deferColumnLayout = options.deferColumnLayout === true;
+        const fromBackend = options.fromBackend === true;
         state.settings = {
           ...state.settings,
           ...settings,
@@ -8702,6 +8782,10 @@
           ),
           computeMode: normalizeComputeMode(state.settings.computeMode)
         };
+        if (fromBackend && Object.prototype.hasOwnProperty.call(settings, "lastUnit")) {
+          const backendLastUnit = typeof settings.lastUnit === "string" ? settings.lastUnit : String(settings.lastUnit || "");
+          state.hasRememberedUnitSelection = backendLastUnit !== "" || state.explicitNoUnitsRemembered;
+        }
 
         savePackagePrefsToLocal();
         applyTheme(state.settings.theme);
@@ -9143,10 +9227,30 @@
 
       function syncDefaultUnit(force = false) {
         const nextUnit = getDefaultCreateUnit();
-        if (force || !document.getElementById("newUnit").value || !state.settings.rememberUnit) {
+        const currentUnit = state.createUnit;
+        if (force || !state.settings.rememberUnit || currentUnit !== nextUnit) {
           applySelectedUnit(nextUnit);
           renderUnitPicker();
         }
+      }
+
+      function maybeSeedRememberedUnitFromDocumentDefaults() {
+        if (state.rememberedUnitSeededFromDocumentThisSession) {
+          return;
+        }
+        const docUnit = String(state.documentDefaults?.unit || "").trim();
+        if (!docUnit) {
+          return;
+        }
+
+        state.settings.lastUnit = docUnit;
+        state.hasRememberedUnitSelection = true;
+        setExplicitNoUnitsRemembered(false);
+        state.rememberedUnitSeededFromDocumentThisSession = true;
+        runBackgroundTask(
+          saveSettingsPartial({ lastUnit: docUnit }),
+          "Seed remembered unit from document default"
+        );
       }
 
       async function setParameterGroupForRow(row, requestedGroupName) {
@@ -9327,7 +9431,8 @@
             state.fusionThemeApplied = true;
           }
           state.hasLoadedFusionSettings = true;
-          applySettings(mergedSettings, { deferColumnLayout: !state.initialLayoutDone });
+          applySettings(mergedSettings, { deferColumnLayout: !state.initialLayoutDone, fromBackend: true });
+          maybeSeedRememberedUnitFromDocumentDefaults();
         }
 
         if (payload.textTunerState && typeof payload.textTunerState === "object") {
@@ -11466,8 +11571,8 @@
 
         setNameError("");
         setExpressionError("");
-        closeUnitPicker();
-        hideExpressionSuggestions();
+        setUnitMenuOpen(false);
+        closeExpressionSuggestions();
         if (shouldRestoreFocus) {
           requestAnimationFrame(() => launchButton.focus());
         }
@@ -12314,12 +12419,16 @@
       document.getElementById("rememberUnitToggle").addEventListener("click", async () => {
         const nextValue = !state.settings.rememberUnit;
         const previousValue = state.settings.rememberUnit;
+        const previousHasRemembered = state.hasRememberedUnitSelection;
 
         state.settings.rememberUnit = nextValue;
         renderToggle("rememberUnitToggle", nextValue);
         if (!nextValue) {
           applySelectedUnit(state.documentDefaults.unit || "mm");
           renderUnitPicker();
+        } else {
+          state.hasRememberedUnitSelection = true;
+          setExplicitNoUnitsRemembered(state.createUnit === "");
         }
 
         setGlobalStatus("Saving unit preference...");
@@ -12331,6 +12440,7 @@
           }, `Remember Unit ${nextValue ? "enabled" : "disabled"}.`);
         } catch (error) {
           state.settings.rememberUnit = previousValue;
+          state.hasRememberedUnitSelection = previousHasRemembered;
           renderToggle("rememberUnitToggle", previousValue);
           syncDefaultUnit(true);
           setGlobalStatus(error.message, "error");
@@ -12426,7 +12536,7 @@
             }
 
             state.customUnitFeedback = { message: "", kind: "" };
-            applySelectedUnit(normalizedUnit, { persistLastUnit: true });
+            applySelectedUnit(normalizedUnit, { persistLastUnit: true, markRememberedSelection: true });
             const nextCustomUnits = [normalizedUnit, ...(state.settings.customUnits || [])]
               .filter((v, i, arr) => arr.findIndex((u) => u.toLowerCase() === v.toLowerCase()) === i)
               .slice(0, 40);
@@ -12449,7 +12559,7 @@
         const unitButton = event.target.closest("[data-unit-value]");
         if (unitButton) {
           const unitValue = unitButton.getAttribute("data-unit-value");
-          applySelectedUnit(unitValue, { persistLastUnit: true });
+          applySelectedUnit(unitValue, { persistLastUnit: true, markRememberedSelection: true });
           renderUnitPicker();
           setUnitMenuOpen(false);
 
