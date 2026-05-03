@@ -1236,6 +1236,10 @@
         opacity: 0.95;
       }
 
+      body.always-show-row-drag-handles .reorder-handle::before {
+        opacity: 0.72;
+      }
+
       .reorder-handle:active {
         cursor: grabbing;
       }
@@ -3337,6 +3341,27 @@
           </div>
         </section>
       </div>
+      <div id="confirmModalBackdrop" class="create-modal-backdrop" hidden></div>
+      <div id="confirmModal" class="create-modal" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle" hidden>
+        <section class="card create-modal-card">
+          <div class="create-modal-header">
+            <h2 id="confirmModalTitle" class="create-modal-title">Confirmation</h2>
+            <button id="confirmModalCloseButton" class="ghost icon-btn" type="button" aria-label="Close confirmation dialog">
+              <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+                <line x1="3" y1="3" x2="13" y2="13"></line>
+                <line x1="13" y1="3" x2="3" y2="13"></line>
+              </svg>
+            </button>
+          </div>
+          <div class="create-modal-body stack section">
+            <p id="confirmModalMessage"></p>
+            <div class="actions">
+              <button id="confirmModalConfirmButton" class="primary" type="button">OK</button>
+              <button id="confirmModalCancelButton" class="ghost" type="button">Cancel</button>
+            </div>
+          </div>
+        </section>
+      </div>
       <div id="settingsBackdrop" class="settings-backdrop" hidden></div>
       <aside id="settingsPanel" class="settings-panel" hidden aria-hidden="true">
         <div class="settings-panel-header">
@@ -3368,6 +3393,7 @@
               <button id="autoOpenOnStartToggle" class="toggle" type="button" aria-pressed="false" aria-label="Toggle open on startup"></button>
             </div>
             <div class="actions">
+              <button id="alwaysShowRowDragHandleToggle" class="ghost" type="button">Show Drag Handle: Off</button>
               <button id="commentColumnButton" class="ghost" type="button">Comment: Off</button>
               <button id="textTunerSidebarButton" class="ghost" type="button">Text Tuner: On</button>
               <button id="toggleRevertButtonsButton" class="ghost" type="button">Show Revert: On</button>
@@ -3465,6 +3491,7 @@
         <div class="reorder-menu-actions">
           <button id="moveRowTopButton" class="ghost" type="button">Move to Group Top</button>
           <button id="moveRowBottomButton" class="ghost" type="button">Move to Group Bottom</button>
+          <button id="deleteSelectedFromRowMenuButton" class="ghost delete" type="button">Delete Selected Parameters</button>
         </div>
         <div class="reorder-menu-row">
           <input id="moveRowNumberInput" type="number" min="1" step="1" placeholder="Group Row #" />
@@ -4077,6 +4104,7 @@
           unitCategoryState: { ...DEFAULT_UNIT_CATEGORY_STATE },
           customUnits: [...DEFAULT_CUSTOM_UNITS],
           showRevertButtons: DEFAULT_SHOW_REVERT_BUTTONS,
+          alwaysShowRowDragHandle: false,
           showCommentColumn: DEFAULT_SHOW_COMMENT_COLUMN,
           showTextTunerSidebar: DEFAULT_SHOW_TEXT_TUNER_SIDEBAR,
           autoFitColumns: true,
@@ -4244,10 +4272,19 @@
       let selectedActionInFlight = false;
       let rowExpressionValidationTimersByInput = new Map();
       let rowNameValidationTimersByInput = new Map();
+      let pendingConfirmResolver = null;
 
       function reportBackgroundFailure(contextLabel, error) {
         const reason = String(error?.message || error || "Unknown error");
         appendStatusHistory(`${contextLabel} failed (${reason}).`, "warning");
+      }
+
+      function updateSharedModalBodyClass() {
+        const createModal = document.getElementById("createModal");
+        const confirmModal = document.getElementById("confirmModal");
+        const createOpen = !!(createModal && !createModal.hidden);
+        const confirmOpen = !!(confirmModal && !confirmModal.hidden);
+        document.body.classList.toggle("create-modal-open", createOpen || confirmOpen);
       }
 
       function runBackgroundTask(taskPromise, contextLabel) {
@@ -4853,6 +4890,15 @@
         const button = document.getElementById("autoFitColumnsButton");
         const isOn = state.settings.autoFitColumns === true;
         button.textContent = `Auto Fit: ${isOn ? "On" : "Off"}`;
+      }
+
+      function renderAlwaysShowRowDragHandleToggle() {
+        const button = document.getElementById("alwaysShowRowDragHandleToggle");
+        const isOn = state.settings.alwaysShowRowDragHandle !== false;
+        if (button) {
+          button.textContent = `Show Drag Handle: ${isOn ? "On" : "Off"}`;
+        }
+        document.body.classList.toggle("always-show-row-drag-handles", isOn);
       }
 
       function renderCommentColumnToggle() {
@@ -6958,7 +7004,7 @@
         const confirmMessage = count === 1
           ? `Delete parameter "${targets[0].name}"?`
           : `Delete ${count} selected parameters${namesPreview ? ` (${namesPreview}${previewSuffix})` : ""}?`;
-        if (!window.confirm(confirmMessage)) {
+        if (!(await requestConfirmation(confirmMessage, { confirmLabel: "Delete", cancelLabel: "Cancel" }))) {
           return;
         }
 
@@ -8081,6 +8127,7 @@
         const listLabel = document.getElementById("moveRowGroupListLabel");
         const newGroupLabel = document.getElementById("moveRowNewGroupLabel");
         const assignButton = document.getElementById("moveRowGroupButton");
+        const deleteButton = document.getElementById("deleteSelectedFromRowMenuButton");
         const count = getReorderMenuGroupAssignmentTargets().length;
         const plural = count === 1 ? "" : "s";
         if (listLabel) {
@@ -8092,6 +8139,11 @@
         if (assignButton) {
           assignButton.textContent = count > 1 ? `Create + Assign ${count} Selected` : "Create + Assign";
           assignButton.title = count > 1 ? `Create group and assign ${count} selected parameter${plural}.` : "";
+        }
+        if (deleteButton) {
+          deleteButton.textContent = count > 1 ? `Delete ${count} Selected` : "Delete Selected Parameters";
+          deleteButton.disabled = count <= 0;
+          deleteButton.title = count > 0 ? `Delete ${count} selected parameter${plural}.` : "No target parameters available.";
         }
       }
 
@@ -8761,6 +8813,9 @@
           showRevertButtons: typeof settings.showRevertButtons === "boolean"
             ? settings.showRevertButtons
             : (state.settings.showRevertButtons !== false),
+          alwaysShowRowDragHandle: typeof settings.alwaysShowRowDragHandle === "boolean"
+            ? settings.alwaysShowRowDragHandle
+            : (state.settings.alwaysShowRowDragHandle === true),
           showCommentColumn: typeof settings.showCommentColumn === "boolean"
             ? settings.showCommentColumn
             : (state.settings.showCommentColumn === true),
@@ -8794,6 +8849,7 @@
         renderToggle("autoUpdateToggle", state.settings.autoCheckUpdates !== false);
         renderRevertToggle();
         renderAutoFitToggle();
+        renderAlwaysShowRowDragHandleToggle();
         renderAutoOpenToggle();
         renderCommentColumnToggle();
         renderTextTunerSidebarToggle();
@@ -9344,7 +9400,10 @@
         if (!existing) {
           return;
         }
-        const confirmed = window.confirm(`Delete group "${existing}"? Parameters move to Ungrouped.`);
+        const confirmed = await requestConfirmation(
+          `Delete group "${existing}"? Parameters move to Ungrouped.`,
+          { confirmLabel: "Delete", cancelLabel: "Cancel" }
+        );
         if (!confirmed) {
           return;
         }
@@ -11541,7 +11600,7 @@
 
         backdrop.hidden = !isOpen;
         modal.hidden = !isOpen;
-        document.body.classList.toggle("create-modal-open", isOpen);
+        updateSharedModalBodyClass();
         launchButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
 
         if (isOpen) {
@@ -11578,6 +11637,66 @@
         }
       }
 
+      function resolvePendingConfirmation(result) {
+        if (typeof pendingConfirmResolver === "function") {
+          const resolver = pendingConfirmResolver;
+          pendingConfirmResolver = null;
+          resolver(result === true);
+        }
+      }
+
+      function setConfirmModalOpen(isOpen, options = {}) {
+        const backdrop = document.getElementById("confirmModalBackdrop");
+        const modal = document.getElementById("confirmModal");
+        const confirmButton = document.getElementById("confirmModalConfirmButton");
+        const cancelButton = document.getElementById("confirmModalCancelButton");
+        if (!backdrop || !modal || !confirmButton || !cancelButton) {
+          if (!isOpen) {
+            resolvePendingConfirmation(false);
+          }
+          return;
+        }
+
+        const shouldResolve = options.resolve !== false;
+        const wasOpen = !modal.hidden;
+        if (wasOpen === isOpen) {
+          return;
+        }
+
+        backdrop.hidden = !isOpen;
+        modal.hidden = !isOpen;
+        updateSharedModalBodyClass();
+
+        if (isOpen) {
+          setSettingsPanelOpen(false);
+          requestAnimationFrame(() => confirmButton.focus());
+          return;
+        }
+
+        if (shouldResolve) {
+          resolvePendingConfirmation(options.result === true);
+        }
+      }
+
+      function requestConfirmation(message, options = {}) {
+        const messageNode = document.getElementById("confirmModalMessage");
+        const confirmButton = document.getElementById("confirmModalConfirmButton");
+        const cancelButton = document.getElementById("confirmModalCancelButton");
+        if (!messageNode || !confirmButton || !cancelButton) {
+          return Promise.resolve(window.confirm(String(message || "Are you sure?")));
+        }
+
+        resolvePendingConfirmation(false);
+        messageNode.textContent = String(message || "Are you sure?");
+        confirmButton.textContent = String(options.confirmLabel || "OK");
+        cancelButton.textContent = String(options.cancelLabel || "Cancel");
+
+        setConfirmModalOpen(true);
+        return new Promise((resolve) => {
+          pendingConfirmResolver = resolve;
+        });
+      }
+
       document.getElementById("newParamButton").addEventListener("click", () => {
         setCreateModalOpen(true, { focusName: true });
       });
@@ -11588,6 +11707,22 @@
 
       document.getElementById("createModalBackdrop").addEventListener("click", () => {
         setCreateModalOpen(false);
+      });
+
+      document.getElementById("confirmModalConfirmButton").addEventListener("click", () => {
+        setConfirmModalOpen(false, { result: true });
+      });
+
+      document.getElementById("confirmModalCancelButton").addEventListener("click", () => {
+        setConfirmModalOpen(false, { result: false });
+      });
+
+      document.getElementById("confirmModalCloseButton").addEventListener("click", () => {
+        setConfirmModalOpen(false, { result: false });
+      });
+
+      document.getElementById("confirmModalBackdrop").addEventListener("click", () => {
+        setConfirmModalOpen(false, { result: false });
       });
 
       document.getElementById("themeToggle").addEventListener("click", async () => {
@@ -12303,6 +12438,84 @@
         }
       });
 
+      document.getElementById("deleteSelectedFromRowMenuButton").addEventListener("click", async () => {
+        cancelReorderMenuClose();
+        const targets = getReorderMenuGroupAssignmentTargets();
+        if (!targets.length) {
+          closeReorderMenu();
+          setGlobalStatus("Select one or more parameters to delete.", "warning");
+          return;
+        }
+        closeReorderMenu();
+        if (hasBlockingLocalEdits()) {
+          setGlobalStatus("Save or discard local edits before delete.", "error");
+          return;
+        }
+
+        const count = targets.length;
+        const namesPreview = targets.slice(0, 3).map((item) => item.name).filter(Boolean).join(", ");
+        const previewSuffix = count > 3 ? ", ..." : "";
+        const confirmMessage = count === 1
+          ? `Delete parameter "${targets[0].name}"?`
+          : `Delete ${count} selected parameters${namesPreview ? ` (${namesPreview}${previewSuffix})` : ""}?`;
+        if (!(await requestConfirmation(confirmMessage, { confirmLabel: "Delete", cancelLabel: "Cancel" }))) {
+          return;
+        }
+
+        selectedActionInFlight = true;
+        renderSelectedActionButtons();
+        setGlobalStatus(`Deleting ${count} selected parameter${count === 1 ? "" : "s"}...`);
+        const selectedKeys = targets.map((item) => String(item.key || "")).filter(Boolean);
+        const selectedNames = targets.map((item) => String(item.name || "")).filter(Boolean);
+        try {
+          const response = await sendToFusion(ACTION.DELETE_PARAMETERS, {
+            keys: selectedKeys,
+            names: selectedNames
+          });
+          if (!response.ok) {
+            throw new Error(response.message || "Delete failed.");
+          }
+
+          const failedDetails = Array.isArray(response.failedDetails) ? response.failedDetails : [];
+          const failedKeys = new Set(
+            failedDetails
+              .map((detail) => String(detail?.key || ""))
+              .filter(Boolean)
+          );
+          const deletedKeys = selectedKeys.filter((key) => !failedKeys.has(key));
+          clearLocalCachesForParameterKeys(deletedKeys);
+          state.selectedRowKeys = getSelectedParameterKeys().filter((key) => !deletedKeys.includes(key));
+          if (state.selectedRow && deletedKeys.includes(String(state.selectedRow.key || ""))) {
+            state.selectedRow = null;
+          }
+          if (state.selectionAnchorKey && deletedKeys.includes(String(state.selectionAnchorKey || ""))) {
+            state.selectionAnchorKey = "";
+          }
+
+          applyStateFromFusion(response, { source: "response", action: ACTION.DELETE_PARAMETERS });
+          closeReorderMenu();
+
+          const deletedCount = Number(response.deletedCount || 0);
+          const failedCount = Number(response.failedCount || 0);
+          if (failedCount > 0) {
+            const first = failedDetails[0];
+            const firstName = String(first?.name || "").trim();
+            const firstMessage = String(first?.message || "").trim();
+            setGlobalStatus(
+              `Deleted ${deletedCount}, failed ${failedCount}.${firstMessage ? ` ${firstName ? `${firstName}: ` : ""}${firstMessage}` : ""}`,
+              deletedCount > 0 ? "warning" : "error"
+            );
+          } else {
+            setGlobalStatus(`Deleted ${deletedCount} parameter${deletedCount === 1 ? "" : "s"}.`, "success");
+          }
+        } catch (error) {
+          setGlobalStatus(error.message || "Delete failed.", "error");
+        } finally {
+          selectedActionInFlight = false;
+          renderSelectedActionButtons();
+        }
+      });
+
       document.getElementById("reorderMenu").addEventListener("mousedown", (event) => {
         cancelReorderMenuClose();
         event.stopPropagation();
@@ -12391,16 +12604,11 @@
       });
 
       parameterRows.addEventListener("contextmenu", (event) => {
-        const handle = event.target.closest("[data-reorder-handle]");
-        if (!handle) {
+        const row = event.target.closest("tr.parameter-row[data-parameter-key]");
+        if (!row) {
           return;
         }
         if (document.body.classList.contains("narrow-stack")) {
-          return;
-        }
-
-        const row = handle.closest("tr[data-parameter-key]");
-        if (!row) {
           return;
         }
         if (hasBlockingLocalEdits()) {
@@ -12409,6 +12617,7 @@
         }
 
         event.preventDefault();
+        event.stopPropagation();
         if (state.searchQuery.trim()) {
           setGlobalStatus("Reorder disabled while search is active. Group assignment still available.");
         }
@@ -12641,7 +12850,8 @@
       document.addEventListener("contextmenu", (event) => {
         const reorderMenu = event.target.closest("#reorderMenu");
         const reorderHandle = event.target.closest("[data-reorder-handle]");
-        if (!reorderMenu && !reorderHandle) {
+        const parameterRow = event.target.closest("tr.parameter-row[data-parameter-key]");
+        if (!reorderMenu && !reorderHandle && !parameterRow) {
           closeReorderMenu();
         }
       });
@@ -12847,6 +13057,20 @@
         } catch (error) {
           state.settings.autoOpenOnStart = previousValue;
           renderAutoOpenToggle();
+          setGlobalStatus(error.message, "error");
+        }
+      });
+
+      document.getElementById("alwaysShowRowDragHandleToggle").addEventListener("click", async () => {
+        const previousValue = state.settings.alwaysShowRowDragHandle !== false;
+        const nextValue = !previousValue;
+        state.settings.alwaysShowRowDragHandle = nextValue;
+        renderAlwaysShowRowDragHandleToggle();
+        try {
+          await saveSettingsPartial({ alwaysShowRowDragHandle: nextValue });
+        } catch (error) {
+          state.settings.alwaysShowRowDragHandle = previousValue;
+          renderAlwaysShowRowDragHandleToggle();
           setGlobalStatus(error.message, "error");
         }
       });
@@ -13747,6 +13971,11 @@
           return;
         }
         if (event.key !== "Escape") {
+          return;
+        }
+        const confirmModal = document.getElementById("confirmModal");
+        if (confirmModal && !confirmModal.hidden) {
+          setConfirmModalOpen(false, { result: false });
           return;
         }
         const createModal = document.getElementById("createModal");
