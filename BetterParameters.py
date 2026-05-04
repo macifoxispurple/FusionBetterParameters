@@ -3550,7 +3550,9 @@ def _get_parameter_dependency_graph():
         name = param.name
         expression = param.expression or ""
         nodes.append({"name": name, "expression": expression})
-        for match in EXPRESSION_TOKEN_PATTERN.finditer(expression):
+        masked_expr, _ = _mask_expression_literals(expression)
+        scan_expr = masked_expr if masked_expr is not None else expression
+        for match in EXPRESSION_TOKEN_PATTERN.finditer(scan_expr):
             token = match.group(0)
             if token != name and token in known_names:
                 edges.append({"from": name, "to": token})
@@ -3868,17 +3870,78 @@ def _validate_parameter_name_response(name):
     return {"ok": True, "message": ""}
 
 
+def _mask_expression_literals(text):
+    """Replace string/backtick literal regions with ``0`` so EXPRESSION_TOKEN_PATTERN
+    never matches identifiers that live inside a literal.
+
+    Rules:
+    - ``"..."``  – double-quoted strings; ``\"`` is an escape sequence inside them.
+    - `` `...` `` – backtick strings; no escape sequences needed for v1.
+    - The entire literal region (including delimiters) is replaced by a single ``0``
+      digit, which cannot start or extend an identifier token.
+    - An unclosed literal returns ``(None, error_message)``.
+    - Normal characters are kept verbatim so surrounding tokens are unaffected.
+
+    Returns ``(masked_text, None)`` on success or ``(None, error_message)`` on failure.
+    """
+    result = []
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch == '"':
+            i += 1
+            closed = False
+            while i < n:
+                c = text[i]
+                if c == '\\' and i + 1 < n:
+                    i += 2          # skip escaped character
+                elif c == '"':
+                    i += 1
+                    closed = True
+                    break
+                else:
+                    i += 1
+            if not closed:
+                return None, 'Unclosed text literal.'
+            result.append('0')      # entire "..." → single non-token digit
+        elif ch == '`':
+            i += 1
+            closed = False
+            while i < n:
+                c = text[i]
+                if c == '`':
+                    i += 1
+                    closed = True
+                    break
+                else:
+                    i += 1
+            if not closed:
+                return None, 'Unclosed text literal.'
+            result.append('0')      # entire `...` → single non-token digit
+        else:
+            result.append(ch)
+            i += 1
+    return ''.join(result), None
+
+
 def _validate_expression_response(expression, current_parameter_name="", units=""):
     text = (expression or "").strip()
     if not text:
         return {"ok": False, "message": "Expression is required.", "isIncomplete": False}
+
+    # Mask literal regions before token scanning so content inside "..." or `...`
+    # is never misidentified as parameter references.
+    masked, literal_error = _mask_expression_literals(text)
+    if literal_error:
+        return {"ok": False, "message": literal_error, "isIncomplete": False}
 
     parameter_names = set(_collect_all_parameter_names())
     allowed_identifiers = set(ALLOWED_EXPRESSION_IDENTIFIERS)
     allowed_identifiers.update(_known_unit_identifiers())
 
     unknown_tokens = []
-    for match in EXPRESSION_TOKEN_PATTERN.finditer(text):
+    for match in EXPRESSION_TOKEN_PATTERN.finditer(masked):
         token = match.group(0)
         if current_parameter_name and token == current_parameter_name:
             return {

@@ -2388,11 +2388,36 @@
         overflow: hidden;
       }
 
+      .rapid-create-editor-wrap {
+        position: relative;
+      }
+
+      .rapid-create-error-gutter {
+        position: absolute;
+        top: 0;
+        left: 3px;
+        width: 10px;
+        height: 100%;
+        overflow: hidden;
+        pointer-events: none;
+        z-index: 2;
+      }
+
+      .rapid-create-error-marker {
+        position: absolute;
+        left: 0;
+        color: var(--error) !important;
+        font-weight: 700 !important;
+        line-height: 1;
+        pointer-events: none;
+      }
+
       .rapid-create-editor {
         width: 100%;
         min-height: 140px;
         max-height: 220px;
         resize: vertical;
+        padding-left: 14px;
         font-family: Consolas, "Courier New", monospace !important;
         font-size: 12px !important;
         line-height: 1.35 !important;
@@ -2446,6 +2471,7 @@
       .rapid-create-preview {
         width: 100%;
         border-collapse: collapse;
+        table-layout: fixed;
       }
 
       .rapid-create-preview th,
@@ -2454,12 +2480,9 @@
         padding: 4px 6px;
         text-align: left;
         vertical-align: top;
-      }
-
-      .rapid-create-preview td:first-child {
-        white-space: normal;
-        overflow-wrap: anywhere;
-        word-break: break-word;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .rapid-create-preview th {
@@ -2478,10 +2501,19 @@
       }
 
       .rapid-create-preview td:last-child {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
         max-width: 260px;
+      }
+
+      .rapid-create-preview th:nth-child(4),
+      .rapid-create-preview td:nth-child(4) {
+        min-width: 150px;
+        width: 150px;
+      }
+
+      .rapid-create-preview th:nth-child(5),
+      .rapid-create-preview td:nth-child(5) {
+        min-width: 96px;
+        width: 96px;
       }
 
       .rapid-row-unit-button {
@@ -3506,7 +3538,10 @@
           </div>
           <div class="create-modal-body section rapid-create-layout">
             <div class="rapid-create-help">Format: <code>name[TAB]expression[TAB]comment</code> or <code>name,expression,comment</code>.</div>
-            <textarea id="rapidCreateEditor" class="rapid-create-editor" spellcheck="false" placeholder="length\t10mm&#10;width\t25mm&#10;taper\t15deg"></textarea>
+            <div class="rapid-create-editor-wrap">
+              <div id="rapidCreateErrorGutter" class="rapid-create-error-gutter" aria-hidden="true"></div>
+              <textarea id="rapidCreateEditor" class="rapid-create-editor" spellcheck="false" placeholder="length\t10mm&#10;width\t25mm&#10;taper\t15deg"></textarea>
+            </div>
             <div id="rapidCreateActiveStatus" class="rapid-create-active-status"></div>
             <div id="rapidCreateSummary" class="rapid-create-summary"></div>
             <div class="rapid-create-preview-wrap">
@@ -3514,7 +3549,7 @@
                 <thead>
                   <tr>
                     <th>Name</th>
-                    <th>Expression</th>
+                    <th>Value</th>
                     <th>Comment</th>
                     <th>Detected Unit</th>
                     <th>Status</th>
@@ -4343,7 +4378,8 @@
           tokenText: "",
           insertionPrefix: "",
           activeInputId: "",
-          activeParameterName: ""
+          activeParameterName: "",
+          absoluteOffset: 0
         },
         functionHelper: {
           activeInputId: "",
@@ -4464,7 +4500,10 @@
           validating: false,
           activeLineNumber: 1,
           unitOverridesByRowKey: {},
-          lastCommittedText: ""
+          lastCommittedText: "",
+          liveExpressionMessage: "",
+          liveExpressionKind: "",
+          computedByRowKey: {}
         },
         unitMenuContext: {
           mode: "create",
@@ -4480,6 +4519,10 @@
       let pendingConfirmResolver = null;
       let rapidCreateReparseTimer = null;
       let rapidCreateParseNonce = 0;
+      let rapidExpressionValidationTimer = null;
+      let rapidExpressionValidationNonce = 0;
+      let rapidComputeAllRowsTimer = null;
+      let rapidComputeAllRowsNonce = 0;
       let pendingConfirmVariant = "";
 
       function reportBackgroundFailure(contextLabel, error) {
@@ -4508,6 +4551,7 @@
           rowKey: "",
           name: "",
           expression: "",
+          expressionPreview: "",
           comment: "",
           detectedUnit: "",
           isManualUnitOverride: false,
@@ -4604,6 +4648,13 @@
         const value = String(expression || "").trim();
         if (!value) {
           return { kind: "none", unit: "" };
+        }
+        const tickCount = (value.match(/`/g) || []).length;
+        if (tickCount % 2 === 1) {
+          return { kind: "ambiguous", unit: "Unclosed text literal (`...`)." };
+        }
+        if (/`[^`]*`/.test(value)) {
+          return { kind: "candidate", unit: "text" };
         }
         const embeddedUnits = new Set();
         const numericUnitPattern = /(?:^|[^\w.])[-+]?(?:\d+(?:\.\d+)?|\.\d+)\s*([A-Za-z°µ"][A-Za-z0-9°µ"\/-]*)/g;
@@ -4730,7 +4781,11 @@
           if (!hasManualUnitOverride) {
             const detection = detectRapidExpressionUnitCandidate(row.expression);
             if (detection.kind === "ambiguous") {
-              row.unitErrors.push(`Ambiguous unit-like suffix "${detection.unit}".`);
+              if (String(detection.unit || "").toLowerCase().includes("text literal")) {
+                row.unitErrors.push(String(detection.unit || "Unclosed text literal."));
+              } else {
+                row.unitErrors.push(`Ambiguous unit-like suffix "${detection.unit}".`);
+              }
               if (mode === "commit") {
                 setRapidRowHardError(row, row.unitErrors[0], "error");
               } else {
@@ -4800,6 +4855,12 @@
               row.detectedUnit = String(existing.value || "");
             }
           }
+          if (row.rowKey) {
+            const computed = state.rapidCreate.computedByRowKey[row.rowKey];
+            if (computed && String(computed.expression || "") === String(row.expression || "")) {
+              row.expressionPreview = String(computed.preview || "");
+            }
+          }
         });
         baseRows.forEach((row) => finalizeRapidRowPresentation(row));
         if (String(parseNonce) !== String(rapidCreateParseNonce)) {
@@ -4811,6 +4872,116 @@
         state.rapidCreate.counts.warnings = baseRows.filter((row) => row.severity === "warning").length;
         state.rapidCreate.counts.errors = baseRows.filter((row) => row.severity === "error").length;
         renderRapidCreatePreview();
+        if (mode === "live") {
+          scheduleRapidComputeForMissingRows();
+        }
+      }
+
+      function scheduleRapidComputeForMissingRows() {
+        if (rapidComputeAllRowsTimer) {
+          window.clearTimeout(rapidComputeAllRowsTimer);
+        }
+        const computeNonce = ++rapidComputeAllRowsNonce;
+        rapidComputeAllRowsTimer = window.setTimeout(async () => {
+          rapidComputeAllRowsTimer = null;
+          const snapshot = Array.isArray(state.rapidCreate.rows) ? state.rapidCreate.rows.slice() : [];
+          let changed = false;
+          for (const row of snapshot) {
+            if (computeNonce !== rapidComputeAllRowsNonce) {
+              return;
+            }
+            if (!row || row.severity === "draft" || !row.rowKey || !String(row.expression || "").trim()) {
+              continue;
+            }
+            // Only backend-preflight rows that passed local parse/name/unit checks.
+            if (row.severity === "ready") {
+              try {
+                const nameValidation = await sendToFusion(ACTION.VALIDATE_PARAMETER_NAME, { name: row.name || "" });
+                if (computeNonce !== rapidComputeAllRowsNonce) {
+                  return;
+                }
+                const liveRow = (state.rapidCreate.rows || []).find((item) => String(item.rowKey || "") === String(row.rowKey || ""));
+                if (!nameValidation.ok) {
+                  if (liveRow) {
+                    liveRow.nameErrors = [String(nameValidation.message || "Invalid parameter name.")];
+                    liveRow.severity = "error";
+                    liveRow.status = "error";
+                    liveRow.message = liveRow.nameErrors[0];
+                    changed = true;
+                  }
+                  continue;
+                }
+                const expressionValidation = await sendToFusion(ACTION.VALIDATE_EXPRESSION, {
+                  expression: normalizeRapidExpressionForFusion(row.expression, row.detectedUnit || ""),
+                  currentParameterName: "",
+                  units: row.detectedUnit || ""
+                });
+                if (computeNonce !== rapidComputeAllRowsNonce) {
+                  return;
+                }
+                if (!expressionValidation.ok) {
+                  if (liveRow) {
+                    liveRow.expressionErrors = [String(expressionValidation.message || "Invalid expression.")];
+                    liveRow.severity = "error";
+                    liveRow.status = "error";
+                    liveRow.message = liveRow.expressionErrors[0];
+                    changed = true;
+                  }
+                  continue;
+                }
+                if (liveRow && liveRow.severity !== "ready") {
+                  liveRow.severity = "ready";
+                  liveRow.status = "ready";
+                  liveRow.message = "Ready";
+                  changed = true;
+                }
+              } catch (_error) {
+                if (computeNonce !== rapidComputeAllRowsNonce) {
+                  return;
+                }
+              }
+            }
+            const existing = state.rapidCreate.computedByRowKey[row.rowKey];
+            if (existing && String(existing.expression || "") === String(row.expression || "")) {
+              continue;
+            }
+            try {
+              const response = await sendToFusion(ACTION.PREVIEW_EXPRESSION, {
+                expression: normalizeRapidExpressionForFusion(row.expression, row.detectedUnit || ""),
+                currentParameterName: row.name || "",
+                units: row.detectedUnit || "",
+                fallbackPreview: ""
+              });
+              if (computeNonce !== rapidComputeAllRowsNonce) {
+                return;
+              }
+              if (!response.ok) {
+                continue;
+              }
+              const previewText = String(response.preview || "").trim();
+              state.rapidCreate.computedByRowKey[row.rowKey] = {
+                expression: row.expression,
+                preview: previewText
+              };
+              const liveRow = (state.rapidCreate.rows || []).find((item) => String(item.rowKey || "") === String(row.rowKey || ""));
+              if (liveRow && String(liveRow.expression || "") === String(row.expression || "")) {
+                liveRow.expressionPreview = previewText;
+                changed = true;
+              }
+            } catch (_error) {
+              if (computeNonce !== rapidComputeAllRowsNonce) {
+                return;
+              }
+            }
+          }
+          if (changed) {
+            const liveRows = Array.isArray(state.rapidCreate.rows) ? state.rapidCreate.rows : [];
+            state.rapidCreate.counts.ready = liveRows.filter((item) => item.severity === "ready").length;
+            state.rapidCreate.counts.warnings = liveRows.filter((item) => item.severity === "warning").length;
+            state.rapidCreate.counts.errors = liveRows.filter((item) => item.severity === "error").length;
+            renderRapidCreatePreview();
+          }
+        }, 150);
       }
 
       function renderRapidCreatePreview() {
@@ -4830,12 +5001,15 @@
           `<span class="rapid-create-chip">Failed: ${counts.failed || 0}</span>`
         ].join("");
         const rows = Array.isArray(state.rapidCreate.rows) ? state.rapidCreate.rows : [];
+        updateRapidEditorValidationStyling(rows);
         if (activeStatus) {
           const activeLine = Number(state.rapidCreate.activeLineNumber || 0);
           const activeRow = rows.find((row) => Number(row.lineNumber || 0) === activeLine);
-          activeStatus.textContent = activeRow
+          const baseMessage = activeRow
             ? `${activeRow.isManualUnitOverride ? "(MANUAL) " : ""}${String(activeRow.status || "draft").toUpperCase()}: ${String(activeRow.message || "Continue typing.")}`
             : "";
+          const liveMessage = String(state.rapidCreate.liveExpressionMessage || "");
+          activeStatus.textContent = liveMessage ? `${baseMessage} | ${liveMessage}` : baseMessage;
         }
         const hardErrors = rows.filter((row) => row.severity === "error").length;
         const commitEligible = rows.filter((row) => row.severity === "ready").length;
@@ -4855,15 +5029,46 @@
           const statusClass = isError ? "rapid-create-status-error" : (isWarning ? "" : "rapid-create-status-ok");
           const selectedUnit = String(row.detectedUnit || "");
           const unitDisplayLabel = selectedUnit ? getUnitDisplayLabel(selectedUnit) : "No Units";
-          const unitSelect = `<button class="unit-picker-button rapid-row-unit-button" type="button" data-rapid-row-unit-button="${escapeRapidHtml(row.rowKey || String(row.lineNumber || ""))}" aria-haspopup="true" aria-expanded="false">${escapeRapidHtml(unitDisplayLabel)}</button>`;
+          const unitSelect = `<button class="unit-picker-button rapid-row-unit-button" type="button" data-rapid-row-unit-button="${escapeRapidHtml(row.rowKey || String(row.lineNumber || ""))}" aria-haspopup="true" aria-expanded="false" title="${escapeRapidHtml(unitDisplayLabel)}">${escapeRapidHtml(unitDisplayLabel)}</button>`;
+          const expressionDisplay = String(row.expressionPreview || "").trim() || "—";
           return `<tr>
-            <td>${escapeRapidHtml(row.name)}</td>
-            <td>${escapeRapidHtml(row.expression)}</td>
-            <td>${escapeRapidHtml(row.comment || "")}</td>
+            <td title="${escapeRapidHtml(row.name)}">${escapeRapidHtml(row.name)}</td>
+            <td title="${escapeRapidHtml(row.expression)}">${escapeRapidHtml(expressionDisplay)}</td>
+            <td title="${escapeRapidHtml(row.comment || "")}">${escapeRapidHtml(row.comment || "")}</td>
             <td>${unitSelect}</td>
-            <td class="${statusClass}">${escapeRapidHtml(statusText)}</td>
+            <td class="${statusClass}" title="${escapeRapidHtml(statusText)}">${escapeRapidHtml(statusText)}</td>
           </tr>`;
         }).join("");
+      }
+
+      function updateRapidEditorValidationStyling(rowsInput = null) {
+        const editor = document.getElementById("rapidCreateEditor");
+        const gutter = document.getElementById("rapidCreateErrorGutter");
+        if (!editor) {
+          return;
+        }
+        const rows = Array.isArray(rowsInput) ? rowsInput : (Array.isArray(state.rapidCreate.rows) ? state.rapidCreate.rows : []);
+        if (!gutter) {
+          return;
+        }
+        gutter.style.height = `${editor.clientHeight}px`;
+        const style = window.getComputedStyle(editor);
+        const lineHeight = Math.max(12, parseFloat(style.lineHeight || "16") || 16);
+        const paddingTop = Math.max(0, parseFloat(style.paddingTop || "0") || 0);
+        const scrollTop = Number(editor.scrollTop || 0);
+        const visibleBottom = scrollTop + Number(editor.clientHeight || 0);
+        const markers = [];
+        rows
+          .filter((row) => row && row.severity === "error" && Number(row.lineNumber || 0) > 0)
+          .forEach((row) => {
+            const top = paddingTop + ((Number(row.lineNumber) - 1) * lineHeight);
+            if (top + lineHeight < scrollTop || top > visibleBottom) {
+              return;
+            }
+            const markerTop = Math.max(0, top - scrollTop + (lineHeight / 2) - 6);
+            markers.push(`<div class="rapid-create-error-marker" style="top:${markerTop}px;">&gt;</div>`);
+          });
+        gutter.innerHTML = markers.join("");
       }
 
       function setRapidCreateModalOpen(isOpen, options = {}) {
@@ -4886,6 +5091,9 @@
             state.rapidCreate.rows = [];
             state.rapidCreate.counts = { ready: 0, warnings: 0, errors: 0, created: 0, failed: 0 };
             state.rapidCreate.unitOverridesByRowKey = {};
+            state.rapidCreate.computedByRowKey = {};
+            state.rapidCreate.liveExpressionMessage = "";
+            state.rapidCreate.liveExpressionKind = "";
             if (editor) {
               editor.value = "";
             }
@@ -4899,10 +5107,28 @@
           state.rapidCreate.rows = [];
           state.rapidCreate.counts = { ready: 0, warnings: 0, errors: 0, created: 0, failed: 0 };
           state.rapidCreate.unitOverridesByRowKey = {};
+          state.rapidCreate.computedByRowKey = {};
           state.rapidCreate.lastCommittedText = "";
+          state.rapidCreate.liveExpressionMessage = "";
+          state.rapidCreate.liveExpressionKind = "";
           if (editor) {
             editor.value = "";
           }
+        }
+        if (rapidExpressionValidationTimer) {
+          window.clearTimeout(rapidExpressionValidationTimer);
+          rapidExpressionValidationTimer = null;
+        }
+        if (rapidComputeAllRowsTimer) {
+          window.clearTimeout(rapidComputeAllRowsTimer);
+          rapidComputeAllRowsTimer = null;
+        }
+        rapidComputeAllRowsNonce += 1;
+        if (state.expressionAutocomplete.activeInputId === "rapidCreateEditor") {
+          closeExpressionSuggestions();
+        }
+        if (state.functionHelper.activeInputId === "rapidCreateEditor") {
+          closeFunctionHelper();
         }
       }
 
@@ -4915,6 +5141,164 @@
         const current = getRapidCreateEditorValue();
         const baseline = String(state.rapidCreate.lastCommittedText || "");
         return current.trim().length > 0 && current !== baseline;
+      }
+
+      function getRapidActiveExpressionContext(editor) {
+        if (!editor) {
+          return null;
+        }
+        const text = String(editor.value || "");
+        const cursor = Math.max(0, Math.min(Number(editor.selectionStart ?? text.length), text.length));
+        const lineStart = text.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
+        const nextBreak = text.indexOf("\n", cursor);
+        const lineEnd = nextBreak >= 0 ? nextBreak : text.length;
+        const lineText = text.slice(lineStart, lineEnd);
+        if (!lineText.trim()) {
+          return null;
+        }
+        const delimiters = [];
+        for (let i = 0; i < lineText.length; i += 1) {
+          const ch = lineText.charAt(i);
+          if (ch === "\t" || ch === ",") {
+            delimiters.push(i);
+            if (delimiters.length >= 2) {
+              break;
+            }
+          }
+        }
+        if (!delimiters.length) {
+          return null;
+        }
+        const first = delimiters[0];
+        const second = delimiters.length > 1 ? delimiters[1] : lineText.length;
+        const rawExprStart = first + 1;
+        const rawExprEnd = second;
+        const rawExpr = lineText.slice(rawExprStart, rawExprEnd);
+        const leadWs = (rawExpr.match(/^\s*/) || [""])[0].length;
+        const tailWs = (rawExpr.match(/\s*$/) || [""])[0].length;
+        const exprStartLocal = rawExprStart + leadWs;
+        const exprEndLocal = Math.max(exprStartLocal, rawExprEnd - tailWs);
+        const exprStartAbsolute = lineStart + exprStartLocal;
+        const exprEndAbsolute = lineStart + exprEndLocal;
+        if (cursor < exprStartAbsolute || cursor > exprEndAbsolute) {
+          return null;
+        }
+        const expression = text.slice(exprStartAbsolute, exprEndAbsolute);
+        const name = String(lineText.slice(0, first) || "").trim();
+        const relativeCursor = Math.max(0, Math.min(cursor - exprStartAbsolute, expression.length));
+        const lineNumber = text.slice(0, lineStart).split(/\r?\n/).length;
+        const row = (state.rapidCreate.rows || []).find((item) => Number(item.lineNumber || 0) === lineNumber);
+        return {
+          lineNumber,
+          name,
+          expression,
+          expressionStartAbsolute: exprStartAbsolute,
+          expressionEndAbsolute: exprEndAbsolute,
+          relativeCursor,
+          unit: String(row?.detectedUnit || "")
+        };
+      }
+
+      function normalizeRapidExpressionForFusion(expression, units = "") {
+        let raw = String(expression || "");
+        const normalizedUnits = String(units || "").trim().toLowerCase();
+        // For text-unit rows, ensure Fusion always receives a backtick-delimited text literal.
+        if (normalizedUnits === "text") {
+          if (raw.startsWith("`") && raw.endsWith("`") && raw.length >= 2) {
+            return raw;
+          } else {
+            return `\`${raw}\``;
+          }
+        }
+        // For non-text units, submit exactly what the user authored and let
+        // backend/Fusion validation handle literal semantics.
+        return raw;
+      }
+
+      function updateRapidCreateExpressionAssist(editor) {
+        const context = getRapidActiveExpressionContext(editor);
+        if (!context || !context.expression) {
+          closeExpressionSuggestions();
+          closeFunctionHelper();
+          return;
+        }
+        const proxyInput = {
+          id: "rapidCreateEditor",
+          value: context.expression,
+          selectionStart: context.relativeCursor,
+          selectionEnd: context.relativeCursor,
+          getBoundingClientRect: () => editor.getBoundingClientRect(),
+          focus: () => editor.focus(),
+          setSelectionRange: (start, end) => editor.setSelectionRange(
+            context.expressionStartAbsolute + start,
+            context.expressionStartAbsolute + end
+          ),
+          classList: {
+            contains: () => false
+          }
+        };
+        updateExpressionSuggestions(proxyInput, context.name);
+        if (state.expressionAutocomplete.activeInputId === "rapidCreateEditor") {
+          state.expressionAutocomplete.absoluteOffset = context.expressionStartAbsolute;
+        }
+        updateFunctionHelper(proxyInput);
+      }
+
+      async function validateRapidActiveExpressionAgainstFusion() {
+        const editor = document.getElementById("rapidCreateEditor");
+        const context = getRapidActiveExpressionContext(editor);
+        if (!context || !context.expression.trim()) {
+          state.rapidCreate.liveExpressionMessage = "";
+          state.rapidCreate.liveExpressionKind = "";
+          renderRapidCreatePreview();
+          return;
+        }
+        const activeRow = (state.rapidCreate.rows || []).find((row) => Number(row.lineNumber || 0) === Number(context.lineNumber || 0));
+        const activeRowKey = String(activeRow?.rowKey || "");
+        const nonce = ++rapidExpressionValidationNonce;
+        try {
+          const response = await sendToFusion(ACTION.PREVIEW_EXPRESSION, {
+            expression: normalizeRapidExpressionForFusion(context.expression, context.unit || ""),
+            currentParameterName: context.name || "",
+            units: context.unit || "",
+            fallbackPreview: ""
+          });
+          if (nonce !== rapidExpressionValidationNonce) {
+            return;
+          }
+          state.rapidCreate.liveExpressionKind = response.ok ? "success" : "error";
+          state.rapidCreate.liveExpressionMessage = response.ok
+            ? "Expression valid."
+            : String(response.message || "Invalid expression.");
+          if (response.ok && activeRowKey) {
+            const previewText = String(response.preview || "").trim();
+            state.rapidCreate.computedByRowKey[activeRowKey] = {
+              expression: context.expression,
+              preview: previewText
+            };
+            if (activeRow && String(activeRow.expression || "") === String(context.expression || "")) {
+              activeRow.expressionPreview = previewText;
+            }
+          } else if (!response.ok && activeRowKey) {
+            delete state.rapidCreate.computedByRowKey[activeRowKey];
+            if (activeRow) {
+              activeRow.expressionPreview = "";
+            }
+          }
+        } catch (error) {
+          if (nonce !== rapidExpressionValidationNonce) {
+            return;
+          }
+          state.rapidCreate.liveExpressionKind = "error";
+          state.rapidCreate.liveExpressionMessage = String(error?.message || "Expression validation failed.");
+          if (activeRowKey) {
+            delete state.rapidCreate.computedByRowKey[activeRowKey];
+            if (activeRow) {
+              activeRow.expressionPreview = "";
+            }
+          }
+        }
+        renderRapidCreatePreview();
       }
 
       async function requestRapidCreateClose() {
@@ -4964,7 +5348,7 @@
             }
             const units = row.detectedUnit || "";
             const expressionValidation = await sendToFusion(ACTION.VALIDATE_EXPRESSION, {
-              expression: row.expression,
+              expression: normalizeRapidExpressionForFusion(row.expression, units),
               currentParameterName: "",
               units
             });
@@ -4980,7 +5364,7 @@
               const createResponse = await sendToFusion(ACTION.CREATE_PARAMETER, {
                 name: row.name,
                 unit: units,
-                expression: row.expression,
+                expression: normalizeRapidExpressionForFusion(row.expression, units),
                 comment: String(row.comment || "")
               });
               if (!createResponse.ok) {
@@ -5005,6 +5389,13 @@
           state.rapidCreate.counts.errors = rows.filter((row) => row.severity === "error").length;
           renderRapidCreatePreview();
           const skippedCount = rows.filter((row) => row.createState === "skipped").length;
+          const editor = document.getElementById("rapidCreateEditor");
+          if (editor) {
+            const remainingLines = rows
+              .filter((row) => row.createState !== "created")
+              .map((row) => String(row.rawLine || "").trimEnd());
+            editor.value = remainingLines.join("\n");
+          }
           if (state.rapidCreate.counts.failed === 0 && skippedCount === 0) {
             state.rapidCreate.lastCommittedText = getRapidCreateEditorValue();
           }
@@ -5039,6 +5430,45 @@
           row.detectedUnit = selectedUnit;
           row.isManualUnitOverride = true;
         }
+      }
+
+      function rewriteRapidRowLine(row, nextExpression) {
+        if (!row || !Number(row.lineNumber || 0)) {
+          return false;
+        }
+        const editor = document.getElementById("rapidCreateEditor");
+        if (!editor) {
+          return false;
+        }
+        const lines = String(editor.value || "").split(/\r?\n/);
+        const idx = Math.max(0, Number(row.lineNumber || 1) - 1);
+        if (idx >= lines.length) {
+          return false;
+        }
+        const expression = String(nextExpression || "");
+        const delimiter1 = "\t";
+        const delimiter2 = row.comment ? "\t" : "";
+        lines[idx] = `${String(row.name || "")}${delimiter1}${expression}${delimiter2}${String(row.comment || "")}`;
+        const previousSelectionStart = Number(editor.selectionStart || 0);
+        const previousSelectionEnd = Number(editor.selectionEnd || previousSelectionStart);
+        editor.value = lines.join("\n");
+        const maxPos = editor.value.length;
+        editor.setSelectionRange(Math.min(previousSelectionStart, maxPos), Math.min(previousSelectionEnd, maxPos));
+        editor.dispatchEvent(new Event("input", { bubbles: true }));
+        return true;
+      }
+
+      function wrapRapidExpressionInBackticksForRow(rowKey) {
+        const row = findRapidRowByKey(rowKey);
+        if (!row || !String(row.expression || "").trim()) {
+          return;
+        }
+        const expression = String(row.expression || "");
+        if (expression.startsWith("`") && expression.endsWith("`") && expression.length >= 2) {
+          return;
+        }
+        const wrapped = `\`${expression}\``;
+        rewriteRapidRowLine(row, wrapped);
       }
 
       function runBackgroundTask(taskPromise, contextLabel) {
@@ -10771,7 +11201,8 @@
           tokenText: "",
           insertionPrefix: "",
           activeInputId: "",
-          activeParameterName: ""
+          activeParameterName: "",
+          absoluteOffset: 0
         };
         document.getElementById("expressionSuggestions").hidden = true;
         document.getElementById("expressionSuggestions").innerHTML = "";
@@ -11094,7 +11525,8 @@
             tokenText,
             insertionPrefix: "",
             activeInputId: input.id || "",
-            activeParameterName: parameterName || ""
+            activeParameterName: parameterName || "",
+            absoluteOffset: 0
           };
           positionExpressionSuggestions(input);
           renderExpressionSuggestions();
@@ -11128,7 +11560,8 @@
                 tokenText: letterPart,
                 insertionPrefix: " ",
                 activeInputId: input.id || "",
-                activeParameterName: parameterName || ""
+                activeParameterName: parameterName || "",
+                absoluteOffset: 0
               };
               positionExpressionSuggestions(input);
               renderExpressionSuggestions();
@@ -11147,16 +11580,21 @@
           return;
         }
         const { tokenStart, tokenEnd, insertionPrefix } = state.expressionAutocomplete;
+        const absoluteOffset = Number(state.expressionAutocomplete.absoluteOffset || 0);
+        const replaceStart = tokenStart + absoluteOffset;
+        const replaceEnd = tokenEnd + absoluteOffset;
         const prefix = insertionPrefix || "";
         const isCallable = EXPRESSION_CALLABLE.has(name);
         const insertion = isCallable ? `${prefix}${name}(  )` : `${prefix}${name}`;
-        input.value = `${input.value.slice(0, tokenStart)}${insertion}${input.value.slice(tokenEnd)}`;
-        const caret = tokenStart + prefix.length + name.length + (isCallable ? 2 : 0);
+        input.value = `${input.value.slice(0, replaceStart)}${insertion}${input.value.slice(replaceEnd)}`;
+        const caret = replaceStart + prefix.length + name.length + (isCallable ? 2 : 0);
         input.focus();
         input.setSelectionRange(caret, caret);
         closeExpressionSuggestions();
         if (input.classList.contains("expression-input")) {
           previewRowExpression(input);
+        } else if (input.id === "rapidCreateEditor") {
+          input.dispatchEvent(new Event("input", { bubbles: true }));
         } else {
           validateExpressionAgainstFusion(input);
         }
@@ -12508,6 +12946,7 @@
         const editor = document.getElementById("rapidCreateEditor");
         if (editor) {
           state.rapidCreate.activeLineNumber = getRapidEditorActiveLineNumber(editor.value, editor.selectionStart);
+          updateRapidCreateExpressionAssist(editor);
         }
         if (rapidCreateReparseTimer) {
           window.clearTimeout(rapidCreateReparseTimer);
@@ -12516,11 +12955,94 @@
           rapidCreateReparseTimer = null;
           void buildRapidCreateRowsFromEditor();
         }, 140);
+        if (rapidExpressionValidationTimer) {
+          window.clearTimeout(rapidExpressionValidationTimer);
+        }
+        rapidExpressionValidationTimer = window.setTimeout(() => {
+          rapidExpressionValidationTimer = null;
+          void validateRapidActiveExpressionAgainstFusion();
+        }, 150);
       });
 
       document.getElementById("rapidCreateEditor").addEventListener("keydown", (event) => {
         const input = event.currentTarget;
         if (!input) {
+          return;
+        }
+        if (
+          event.key === "`" &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.altKey
+        ) {
+          const context = getRapidActiveExpressionContext(input);
+          if (context && context.relativeCursor === 0 && !String(context.expression || "").trim()) {
+            event.preventDefault();
+            const start = input.selectionStart || 0;
+            const end = input.selectionEnd || 0;
+            const value = String(input.value || "");
+            input.value = `${value.slice(0, start)}\`\`${value.slice(end)}`;
+            input.setSelectionRange(start + 1, start + 1);
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            return;
+          }
+        }
+        if (
+          event.key === "Backspace" &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.altKey &&
+          input.selectionStart === input.selectionEnd
+        ) {
+          const context = getRapidActiveExpressionContext(input);
+          if (
+            context &&
+            String(context.expression || "") === "``" &&
+            Number(context.relativeCursor || 0) === 1
+          ) {
+            event.preventDefault();
+            const removeStart = context.expressionStartAbsolute;
+            const removeEnd = context.expressionStartAbsolute + 2;
+            input.value = `${input.value.slice(0, removeStart)}${input.value.slice(removeEnd)}`;
+            input.setSelectionRange(removeStart, removeStart);
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            return;
+          }
+          if (context) {
+            const span = findInnermostEmptyFunctionSpanAtCursor(context.expression, context.relativeCursor);
+            if (span) {
+              event.preventDefault();
+              const removeStart = context.expressionStartAbsolute + span.nameStart;
+              const removeEnd = context.expressionStartAbsolute + span.closeIndex + 1;
+              input.value = `${input.value.slice(0, removeStart)}${input.value.slice(removeEnd)}`;
+              input.setSelectionRange(removeStart, removeStart);
+              input.dispatchEvent(new Event("input", { bubbles: true }));
+              return;
+            }
+          }
+        }
+        const { flatItems, highlightedIndex, activeInputId } = state.expressionAutocomplete;
+        const rapidSuggestionsActive = activeInputId === "rapidCreateEditor" && flatItems.length > 0;
+        if (rapidSuggestionsActive && event.key === "ArrowDown") {
+          event.preventDefault();
+          state.expressionAutocomplete.highlightedIndex = (highlightedIndex + 1) % flatItems.length;
+          renderExpressionSuggestions();
+          return;
+        }
+        if (rapidSuggestionsActive && event.key === "ArrowUp") {
+          event.preventDefault();
+          state.expressionAutocomplete.highlightedIndex = (highlightedIndex - 1 + flatItems.length) % flatItems.length;
+          renderExpressionSuggestions();
+          return;
+        }
+        if (rapidSuggestionsActive && event.key === "Enter") {
+          event.preventDefault();
+          applyExpressionSuggestion(flatItems[highlightedIndex]);
+          return;
+        }
+        if (rapidSuggestionsActive && event.key === "Tab") {
+          event.preventDefault();
+          applyExpressionSuggestion(flatItems[highlightedIndex]);
           return;
         }
         if (event.key === "Tab") {
@@ -12549,8 +13071,14 @@
         }
         if (event.key === "Escape") {
           event.preventDefault();
+          if (rapidSuggestionsActive || state.functionHelper.activeInputId === "rapidCreateEditor") {
+            closeExpressionSuggestions();
+            closeFunctionHelper();
+            return;
+          }
           void requestRapidCreateClose();
         }
+        window.requestAnimationFrame(() => updateRapidCreateExpressionAssist(input));
       });
 
       document.getElementById("rapidCreateEditor").addEventListener("click", (event) => {
@@ -12559,7 +13087,17 @@
           return;
         }
         state.rapidCreate.activeLineNumber = getRapidEditorActiveLineNumber(input.value, input.selectionStart);
+        updateRapidCreateExpressionAssist(input);
         renderRapidCreatePreview();
+      });
+
+      document.getElementById("rapidCreateEditor").addEventListener("blur", () => {
+        window.setTimeout(() => closeExpressionSuggestions(), FIELD_HELPER_CLOSE_DELAY_MS);
+        window.setTimeout(() => closeFunctionHelper(), FIELD_HELPER_CLOSE_DELAY_MS);
+      });
+
+      document.getElementById("rapidCreateEditor").addEventListener("scroll", () => {
+        updateRapidEditorValidationStyling();
       });
 
       document.getElementById("rapidCreatePreviewBody").addEventListener("click", (event) => {
@@ -13631,6 +14169,9 @@
             state.settings.customUnits = nextCustomUnits;
             if (unitMenuMode === "rapid" && rapidRowKey) {
               applyRapidManualUnitForRow(rapidRowKey, normalizedUnit);
+              if (String(normalizedUnit || "").trim().toLowerCase() === "text") {
+                wrapRapidExpressionInBackticksForRow(rapidRowKey);
+              }
             } else {
               applySelectedUnit(normalizedUnit, { persistLastUnit: true, markRememberedSelection: true });
             }
@@ -13655,6 +14196,9 @@
           const unitValue = unitButton.getAttribute("data-unit-value");
           if (unitMenuMode === "rapid" && rapidRowKey) {
             applyRapidManualUnitForRow(rapidRowKey, unitValue);
+            if (String(unitValue || "").trim().toLowerCase() === "text") {
+              wrapRapidExpressionInBackticksForRow(rapidRowKey);
+            }
           } else {
             applySelectedUnit(unitValue, { persistLastUnit: true, markRememberedSelection: true });
           }

@@ -29,6 +29,7 @@ Better Parameters gives you:
 - Per-row **Save, Revert, and Discard** with dirty state tracking
 - Expression preview and validation using Fusionâ€™s engine
 - Reliable Shift-range multi-select behavior across grouped rows, including when Favorites duplicate rows are visible
+- **Auto Fit columns** toggle to automatically resize columns when the palette is resized
 - Persistent UI settings (theme, layout, column sizes, etc.)
 
 You can think of it as a much more flexible, always-available version of Fusionâ€™s parameter dialog.
@@ -43,6 +44,16 @@ Parameters can be organized into groups to keep things manageable as your design
 - â€œUngroupedâ€ is treated as a default bucket
 
 Grouping and ordering are stored in the Fusion design file when possible, so they usually travel between computers, with a local fallback on each machine to keep things consistent.
+
+## Unit picker
+
+The unit picker lets you assign or change a parameterâ€™s unit inline.
+
+- All standard Fusion units are available in the dropdown
+- **Pin** any unit to the top of the list with the â˜… button for quick access
+- **Add custom units** â€" validated against Fusionâ€™s engine before saving; duplicates are rejected with inline feedback
+- **Remove custom units** you no longer need
+- Pinned units and custom units are saved in your settings
 
 ## Editing and validation
 
@@ -65,8 +76,8 @@ Settings are stored locally in `settings.json` next to the installed add-in insi
 - theme (light / dark)
 - palette size and layout
 - column widths
-- unit preferences
-- UI toggles (comments, revert buttons, etc.)
+- unit preferences, including **pinned units** for fast access in the unit picker
+- UI toggles (comments, revert buttons, auto fit columns, etc.)
 
 Most changes are saved immediately.
 
@@ -122,6 +133,7 @@ You can disable update checks in settings if you prefer.
 - `palette.html` â€” UI for the parameter editor
 - `update_helper.py` â€” update application logic
 - `update_state.py` â€” update state tracking
+- `tests/` â€” Python unit tests for backend helpers (run with `python -m pytest`)
 
 ## Status
 
