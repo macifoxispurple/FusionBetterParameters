@@ -1,87 +1,93 @@
 ﻿# Better Parameters
 
-**Better Parameters** is an Autodesk Fusion add-in that makes working with user parameters faster, less frustrating, and a lot more manageable.
+**Better Parameters** is an Autodesk Fusion add-in for people who are tired of fighting the Parameters dialog.
 
-It gives you a non-blocking, table-based interface for editing parameters, organizing them into groups, and actually keeping them under control as your designs grow.
+It gives you a faster, non-blocking way to work with user parameters, with a table-based UI that actually scales as your designs get more complex.
 
 ## Why I made it
 
-Fusionâ€™s built-in Parameters dialog works, but once you start using parameters heavily, it starts to get in the way:
+Fusion’s built-in Parameters dialog works, but once you start relying on parameters heavily, it starts to get in the way:
 
 - the dialog blocks your workflow
 - editing values takes more clicks than it should
-- thereâ€™s no good way to organize parameters
-- grouping and ordering are basically non-existent
-- finding what you need in a large parameter list gets tedious fast
+- there’s no real way to organize things cleanly
+- grouping and ordering are limited
+- large parameter lists get hard to navigate quickly
 
-This add-in is meant to make parameter-heavy workflows feel faster and easier to manage.
+I wanted something that felt more like a tool you could leave open and actually *work in*, not something you constantly open and close.
 
-## What it does
+## What it can do
 
-Better Parameters gives you:
-
-- A **modeless floating palette** (no more blocking dialog)
-- A **table-first UI** for quick scanning and editing
-- Inline editing for expressions and comments
-- **Grouping** (create, rename, delete, reorder)
-- **Favorites** for quick access to important parameters
+- Show all user parameters in a **modeless floating palette** (no blocking dialog)
+- Let you scan and edit parameters in a **table-first UI**
+- Edit expressions and comments inline without jumping through menus
+- Organize parameters into **groups** (create, rename, delete, reorder)
+- Mark important parameters as **favorites**
 - Search across name, expression, comment, unit, and value
-- Per-row **Save, Revert, and Discard** with dirty state tracking
-- Expression preview and validation using Fusionâ€™s engine
-- Reliable Shift-range multi-select behavior across grouped rows, including when Favorites duplicate rows are visible
-- **Auto Fit columns** toggle to automatically resize columns when the palette is resized
-- Persistent UI settings (theme, layout, column sizes, etc.)
+- Track per-row changes with **Save** and **Revert**
+- Preview evaluated values using Fusion’s own expression engine
+- Remember your UI layout, column sizes, theme, and preferences
 
-You can think of it as a much more flexible, always-available version of Fusionâ€™s parameter dialog.
+You can think of it as a more flexible, always-available version of Fusion’s parameter dialog.
+
+## Rapid Create (keyboard-first)
+
+There’s also a fast path for creating a bunch of parameters at once.
+
+- Open with `Ctrl+Shift+C`
+- Enter rows like:
+  - `name[TAB]expression[TAB]comment`
+  - or `name,expression,comment`
+- Mix delimiters if needed
+- Each row is validated and processed individually
+
+It’s meant for quickly pasting in or building out parameter sets without switching context.
 
 ## Working with groups
 
-Parameters can be organized into groups to keep things manageable as your design grows.
+As your parameter list grows, grouping becomes essential.
 
 - Create and rename groups as needed
 - Collapse and expand groups to reduce clutter
 - Reorder both groups and parameters
-- â€œUngroupedâ€ is treated as a default bucket
+- `Ungrouped` acts as the default bucket
 
 Grouping and ordering are stored in the Fusion design file when possible, so they usually travel between computers, with a local fallback on each machine to keep things consistent.
 
-## Unit picker
+## Units
 
-The unit picker lets you assign or change a parameterâ€™s unit inline.
+The unit picker is built to be a little more usable than Fusion’s default experience:
 
-- All standard Fusion units are available in the dropdown
-- **Pin** any unit to the top of the list with the â˜… button for quick access
-- **Add custom units** â€" validated against Fusionâ€™s engine before saving; duplicates are rejected with inline feedback
-- **Remove custom units** you no longer need
-- Pinned units and custom units are saved in your settings
+- Units are grouped by category
+- You can pin commonly used units
+- You can add custom units (validated against Fusion)
+- Pinned and custom units persist between sessions
 
 ## Editing and validation
 
-Expressions are validated using Fusionâ€™s native expression engine, so behavior matches what youâ€™d expect from the built-in tools.
+All expressions are validated using Fusion’s native expression engine, so behavior matches what you’d expect.
 
 A few important details:
 
 - Parameter names are case-sensitive and must be unique
 - Expressions require explicit operators (no implicit multiplication)
-- Preview values are generated using the active document units
+- Preview values come directly from Fusion’s evaluator
 
-If something looks off, itâ€™s coming from Fusionâ€™s evaluator, not a separate system.
+If something looks wrong, it’s coming from Fusion, not a separate system.
 
 ## Settings
 
 Better Parameters remembers how you like to work.
 
-Settings are stored locally in `settings.json` next to the installed add-in inside Fusionâ€™s AddIns folder, including:
+Settings are stored locally in `settings.json` next to the installed add-in inside Fusion’s AddIns folder, including:
 
 - theme (light / dark)
 - palette size and layout
 - column widths
-- unit preferences, including **pinned units** for fast access in the unit picker
-- UI toggles (comments, revert buttons, auto fit columns, etc.)
+- unit preferences (including pinned units)
+- UI toggles (comments, revert buttons, auto-fit columns, etc.)
 
-Most changes are saved immediately.
-
-Status messages are also captured in a session-only **Status History** section in Settings. Inline status in the main view is now reserved for higher-priority warnings/errors.
+Most settings save immediately.
 
 ## Installation
 
@@ -96,7 +102,7 @@ Status messages are also captured in a session-only **Status History** section i
    (make sure you select the folder that contains `BetterParameters.py`, not a parent folder)
 7. Run the add-in
 
-### Option 2: Copy into Fusionâ€™s Add-Ins folder
+### Option 2: Copy into Fusion’s Add-Ins folder
 
 **Windows:**  
 `%AppData%\Autodesk\Autodesk Fusion 360\API\AddIns`
@@ -110,34 +116,36 @@ Copy the `BetterParameters` folder into the appropriate location, then enable it
 
 Better Parameters adds a **Better Parameters** button under the **Utilities** tab.
 
-When available, it also promotes itself into Modify panels so itâ€™s easy to access while working.
+When available, it may also show up in Modify panels so it’s easier to access while modeling.
 
 ## A few notes
 
 - This add-in works with **user parameters only**
-- An open design is required to create or edit parameters
-- Changes are applied immediately to the active document
+- You need an open design to create or edit parameters
+- Changes apply directly to the active document
 - Some UI state and ordering is stored locally per machine
 
-There is also a temporary **Text Tuner** sidebar included for UI/debug tuning. Itâ€™s experimental and may change or be removed later.
+There’s also a temporary **Text Tuner** sidebar included for UI/debug work. It’s experimental and may change or go away later.
 
 ## Updates
 
-The add-in can check for new releases on GitHub and optionally stage updates locally. Applying updates requires restarting or reloading the add-in.
+The add-in can check GitHub for new releases and stage updates locally.
+
+Applying updates requires restarting or reloading the add-in.
 
 You can disable update checks in settings if you prefer.
 
 ## Project files
 
-- `BetterParameters.py` â€” main add-in logic
-- `palette.html` â€” UI for the parameter editor
-- `update_helper.py` â€” update application logic
-- `update_state.py` â€” update state tracking
-- `tests/` â€” Python unit tests for backend helpers (run with `python -m pytest`)
+- `BetterParameters.py` — main add-in logic :contentReference[oaicite:0]{index=0}  
+- `palette.html` — UI for the parameter editor :contentReference[oaicite:1]{index=1}  
+- `update_helper.py` — update application logic :contentReference[oaicite:2]{index=2}  
+- `update_state.py` — update state tracking :contentReference[oaicite:3]{index=3}  
+- `tests/` — Python unit tests
 
 ## Status
 
-Better Parameters is ready to use today and works well for real-world parameter-heavy workflows. Thereâ€™s still room to refine the UI and expand features over time, but itâ€™s already a big improvement over the default experience.
+Better Parameters is ready to use for real parameter-heavy workflows. There’s still room to refine things, but it’s already a big improvement over the default experience.
 
 ## License
 

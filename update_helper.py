@@ -21,15 +21,15 @@ Notes:
     development. The --verify check does NOT include the manifest for this reason.
   - All errors are reported per-file; the sync continues even if individual files
     fail, so the full error set is visible in a single run.
-  - `dev/` is always skipped so mock-fixture files are never pushed into the live
-    Fusion add-in directory.
+  - `dev/` and `tests/` are always skipped so mock/dev and test files are never
+    pushed into the live Fusion add-in directory.
 """
 import hashlib
 import os
 import shutil
 import sys
 
-ALWAYS_SKIP = {".git", ".gitignore", "dev"}
+ALWAYS_SKIP = {".git", ".gitignore", "dev", "tests"}
 
 # Files hash-checked when --verify is given.  Manifest excluded intentionally
 # (see module docstring).
