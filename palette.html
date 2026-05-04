@@ -2331,6 +2331,11 @@
         margin: 0;
       }
 
+      #confirmModal .create-modal-card.is-discard-confirm {
+        border: 1px solid color-mix(in srgb, var(--error) 75%, var(--line));
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--error) 28%, transparent);
+      }
+
       .create-modal-header {
         height: 34px;
         padding: 0 8px 0 10px;
@@ -2352,6 +2357,151 @@
 
       .create-modal-body {
         padding: 10px;
+      }
+
+      .rapid-create-layout {
+        display: grid;
+        gap: 8px;
+      }
+
+      #rapidCreateModal {
+        width: min(760px, calc(100vw - 24px));
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        max-height: calc(100vh - 28px);
+        overflow: auto;
+      }
+
+      #rapidCreateModal .create-modal-card {
+        display: flex;
+        flex-direction: column;
+        height: 80vh;
+        max-height: 80vh;
+      }
+
+      #rapidCreateModal .create-modal-body {
+        display: grid;
+        grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+        min-height: 0;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      .rapid-create-editor {
+        width: 100%;
+        min-height: 140px;
+        max-height: 220px;
+        resize: vertical;
+        font-family: Consolas, "Courier New", monospace !important;
+        font-size: 12px !important;
+        line-height: 1.35 !important;
+      }
+
+      .rapid-create-help {
+        color: var(--muted);
+      }
+
+      .rapid-create-active-status {
+        height: 18px;
+        min-height: 18px;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        color: var(--muted);
+      }
+
+      .rapid-create-inline-note {
+        text-align: right;
+      }
+
+      .create-actions-inline-note {
+        margin-left: auto;
+        white-space: nowrap;
+      }
+
+      .rapid-create-summary {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        min-height: 26px;
+      }
+
+      .rapid-create-chip {
+        border: 1px solid var(--line);
+        background: var(--panel-raised);
+        border-radius: 999px;
+        padding: 2px 8px;
+      }
+
+      .rapid-create-preview-wrap {
+        height: 100%;
+        min-height: 0;
+        max-height: none;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+      }
+
+      .rapid-create-preview {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .rapid-create-preview th,
+      .rapid-create-preview td {
+        border-bottom: 1px solid var(--line-subtle);
+        padding: 4px 6px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      .rapid-create-preview td:first-child {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+
+      .rapid-create-preview th {
+        position: sticky;
+        top: 0;
+        background: var(--table-header-bg);
+        z-index: 1;
+      }
+
+      .rapid-create-status-ok {
+        color: var(--success) !important;
+      }
+
+      .rapid-create-status-error {
+        color: var(--error) !important;
+      }
+
+      .rapid-create-preview td:last-child {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 260px;
+      }
+
+      .rapid-row-unit-button {
+        min-width: 120px;
+        width: 100%;
+      }
+
+      #rapidCreateCreateAllButton:disabled,
+      #rapidCreateCreateAllButton.is-disabled {
+        background: color-mix(in srgb, var(--btn-bg) 82%, var(--panel));
+        border-color: var(--line-subtle);
+        color: var(--muted) !important;
+        cursor: not-allowed;
+        opacity: 0.68;
+      }
+
+      #rapidCreateCreateAllButton:disabled:hover,
+      #rapidCreateCreateAllButton.is-disabled:hover {
+        background: color-mix(in srgb, var(--btn-bg) 82%, var(--panel));
+        border-color: var(--line-subtle);
       }
 
       .unit-picker {
@@ -3336,8 +3486,49 @@
               </label>
               <div class="actions">
                 <button class="primary" type="submit">Create Parameter</button>
+                <div class="rapid-create-help rapid-create-inline-note create-actions-inline-note">Try out Rapid Create parameters. Shortcut: <code>Ctrl+Shift+C</code></div>
               </div>
             </form>
+          </div>
+        </section>
+      </div>
+      <div id="rapidCreateModalBackdrop" class="create-modal-backdrop" hidden></div>
+      <div id="rapidCreateModal" class="create-modal" role="dialog" aria-modal="true" aria-labelledby="rapidCreateModalTitle" hidden>
+        <section class="card create-modal-card">
+          <div class="create-modal-header">
+            <h2 id="rapidCreateModalTitle" class="create-modal-title">Rapid Create</h2>
+            <button id="rapidCreateModalCloseButton" class="ghost icon-btn" type="button" aria-label="Close rapid create dialog">
+              <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+                <line x1="3" y1="3" x2="13" y2="13"></line>
+                <line x1="13" y1="3" x2="3" y2="13"></line>
+              </svg>
+            </button>
+          </div>
+          <div class="create-modal-body section rapid-create-layout">
+            <div class="rapid-create-help">Format: <code>name[TAB]expression[TAB]comment</code> or <code>name,expression,comment</code>.</div>
+            <textarea id="rapidCreateEditor" class="rapid-create-editor" spellcheck="false" placeholder="length\t10mm&#10;width\t25mm&#10;taper\t15deg"></textarea>
+            <div id="rapidCreateActiveStatus" class="rapid-create-active-status"></div>
+            <div id="rapidCreateSummary" class="rapid-create-summary"></div>
+            <div class="rapid-create-preview-wrap">
+              <table class="rapid-create-preview">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Expression</th>
+                    <th>Comment</th>
+                    <th>Detected Unit</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="rapidCreatePreviewBody">
+                  <tr><td colspan="5" class="muted">No rows yet.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="actions">
+              <button id="rapidCreateCreateAllButton" class="primary" type="button">Create All</button>
+              <button id="rapidCreateCloseButton" class="ghost" type="button">Close</button>
+            </div>
           </div>
         </section>
       </div>
@@ -4266,6 +4457,20 @@
         }()),
         layoutDebugUpdatePending: false,
         importConflictPolicy: "skip"
+        ,
+        rapidCreate: {
+          rows: [],
+          counts: { ready: 0, warnings: 0, errors: 0, created: 0, failed: 0 },
+          validating: false,
+          activeLineNumber: 1,
+          unitOverridesByRowKey: {},
+          lastCommittedText: ""
+        },
+        unitMenuContext: {
+          mode: "create",
+          rowKey: ""
+        },
+        unitMenuAnchorEl: null
       };
       let textTunerLiveApplyTimer = null;
       let textTunerPersistTimer = null;
@@ -4273,6 +4478,9 @@
       let rowExpressionValidationTimersByInput = new Map();
       let rowNameValidationTimersByInput = new Map();
       let pendingConfirmResolver = null;
+      let rapidCreateReparseTimer = null;
+      let rapidCreateParseNonce = 0;
+      let pendingConfirmVariant = "";
 
       function reportBackgroundFailure(contextLabel, error) {
         const reason = String(error?.message || error || "Unknown error");
@@ -4281,10 +4489,556 @@
 
       function updateSharedModalBodyClass() {
         const createModal = document.getElementById("createModal");
+        const rapidCreateModal = document.getElementById("rapidCreateModal");
         const confirmModal = document.getElementById("confirmModal");
         const createOpen = !!(createModal && !createModal.hidden);
+        const rapidCreateOpen = !!(rapidCreateModal && !rapidCreateModal.hidden);
         const confirmOpen = !!(confirmModal && !confirmModal.hidden);
-        document.body.classList.toggle("create-modal-open", createOpen || confirmOpen);
+        document.body.classList.toggle("create-modal-open", createOpen || rapidCreateOpen || confirmOpen);
+      }
+
+      function escapeRapidHtml(value) {
+        return escapeHtml(String(value == null ? "" : value));
+      }
+
+      function createRapidRowBase(lineNumber, rawLine) {
+        return {
+          lineNumber,
+          rawLine,
+          rowKey: "",
+          name: "",
+          expression: "",
+          comment: "",
+          detectedUnit: "",
+          isManualUnitOverride: false,
+          status: "draft",
+          severity: "draft",
+          parseErrors: [],
+          nameErrors: [],
+          expressionErrors: [],
+          unitErrors: [],
+          message: "",
+          createState: ""
+        };
+      }
+
+      function parseRapidCreateLine(rawLine, lineNumber, options = {}) {
+        const line = String(rawLine || "");
+        const trimmed = line.trim();
+        if (!trimmed) {
+          return null;
+        }
+        const row = createRapidRowBase(lineNumber, line);
+        const isLive = options.mode !== "commit";
+        const isActiveLine = options.activeLineNumber === lineNumber;
+        const delimiters = [];
+        for (let i = 0; i < line.length; i += 1) {
+          const ch = line.charAt(i);
+          if (ch === "\t" || ch === ",") {
+            delimiters.push(i);
+            if (delimiters.length >= 2) {
+              break;
+            }
+          }
+        }
+        if (delimiters.length >= 1) {
+          const first = delimiters[0];
+          const second = delimiters.length >= 2 ? delimiters[1] : -1;
+          row.name = String(line.slice(0, first) || "").trim();
+          if (second >= 0) {
+            row.expression = String(line.slice(first + 1, second) || "").trim();
+            row.comment = String(line.slice(second + 1) || "").trim();
+          } else {
+            row.expression = String(line.slice(first + 1) || "").trim();
+            row.comment = "";
+          }
+          row.severity = "ready";
+          row.status = "ready";
+        } else {
+          row.name = trimmed;
+          const localNameError = validateParameterNameLocallyForRow(row.name, null);
+          if (localNameError) {
+            row.nameErrors.push(localNameError);
+            row.status = "error";
+            row.severity = "error";
+            row.message = localNameError;
+            return row;
+          }
+          if (isLive) {
+            if (isActiveLine) {
+              row.status = "draft";
+              row.severity = "draft";
+              row.message = "Continue typing: add expression after tab/comma.";
+            } else {
+              row.status = "warning";
+              row.severity = "warning";
+              row.parseErrors.push("Needs delimiter.");
+              row.message = "Needs delimiter.";
+            }
+          } else {
+            row.status = "error";
+            row.severity = "error";
+            row.parseErrors.push("Missing delimiter. Use tab between name and expression.");
+            row.message = "Missing delimiter. Use tab between name and expression.";
+          }
+          return row;
+        }
+        if (!row.name) {
+          row.nameErrors.push("Name is required.");
+        }
+        if (!row.expression) {
+          row.expressionErrors.push("Expression is required.");
+        }
+        return row;
+      }
+
+      function getRapidRowKey(row) {
+        const nameKey = String(row?.name || "").trim().toLowerCase();
+        if (nameKey) {
+          return `n:${nameKey}`;
+        }
+        return `l:${Number(row?.lineNumber || 0)}`;
+      }
+
+      function detectRapidExpressionUnitCandidate(expression) {
+        const value = String(expression || "").trim();
+        if (!value) {
+          return { kind: "none", unit: "" };
+        }
+        const embeddedUnits = new Set();
+        const numericUnitPattern = /(?:^|[^\w.])[-+]?(?:\d+(?:\.\d+)?|\.\d+)\s*([A-Za-z°µ"][A-Za-z0-9°µ"\/-]*)/g;
+        let embeddedMatch = numericUnitPattern.exec(value);
+        while (embeddedMatch) {
+          const token = String(embeddedMatch[1] || "").trim();
+          if (token) {
+            embeddedUnits.add(token.toLowerCase());
+          }
+          embeddedMatch = numericUnitPattern.exec(value);
+        }
+        if (embeddedUnits.size > 1) {
+          return { kind: "ambiguous", unit: Array.from(embeddedUnits).join(", ") };
+        }
+        if (embeddedUnits.size === 1) {
+          return { kind: "candidate", unit: Array.from(embeddedUnits)[0] };
+        }
+        const deterministicMatch = value.match(/(?:^|[\d)\]])\s*([A-Za-z°µ"][A-Za-z0-9°µ"\/-]*)\s*$/);
+        if (deterministicMatch && deterministicMatch[1]) {
+          return { kind: "candidate", unit: deterministicMatch[1] };
+        }
+        const ambiguousTail = value.match(/([A-Za-z°µ"][A-Za-z0-9°µ"\/-]*)\s*$/);
+        if (ambiguousTail && ambiguousTail[1] && /[-+]?\d/.test(value)) {
+          return { kind: "ambiguous", unit: ambiguousTail[1] };
+        }
+        return { kind: "none", unit: "" };
+      }
+
+      function getRapidEditorActiveLineNumber(editorValue, selectionStart) {
+        const value = String(editorValue || "");
+        const clamped = Math.max(0, Math.min(Number(selectionStart || 0), value.length));
+        const prefix = value.slice(0, clamped);
+        return prefix.split(/\r?\n/).length;
+      }
+
+      function finalizeRapidRowPresentation(row) {
+        const nameMessage = row.nameErrors[0] || "";
+        const parseMessage = row.parseErrors[0] || "";
+        const unitMessage = row.unitErrors[0] || "";
+        const exprMessage = row.expressionErrors[0] || "";
+        const bestMessage = nameMessage || parseMessage || unitMessage || exprMessage;
+        if (row.severity === "error") {
+          row.status = row.status || "error";
+          row.message = bestMessage || row.message || "Invalid row.";
+          return row;
+        }
+        if (row.severity === "warning") {
+          row.status = row.status || "warning";
+          row.message = bestMessage || row.message || "Needs attention.";
+          return row;
+        }
+        if (row.severity === "draft") {
+          row.status = "draft";
+          row.message = row.message || "Continue typing: add expression after tab/comma.";
+          return row;
+        }
+        row.status = "ready";
+        row.message = "Ready";
+        row.severity = "ready";
+        return row;
+      }
+
+      function setRapidRowHardError(row, message, status = "error") {
+        row.severity = "error";
+        row.status = status;
+        row.message = String(message || "Invalid row.");
+      }
+
+      async function buildRapidCreateRowsFromEditor(options = {}) {
+        const editor = document.getElementById("rapidCreateEditor");
+        if (!editor) {
+          return;
+        }
+        const mode = options.mode === "commit" ? "commit" : "live";
+        const parseNonce = String(++rapidCreateParseNonce);
+        const lines = String(editor.value || "").split(/\r?\n/);
+        const activeLineNumber = getRapidEditorActiveLineNumber(editor.value, editor.selectionStart);
+        const baseRows = [];
+        lines.forEach((line, index) => {
+          const parsed = parseRapidCreateLine(line, index + 1, { mode, activeLineNumber });
+          if (parsed) {
+            parsed.rowKey = getRapidRowKey(parsed);
+            baseRows.push(parsed);
+          }
+        });
+        const nextOverrideMap = {};
+        for (const row of baseRows) {
+          if (row.severity === "draft") {
+            continue;
+          }
+          const existingOverride = state.rapidCreate.unitOverridesByRowKey[row.rowKey];
+          const hasManualUnitOverride = !!(existingOverride && existingOverride.manual === true);
+          if (hasManualUnitOverride) {
+            row.isManualUnitOverride = true;
+            row.detectedUnit = String(existingOverride.value || "");
+            nextOverrideMap[row.rowKey] = existingOverride;
+          }
+          if (row.name) {
+            const localNameError = validateParameterNameLocallyForRow(row.name, null);
+            if (localNameError) {
+              row.nameErrors.push(localNameError);
+            }
+          }
+          if (row.nameErrors.length > 0) {
+            if (mode === "commit") {
+              setRapidRowHardError(row, row.nameErrors[0], "error");
+            } else if (row.severity !== "error") {
+              row.severity = "error";
+              row.status = "error";
+              row.message = row.nameErrors[0];
+            }
+          }
+          if (!row.expression) {
+            if (mode === "commit") {
+              setRapidRowHardError(row, "Expression is required.", "error");
+            } else if (row.severity !== "error") {
+              setRapidRowHardError(row, "Expression is required.", "error");
+            }
+            continue;
+          }
+          if (row.severity === "error" && mode === "commit") {
+            continue;
+          }
+          if (!hasManualUnitOverride) {
+            const detection = detectRapidExpressionUnitCandidate(row.expression);
+            if (detection.kind === "ambiguous") {
+              row.unitErrors.push(`Ambiguous unit-like suffix "${detection.unit}".`);
+              if (mode === "commit") {
+                setRapidRowHardError(row, row.unitErrors[0], "error");
+              } else {
+                row.severity = "warning";
+                row.status = "warning";
+                row.message = row.unitErrors[0];
+              }
+              continue;
+            }
+            if (detection.kind === "candidate") {
+              try {
+                const validation = await sendToFusion(ACTION.VALIDATE_UNIT, { unit: detection.unit });
+                if (String(parseNonce) !== String(rapidCreateParseNonce)) {
+                  return;
+                }
+                if (!validation.ok) {
+                  row.unitErrors.push(validation.message || `Invalid unit "${detection.unit}".`);
+                  if (mode === "commit") {
+                    setRapidRowHardError(row, row.unitErrors[0], "error");
+                  } else {
+                    row.severity = "warning";
+                    row.status = "warning";
+                    row.message = row.unitErrors[0];
+                  }
+                } else {
+                  row.detectedUnit = String(validation.unit || detection.unit || "").trim();
+                }
+              } catch (error) {
+                if (String(parseNonce) !== String(rapidCreateParseNonce)) {
+                  return;
+                }
+                row.unitErrors.push(String(error?.message || "Unit validation failed."));
+                if (mode === "commit") {
+                  setRapidRowHardError(row, row.unitErrors[0], "error");
+                } else {
+                  row.severity = "warning";
+                  row.status = "warning";
+                  row.message = row.unitErrors[0];
+                }
+              }
+            }
+          }
+        }
+        const seenNames = new Map();
+        for (const row of baseRows) {
+          if (!row.name) {
+            continue;
+          }
+          if (row.severity === "draft") {
+            continue;
+          }
+          const key = String(row.name || "").toLowerCase();
+          const firstLine = seenNames.get(key);
+          if (typeof firstLine === "number") {
+            const duplicateMessage = `Duplicate name in batch (first used on line ${firstLine}).`;
+            row.nameErrors.push(duplicateMessage);
+            setRapidRowHardError(row, duplicateMessage, "error");
+            continue;
+          }
+          seenNames.set(key, row.lineNumber);
+        }
+        baseRows.forEach((row) => {
+          if (row.rowKey && !nextOverrideMap[row.rowKey]) {
+            const existing = state.rapidCreate.unitOverridesByRowKey[row.rowKey];
+            if (existing && existing.manual === true) {
+              nextOverrideMap[row.rowKey] = existing;
+              row.detectedUnit = String(existing.value || "");
+            }
+          }
+        });
+        baseRows.forEach((row) => finalizeRapidRowPresentation(row));
+        if (String(parseNonce) !== String(rapidCreateParseNonce)) {
+          return;
+        }
+        state.rapidCreate.rows = baseRows;
+        state.rapidCreate.unitOverridesByRowKey = nextOverrideMap;
+        state.rapidCreate.counts.ready = baseRows.filter((row) => row.severity === "ready").length;
+        state.rapidCreate.counts.warnings = baseRows.filter((row) => row.severity === "warning").length;
+        state.rapidCreate.counts.errors = baseRows.filter((row) => row.severity === "error").length;
+        renderRapidCreatePreview();
+      }
+
+      function renderRapidCreatePreview() {
+        const summary = document.getElementById("rapidCreateSummary");
+        const body = document.getElementById("rapidCreatePreviewBody");
+        const activeStatus = document.getElementById("rapidCreateActiveStatus");
+        const createAllButton = document.getElementById("rapidCreateCreateAllButton");
+        if (!summary || !body) {
+          return;
+        }
+        const counts = state.rapidCreate.counts || { ready: 0, warnings: 0, errors: 0, created: 0, failed: 0 };
+        summary.innerHTML = [
+          `<span class="rapid-create-chip">Ready: ${counts.ready || 0}</span>`,
+          `<span class="rapid-create-chip">Warnings: ${counts.warnings || 0}</span>`,
+          `<span class="rapid-create-chip">Errors: ${counts.errors || 0}</span>`,
+          `<span class="rapid-create-chip">Created: ${counts.created || 0}</span>`,
+          `<span class="rapid-create-chip">Failed: ${counts.failed || 0}</span>`
+        ].join("");
+        const rows = Array.isArray(state.rapidCreate.rows) ? state.rapidCreate.rows : [];
+        if (activeStatus) {
+          const activeLine = Number(state.rapidCreate.activeLineNumber || 0);
+          const activeRow = rows.find((row) => Number(row.lineNumber || 0) === activeLine);
+          activeStatus.textContent = activeRow
+            ? `${activeRow.isManualUnitOverride ? "(MANUAL) " : ""}${String(activeRow.status || "draft").toUpperCase()}: ${String(activeRow.message || "Continue typing.")}`
+            : "";
+        }
+        const hardErrors = rows.filter((row) => row.severity === "error").length;
+        const commitEligible = rows.filter((row) => row.severity === "ready").length;
+        if (createAllButton) {
+          const disabled = state.rapidCreate.validating === true || hardErrors > 0 || commitEligible <= 0;
+          createAllButton.disabled = disabled;
+          createAllButton.classList.toggle("is-disabled", disabled);
+        }
+        if (!rows.length) {
+          body.innerHTML = `<tr><td colspan="5" class="muted">No rows yet.</td></tr>`;
+          return;
+        }
+        body.innerHTML = rows.map((row) => {
+          const statusText = `${row.isManualUnitOverride ? "(MANUAL) " : ""}${String(row.status || "draft").toUpperCase()}`;
+          const isError = row.severity === "error";
+          const isWarning = row.severity === "warning";
+          const statusClass = isError ? "rapid-create-status-error" : (isWarning ? "" : "rapid-create-status-ok");
+          const selectedUnit = String(row.detectedUnit || "");
+          const unitDisplayLabel = selectedUnit ? getUnitDisplayLabel(selectedUnit) : "No Units";
+          const unitSelect = `<button class="unit-picker-button rapid-row-unit-button" type="button" data-rapid-row-unit-button="${escapeRapidHtml(row.rowKey || String(row.lineNumber || ""))}" aria-haspopup="true" aria-expanded="false">${escapeRapidHtml(unitDisplayLabel)}</button>`;
+          return `<tr>
+            <td>${escapeRapidHtml(row.name)}</td>
+            <td>${escapeRapidHtml(row.expression)}</td>
+            <td>${escapeRapidHtml(row.comment || "")}</td>
+            <td>${unitSelect}</td>
+            <td class="${statusClass}">${escapeRapidHtml(statusText)}</td>
+          </tr>`;
+        }).join("");
+      }
+
+      function setRapidCreateModalOpen(isOpen, options = {}) {
+        const backdrop = document.getElementById("rapidCreateModalBackdrop");
+        const modal = document.getElementById("rapidCreateModal");
+        const editor = document.getElementById("rapidCreateEditor");
+        if (!backdrop || !modal) {
+          return;
+        }
+        const wasOpen = !modal.hidden;
+        if (wasOpen === isOpen) {
+          return;
+        }
+        backdrop.hidden = !isOpen;
+        modal.hidden = !isOpen;
+        updateSharedModalBodyClass();
+        if (isOpen) {
+          setSettingsPanelOpen(false);
+          if (options.reset !== false) {
+            state.rapidCreate.rows = [];
+            state.rapidCreate.counts = { ready: 0, warnings: 0, errors: 0, created: 0, failed: 0 };
+            state.rapidCreate.unitOverridesByRowKey = {};
+            if (editor) {
+              editor.value = "";
+            }
+            state.rapidCreate.lastCommittedText = "";
+            renderRapidCreatePreview();
+          }
+          requestAnimationFrame(() => editor?.focus());
+          return;
+        }
+        if (options.discard === true) {
+          state.rapidCreate.rows = [];
+          state.rapidCreate.counts = { ready: 0, warnings: 0, errors: 0, created: 0, failed: 0 };
+          state.rapidCreate.unitOverridesByRowKey = {};
+          state.rapidCreate.lastCommittedText = "";
+          if (editor) {
+            editor.value = "";
+          }
+        }
+      }
+
+      function getRapidCreateEditorValue() {
+        const editor = document.getElementById("rapidCreateEditor");
+        return String(editor?.value || "");
+      }
+
+      function isRapidCreateDirty() {
+        const current = getRapidCreateEditorValue();
+        const baseline = String(state.rapidCreate.lastCommittedText || "");
+        return current.trim().length > 0 && current !== baseline;
+      }
+
+      async function requestRapidCreateClose() {
+        if (!isRapidCreateDirty()) {
+          setRapidCreateModalOpen(false);
+          return;
+        }
+        const shouldDiscard = await requestConfirmation("Discard unsaved rapid entries?", {
+          confirmLabel: "Discard",
+          cancelLabel: "Keep Editing",
+          variant: "discard"
+        });
+        if (shouldDiscard) {
+          setRapidCreateModalOpen(false, { discard: true });
+        }
+      }
+
+      async function runRapidCreateAll() {
+        if (state.rapidCreate.validating) {
+          return;
+        }
+        state.rapidCreate.validating = true;
+        renderRapidCreatePreview();
+        state.rapidCreate.counts.created = 0;
+        state.rapidCreate.counts.failed = 0;
+        try {
+          await buildRapidCreateRowsFromEditor({ mode: "commit" });
+          const rows = Array.isArray(state.rapidCreate.rows) ? state.rapidCreate.rows : [];
+          for (const row of rows) {
+            if (row.severity !== "ready") {
+              row.status = row.severity === "draft" ? "skipped" : row.status;
+              if (row.status !== "failed" && row.status !== "created") {
+                row.status = "skipped";
+              }
+              row.message = row.message || "Skipped.";
+              row.createState = "skipped";
+              continue;
+            }
+            const nameValidation = await sendToFusion(ACTION.VALIDATE_PARAMETER_NAME, { name: row.name });
+            if (!nameValidation.ok) {
+              row.status = "error";
+              row.severity = "error";
+              row.nameErrors.push(nameValidation.message || "Invalid parameter name.");
+              row.message = row.nameErrors[0];
+              row.createState = "skipped";
+              continue;
+            }
+            const units = row.detectedUnit || "";
+            const expressionValidation = await sendToFusion(ACTION.VALIDATE_EXPRESSION, {
+              expression: row.expression,
+              currentParameterName: "",
+              units
+            });
+            if (!expressionValidation.ok) {
+              row.status = "error";
+              row.severity = "error";
+              row.expressionErrors.push(expressionValidation.message || "Invalid expression.");
+              row.message = row.expressionErrors[0];
+              row.createState = "skipped";
+              continue;
+            }
+            try {
+              const createResponse = await sendToFusion(ACTION.CREATE_PARAMETER, {
+                name: row.name,
+                unit: units,
+                expression: row.expression,
+                comment: String(row.comment || "")
+              });
+              if (!createResponse.ok) {
+                throw new Error(createResponse.message || "Create failed.");
+              }
+              row.status = "created";
+              row.severity = "ready";
+              row.message = "Created";
+              row.createState = "created";
+              state.rapidCreate.counts.created += 1;
+              applyStateFromFusion(createResponse);
+            } catch (error) {
+              row.status = "failed";
+              row.severity = "error";
+              row.message = String(error?.message || "Backend create failed.");
+              row.createState = "failed";
+              state.rapidCreate.counts.failed += 1;
+            }
+          }
+          state.rapidCreate.counts.ready = rows.filter((row) => row.severity === "ready" && row.createState !== "created").length;
+          state.rapidCreate.counts.warnings = rows.filter((row) => row.severity === "warning").length;
+          state.rapidCreate.counts.errors = rows.filter((row) => row.severity === "error").length;
+          renderRapidCreatePreview();
+          const skippedCount = rows.filter((row) => row.createState === "skipped").length;
+          if (state.rapidCreate.counts.failed === 0 && skippedCount === 0) {
+            state.rapidCreate.lastCommittedText = getRapidCreateEditorValue();
+          }
+          setGlobalStatus(`Rapid create done. Created ${state.rapidCreate.counts.created}, failed ${state.rapidCreate.counts.failed}, skipped ${skippedCount}.`, state.rapidCreate.counts.failed > 0 ? "warning" : "success");
+        } finally {
+          state.rapidCreate.validating = false;
+          await buildRapidCreateRowsFromEditor({ mode: "live" });
+          renderRapidCreatePreview();
+        }
+      }
+
+      function findRapidRowByKey(rowKey) {
+        const key = String(rowKey || "");
+        if (!key) {
+          return null;
+        }
+        return (state.rapidCreate.rows || []).find((item) => String(item.rowKey || "") === key) || null;
+      }
+
+      function applyRapidManualUnitForRow(rowKey, unitValue) {
+        const key = String(rowKey || "");
+        if (!key) {
+          return;
+        }
+        const selectedUnit = String(unitValue || "");
+        state.rapidCreate.unitOverridesByRowKey[key] = {
+          value: selectedUnit,
+          manual: true
+        };
+        const row = findRapidRowByKey(key);
+        if (row) {
+          row.detectedUnit = selectedUnit;
+          row.isManualUnitOverride = true;
+        }
       }
 
       function runBackgroundTask(taskPromise, contextLabel) {
@@ -7356,8 +8110,11 @@
 
       function positionUnitMenu() {
         const menu = document.getElementById("unitPickerMenu");
-        const button = document.getElementById("unitPickerButton");
+        const button = state.unitMenuAnchorEl || document.getElementById("unitPickerButton");
         const page = document.querySelector(".page");
+        if (!menu || !button || !page) {
+          return;
+        }
         const buttonRect = button.getBoundingClientRect();
         const pageRect = page.getBoundingClientRect();
         const gutter = 8;
@@ -7371,13 +8128,25 @@
         menu.style.top = `${Math.max(gutter, top)}px`;
       }
 
-      function setUnitMenuOpen(isOpen) {
+      function setUnitMenuOpen(isOpen, options = {}) {
         state.isUnitMenuOpen = isOpen;
         const menu = document.getElementById("unitPickerMenu");
         const button = document.getElementById("unitPickerButton");
         const overlayRoot = document.getElementById("overlayRoot");
+        if (options.contextMode) {
+          state.unitMenuContext.mode = options.contextMode;
+          state.unitMenuContext.rowKey = String(options.rowKey || "");
+        } else if (!isOpen) {
+          state.unitMenuContext.mode = "create";
+          state.unitMenuContext.rowKey = "";
+        }
+        state.unitMenuAnchorEl = options.anchorEl || (isOpen ? state.unitMenuAnchorEl : null);
         menu.hidden = !isOpen;
-        button.setAttribute("aria-expanded", String(isOpen));
+        if (state.unitMenuContext.mode === "create") {
+          button.setAttribute("aria-expanded", String(isOpen));
+        } else {
+          button.setAttribute("aria-expanded", "false");
+        }
 
         if (isOpen) {
           state.customUnitFeedback = { message: "", kind: "" };
@@ -7390,6 +8159,7 @@
         } else {
           state.unitMenuScrollTop = menu.scrollTop || 0;
           document.querySelector(".unit-picker").appendChild(menu);
+          state.unitMenuAnchorEl = null;
         }
       }
 
@@ -11302,6 +12072,9 @@
         if (!name) {
           return "Name is required.";
         }
+        if (/^\d/.test(name)) {
+          return "Name cannot start with a number.";
+        }
         if (name.trim() !== name) {
           return "Name cannot start or end with whitespace.";
         }
@@ -11648,6 +12421,7 @@
       function setConfirmModalOpen(isOpen, options = {}) {
         const backdrop = document.getElementById("confirmModalBackdrop");
         const modal = document.getElementById("confirmModal");
+        const card = modal?.querySelector(".create-modal-card");
         const confirmButton = document.getElementById("confirmModalConfirmButton");
         const cancelButton = document.getElementById("confirmModalCancelButton");
         if (!backdrop || !modal || !confirmButton || !cancelButton) {
@@ -11665,6 +12439,9 @@
 
         backdrop.hidden = !isOpen;
         modal.hidden = !isOpen;
+        if (card) {
+          card.classList.toggle("is-discard-confirm", isOpen && pendingConfirmVariant === "discard");
+        }
         updateSharedModalBodyClass();
 
         if (isOpen) {
@@ -11676,6 +12453,7 @@
         if (shouldResolve) {
           resolvePendingConfirmation(options.result === true);
         }
+        pendingConfirmVariant = "";
       }
 
       function requestConfirmation(message, options = {}) {
@@ -11690,6 +12468,7 @@
         messageNode.textContent = String(message || "Are you sure?");
         confirmButton.textContent = String(options.confirmLabel || "OK");
         cancelButton.textContent = String(options.cancelLabel || "Cancel");
+        pendingConfirmVariant = String(options.variant || "");
 
         setConfirmModalOpen(true);
         return new Promise((resolve) => {
@@ -11707,6 +12486,100 @@
 
       document.getElementById("createModalBackdrop").addEventListener("click", () => {
         setCreateModalOpen(false);
+      });
+
+      document.getElementById("rapidCreateModalCloseButton").addEventListener("click", () => {
+        void requestRapidCreateClose();
+      });
+
+      document.getElementById("rapidCreateCloseButton").addEventListener("click", () => {
+        void requestRapidCreateClose();
+      });
+
+      document.getElementById("rapidCreateModalBackdrop").addEventListener("click", () => {
+        void requestRapidCreateClose();
+      });
+
+      document.getElementById("rapidCreateCreateAllButton").addEventListener("click", async () => {
+        await runRapidCreateAll();
+      });
+
+      document.getElementById("rapidCreateEditor").addEventListener("input", () => {
+        const editor = document.getElementById("rapidCreateEditor");
+        if (editor) {
+          state.rapidCreate.activeLineNumber = getRapidEditorActiveLineNumber(editor.value, editor.selectionStart);
+        }
+        if (rapidCreateReparseTimer) {
+          window.clearTimeout(rapidCreateReparseTimer);
+        }
+        rapidCreateReparseTimer = window.setTimeout(() => {
+          rapidCreateReparseTimer = null;
+          void buildRapidCreateRowsFromEditor();
+        }, 140);
+      });
+
+      document.getElementById("rapidCreateEditor").addEventListener("keydown", (event) => {
+        const input = event.currentTarget;
+        if (!input) {
+          return;
+        }
+        if (event.key === "Tab") {
+          event.preventDefault();
+          const start = input.selectionStart || 0;
+          const end = input.selectionEnd || 0;
+          const value = String(input.value || "");
+          input.value = `${value.slice(0, start)}\t${value.slice(end)}`;
+          input.setSelectionRange(start + 1, start + 1);
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          state.rapidCreate.activeLineNumber = getRapidEditorActiveLineNumber(input.value, input.selectionStart);
+          renderRapidCreatePreview();
+          return;
+        }
+        if (event.key === "Enter") {
+          event.preventDefault();
+          const start = input.selectionStart || 0;
+          const end = input.selectionEnd || 0;
+          const value = String(input.value || "");
+          input.value = `${value.slice(0, start)}\n${value.slice(end)}`;
+          input.setSelectionRange(start + 1, start + 1);
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          state.rapidCreate.activeLineNumber = getRapidEditorActiveLineNumber(input.value, input.selectionStart);
+          renderRapidCreatePreview();
+          return;
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          void requestRapidCreateClose();
+        }
+      });
+
+      document.getElementById("rapidCreateEditor").addEventListener("click", (event) => {
+        const input = event.currentTarget;
+        if (!input) {
+          return;
+        }
+        state.rapidCreate.activeLineNumber = getRapidEditorActiveLineNumber(input.value, input.selectionStart);
+        renderRapidCreatePreview();
+      });
+
+      document.getElementById("rapidCreatePreviewBody").addEventListener("click", (event) => {
+        const unitButton = event.target.closest("[data-rapid-row-unit-button]");
+        if (!unitButton) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        const rowKey = String(unitButton.getAttribute("data-rapid-row-unit-button") || "");
+        if (!rowKey) {
+          return;
+        }
+        const row = findRapidRowByKey(rowKey);
+        state.createUnit = String(row?.detectedUnit || "");
+        setUnitMenuOpen(true, {
+          contextMode: "rapid",
+          rowKey,
+          anchorEl: unitButton
+        });
       });
 
       document.getElementById("confirmModalConfirmButton").addEventListener("click", () => {
@@ -12659,6 +13532,8 @@
       document.getElementById("unitPickerMenu").addEventListener("click", async (event) => {
         event.stopPropagation();
         state.unitMenuScrollTop = document.getElementById("unitPickerMenu").scrollTop || 0;
+        const unitMenuMode = String(state.unitMenuContext?.mode || "create");
+        const rapidRowKey = String(state.unitMenuContext?.rowKey || "");
 
         // Pin / unpin
         const pinButton = event.target.closest("[data-unit-pin]");
@@ -12691,8 +13566,13 @@
           const nextPinned = prevPinned.filter((v) => v !== unitValue);
           state.settings.customUnits = nextCustom;
           state.settings.pinnedUnits = nextPinned;
-          if (state.createUnit === unitValue) {
+          if (unitMenuMode === "create" && state.createUnit === unitValue) {
             applySelectedUnit(getDefaultCreateUnit());
+          } else if (unitMenuMode === "rapid" && rapidRowKey) {
+            const rapidRow = findRapidRowByKey(rapidRowKey);
+            if (rapidRow && String(rapidRow.detectedUnit || "") === unitValue) {
+              applyRapidManualUnitForRow(rapidRowKey, getDefaultCreateUnit());
+            }
           }
           renderUnitPicker();
           try {
@@ -12745,16 +13625,21 @@
             }
 
             state.customUnitFeedback = { message: "", kind: "" };
-            applySelectedUnit(normalizedUnit, { persistLastUnit: true, markRememberedSelection: true });
             const nextCustomUnits = [normalizedUnit, ...(state.settings.customUnits || [])]
               .filter((v, i, arr) => arr.findIndex((u) => u.toLowerCase() === v.toLowerCase()) === i)
               .slice(0, 40);
             state.settings.customUnits = nextCustomUnits;
+            if (unitMenuMode === "rapid" && rapidRowKey) {
+              applyRapidManualUnitForRow(rapidRowKey, normalizedUnit);
+            } else {
+              applySelectedUnit(normalizedUnit, { persistLastUnit: true, markRememberedSelection: true });
+            }
             renderUnitPicker();
             setUnitMenuOpen(false);
+            renderRapidCreatePreview();
 
             const settingsPayload = { customUnits: nextCustomUnits };
-            if (state.settings.rememberUnit) {
+            if (unitMenuMode === "create" && state.settings.rememberUnit) {
               settingsPayload.lastUnit = normalizedUnit;
             }
             await saveSettingsPartial(settingsPayload);
@@ -12768,11 +13653,16 @@
         const unitButton = event.target.closest("[data-unit-value]");
         if (unitButton) {
           const unitValue = unitButton.getAttribute("data-unit-value");
-          applySelectedUnit(unitValue, { persistLastUnit: true, markRememberedSelection: true });
+          if (unitMenuMode === "rapid" && rapidRowKey) {
+            applyRapidManualUnitForRow(rapidRowKey, unitValue);
+          } else {
+            applySelectedUnit(unitValue, { persistLastUnit: true, markRememberedSelection: true });
+          }
           renderUnitPicker();
           setUnitMenuOpen(false);
+          renderRapidCreatePreview();
 
-          if (state.settings.rememberUnit) {
+          if (unitMenuMode === "create" && state.settings.rememberUnit) {
             try {
               await saveSettingsPartial({ lastUnit: unitValue });
             } catch (error) {
@@ -13952,6 +14842,7 @@
         const isTextTunerToggle = keyLower === "t" && event.ctrlKey && !event.metaKey
           && ((event.altKey && !event.shiftKey) || (event.shiftKey && !event.altKey));
         const isComputeModeToggleShortcut = keyLower === "m" && event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey;
+        const isRapidCreateShortcut = keyLower === "c" && event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey;
         if (isLayoutDebugToggle) {
           event.preventDefault();
           setLayoutDebugEnabled(!state.layoutDebugEnabled);
@@ -13970,6 +14861,15 @@
           }
           return;
         }
+        if (isRapidCreateShortcut) {
+          event.preventDefault();
+          const createModal = document.getElementById("createModal");
+          if (createModal && !createModal.hidden) {
+            setCreateModalOpen(false, { restoreFocus: false });
+          }
+          setRapidCreateModalOpen(true);
+          return;
+        }
         if (event.key !== "Escape") {
           return;
         }
@@ -13981,6 +14881,11 @@
         const createModal = document.getElementById("createModal");
         if (createModal && !createModal.hidden) {
           setCreateModalOpen(false);
+          return;
+        }
+        const rapidCreateModal = document.getElementById("rapidCreateModal");
+        if (rapidCreateModal && !rapidCreateModal.hidden) {
+          void requestRapidCreateClose();
           return;
         }
         if (isSettingsPanelOpen()) {
