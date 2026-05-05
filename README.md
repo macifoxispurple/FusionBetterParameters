@@ -91,18 +91,7 @@ Most settings save immediately.
 
 ## Installation
 
-### Option 1: Install from inside Fusion
-
-1. Download and unzip the project
-2. Open Fusion
-3. Go to **Utilities > Scripts and Add-Ins**
-4. Open the **Add-Ins** tab
-5. Click the green `+` button
-6. Select the `BetterParameters` folder  
-   (make sure you select the folder that contains `BetterParameters.py`, not a parent folder)
-7. Run the add-in
-
-### Option 2: Copy into Fusion’s Add-Ins folder
+### Copy into Fusion’s Add-Ins folder
 
 **Windows:**  
 `%AppData%\Autodesk\Autodesk Fusion 360\API\AddIns`
