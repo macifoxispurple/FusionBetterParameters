@@ -91,13 +91,11 @@ Most settings save immediately.
 
 ## Installation
 
-### Option 1: Use the included shortcuts
+### Option 1: Use the included shortcut for Windows
 
 After unzipping the release, open one of these files from the same folder as `BetterParameters`:
 
 - **Windows:** `Open Fusion AddIns (Windows).lnk`
-- **macOS:** `Open Fusion AddIns (macOS)`
-
 This opens Fusion’s Add-Ins folder for your OS.  
 Then drag/copy the `BetterParameters` folder into that location.
 
