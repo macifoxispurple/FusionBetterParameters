@@ -50,7 +50,7 @@ COMMAND_RESOURCES = "./Resources/BetterParameters"
 SETTINGS_FILE = "settings.json"
 TEXT_TUNER_STATE_FILE = "text_tuner_temp.json"
 DOCUMENT_ORDER_DIRNAME = "document_orders"
-DEFAULT_PALETTE_WIDTH = 520
+DEFAULT_PALETTE_WIDTH = 760
 DEFAULT_PALETTE_HEIGHT = 640
 ATTRIBUTE_NAMESPACE = "BetterParameters"
 ATTRIBUTE_PARAMETER_GROUP_NAME = "group"
@@ -111,7 +111,7 @@ UPDATE_HELPER_PATH = os.path.join(ADDIN_DIR, "update_helper.py")
 UPDATE_STATE_PATH = os.path.join(ADDIN_DIR, "update_state.json")
 
 DEFAULT_SETTINGS = {
-    "theme": "light",
+    "theme": "dark",
     "rememberUnit": False,
     "lastUnit": "",
     "paletteSize": {
@@ -144,7 +144,7 @@ DEFAULT_SETTINGS = {
     "customUnits": [],
     "showRevertButtons": True,
     "showCommentColumn": False,
-    "showTextTunerSidebar": True,
+    "showTextTunerSidebar": False,
     "autoFitColumns": True,
     "pinnedUnits": [],
     "autoCheckUpdates": True,
@@ -1897,7 +1897,13 @@ def _apply_saved_palette_position(palette):
     x = position.get("x")
     y = position.get("y")
     if not isinstance(x, int) or not isinstance(y, int):
-        return
+        centered = _first_launch_centered_position(
+            settings["paletteSize"].get("width", DEFAULT_PALETTE_WIDTH),
+            settings["paletteSize"].get("height", DEFAULT_PALETTE_HEIGHT),
+        )
+        if centered is None:
+            return
+        x, y = centered
 
     try:
         palette.left = x
@@ -1905,6 +1911,28 @@ def _apply_saved_palette_position(palette):
     except Exception:
         if app:
             app.log(f"Better Parameters palette position restore failed:\n{traceback.format_exc()}")
+
+
+def _first_launch_centered_position(width, height):
+    """Return centered screen coordinates for first launch when no saved position exists."""
+    try:
+        width = int(width)
+        height = int(height)
+    except Exception:
+        width = DEFAULT_PALETTE_WIDTH
+        height = DEFAULT_PALETTE_HEIGHT
+
+    try:
+        user32 = ctypes.windll.user32
+        screen_w = int(user32.GetSystemMetrics(0))
+        screen_h = int(user32.GetSystemMetrics(1))
+        if screen_w <= 0 or screen_h <= 0:
+            return None
+        x = max(0, (screen_w - width) // 2)
+        y = max(0, (screen_h - height) // 2)
+        return (x, y)
+    except Exception:
+        return None
 
 
 def _save_palette_geometry(palette):

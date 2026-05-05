@@ -1,5 +1,5 @@
 ﻿<!DOCTYPE html>
-<html lang="en" style="background:#252525">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -3876,7 +3876,7 @@
       const DEFAULT_CUSTOM_UNITS = [];
       const DEFAULT_SHOW_REVERT_BUTTONS = true;
       const DEFAULT_SHOW_COMMENT_COLUMN = false;
-      const DEFAULT_SHOW_TEXT_TUNER_SIDEBAR = true;
+      const DEFAULT_SHOW_TEXT_TUNER_SIDEBAR = false;
 
       const DEFAULT_TABLE_COLUMNS = {
         parameter: 140,
@@ -4323,7 +4323,7 @@
         groups: [],
         parameterNames: [],
         settings: {
-          theme: (function () { try { var t = localStorage.getItem("bp_theme"); return t === "dark" || t === "light" ? t : "light"; } catch (_) { return "light"; } }()),
+          theme: (function () { try { var t = localStorage.getItem("bp_theme"); return t === "dark" || t === "light" ? t : "dark"; } catch (_) { return "dark"; } }()),
           rememberUnit: false,
           lastUnit: "",
           parameterTableColumns: { ...DEFAULT_TABLE_COLUMNS },
@@ -4347,7 +4347,7 @@
             }
           }())
         },
-        appliedTheme: (function () { try { var t = localStorage.getItem("bp_theme"); return t === "dark" || t === "light" ? t : "light"; } catch (_) { return "light"; } }()),
+        appliedTheme: (function () { try { var t = localStorage.getItem("bp_theme"); return t === "dark" || t === "light" ? t : "dark"; } catch (_) { return "dark"; } }()),
         fusionThemeApplied: false,
         customUnitFeedback: { message: "", kind: "" },
         documentDefaults: {
@@ -10396,6 +10396,10 @@
         const normalized = values && typeof values === "object" ? values : {};
         state.textTunerState = { ...normalized };
         state.textTunerStateLoaded = true;
+        if (!shouldShowTextTunerSidebar()) {
+          renderTextTunerDebug(collectTextTunerValuesFromCss());
+          return;
+        }
         if (!Object.keys(normalized).length) {
           renderTextTunerDebug(collectTextTunerValuesFromCss());
           return;
