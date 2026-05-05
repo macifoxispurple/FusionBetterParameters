@@ -1,4 +1,4 @@
-﻿# Better Parameters
+﻿﻿# Better Parameters
 
 **Better Parameters** is an Autodesk Fusion add-in for people who are tired of fighting the Parameters dialog.
 
@@ -91,7 +91,17 @@ Most settings save immediately.
 
 ## Installation
 
-### Copy into Fusion’s Add-Ins folder
+### Option 1: Use the included shortcut scripts
+
+After unzipping the release, run one of these files from the same folder as `BetterParameters`:
+
+- **Windows:** `Open_Fusion_AddIns_Folder_Windows.bat`
+- **macOS:** `Open_Fusion_AddIns_Folder_macOS.command`
+
+This opens Fusion’s Add-Ins folder for your OS.  
+Then drag/copy the `BetterParameters` folder into that location.
+
+### Option 2: Copy manually into Fusion’s Add-Ins folder
 
 **Windows:**  
 `%AppData%\Autodesk\Autodesk Fusion 360\API\AddIns`
@@ -100,6 +110,7 @@ Most settings save immediately.
 `~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns`
 
 Copy the `BetterParameters` folder into the appropriate location, then enable it from **Utilities > Scripts and Add-Ins > Add-Ins**.
+
 
 ## Where it shows up in Fusion
 
@@ -130,7 +141,6 @@ You can disable update checks in settings if you prefer.
 - `palette.html` — UI for the parameter editor :contentReference[oaicite:1]{index=1}  
 - `update_helper.py` — update application logic :contentReference[oaicite:2]{index=2}  
 - `update_state.py` — update state tracking :contentReference[oaicite:3]{index=3}  
-- `tests/` — Python unit tests
 
 ## Status
 
