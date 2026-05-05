@@ -1,4 +1,4 @@
-﻿﻿# Better Parameters
+﻿# Better Parameters
 
 **Better Parameters** is an Autodesk Fusion add-in for people who are tired of fighting the Parameters dialog.
 
@@ -91,12 +91,12 @@ Most settings save immediately.
 
 ## Installation
 
-### Option 1: Use the included shortcut scripts
+### Option 1: Use the included shortcuts
 
-After unzipping the release, run one of these files from the same folder as `BetterParameters`:
+After unzipping the release, open one of these files from the same folder as `BetterParameters`:
 
-- **Windows:** `Open_Fusion_AddIns_Folder_Windows.bat`
-- **macOS:** `Open_Fusion_AddIns_Folder_macOS.command`
+- **Windows:** `Open Fusion AddIns (Windows).lnk`
+- **macOS:** `Open Fusion AddIns (macOS)`
 
 This opens Fusion’s Add-Ins folder for your OS.  
 Then drag/copy the `BetterParameters` folder into that location.
@@ -140,7 +140,7 @@ You can disable update checks in settings if you prefer.
 - `BetterParameters.py` — main add-in logic
 - `palette.html` — UI for the parameter editor
 - `update_helper.py` — update application logic
-- `update_state.py` — update state tracking 
+- `update_state.py` — update state tracking
 
 ## Status
 
