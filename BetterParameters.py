@@ -165,6 +165,7 @@ ALLOWED_PALETTE_DOCKING_STATE_NAMES = {"floating", "left", "right", "top", "bott
 TARGET_PANEL_IDS = [
     PANEL_ID,
     "SolidModifyPanel",
+    "SketchModifyPanel",
     "SurfaceModifyPanel",
     "MeshModifyPanel",
     "SheetMetalModifyPanel",
