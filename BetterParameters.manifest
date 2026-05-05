@@ -1,4 +1,4 @@
-{
+﻿{
   "autodeskProduct": "Fusion360",
   "type": "addin",
   "id": "8e7fdf9f-a8d7-4c04-9d20-1d1b80b3b76e",
@@ -11,3 +11,4 @@
   "supportedOS": "windows|mac",
   "editEnabled": true
 }
+

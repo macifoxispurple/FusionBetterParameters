@@ -4323,13 +4323,7 @@
         groups: [],
         parameterNames: [],
         settings: {
-          theme: (function () {
-            try {
-              var t = localStorage.getItem("bp_theme");
-              if (t === "dark" || t === "light") return t;
-            } catch (_) {}
-            return "light";
-          }()),
+          theme: (function () { try { var t = localStorage.getItem("bp_theme"); return t === "dark" || t === "light" ? t : "dark"; } catch (_) { return "dark"; } }()),
           rememberUnit: false,
           lastUnit: "",
           parameterTableColumns: { ...DEFAULT_TABLE_COLUMNS },
@@ -4353,13 +4347,7 @@
             }
           }())
         },
-        appliedTheme: (function () {
-          try {
-            var t = localStorage.getItem("bp_theme");
-            if (t === "dark" || t === "light") return t;
-          } catch (_) {}
-          return "light";
-        }()),
+        appliedTheme: (function () { try { var t = localStorage.getItem("bp_theme"); return t === "dark" || t === "light" ? t : "dark"; } catch (_) { return "dark"; } }()),
         fusionThemeApplied: false,
         customUnitFeedback: { message: "", kind: "" },
         documentDefaults: {
@@ -9963,11 +9951,11 @@
       }
 
       function resolvePreferredTheme(settings, fusionTheme) {
-        if (settings && (settings.theme === "dark" || settings.theme === "light")) {
-          return settings.theme;
-        }
         if (fusionTheme === "dark" || fusionTheme === "light") {
           return fusionTheme;
+        }
+        if (settings && (settings.theme === "dark" || settings.theme === "light")) {
+          return settings.theme;
         }
         return state.appliedTheme === "dark" ? "dark" : "light";
       }

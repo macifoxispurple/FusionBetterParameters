@@ -111,7 +111,7 @@ UPDATE_HELPER_PATH = os.path.join(ADDIN_DIR, "update_helper.py")
 UPDATE_STATE_PATH = os.path.join(ADDIN_DIR, "update_state.json")
 
 DEFAULT_SETTINGS = {
-    "theme": "light",
+    "theme": "dark",
     "rememberUnit": False,
     "lastUnit": "",
     "paletteSize": {
@@ -1467,9 +1467,6 @@ def _load_settings():
     settings["updateCheck"] = {}
     settings_path = _settings_path()
     if not settings_path.exists():
-        detected_theme = _detect_fusion_theme()
-        if detected_theme in {"light", "dark"}:
-            settings["theme"] = detected_theme
         return settings
 
     try:
