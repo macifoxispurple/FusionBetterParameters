@@ -3667,6 +3667,7 @@
             <div class="actions">
               <button id="exportParametersButton" class="ghost" type="button">Export CSV</button>
               <button id="importParametersButton" class="ghost" type="button">Import CSV</button>
+              <button id="importDataPanelParametersButton" class="ghost" type="button">Import From Fusion File</button>
             </div>
             <hr class="settings-divider" />
             <div class="settings-subheading">BP Package (.bpmeta.json)</div>
@@ -3701,6 +3702,10 @@
               <button id="importParametersPackageButton" class="ghost" type="button">Import Package</button>
             </div>
             <pre id="parameterFileSummary" class="release-notes-body" style="display:none"></pre>
+            <div id="parameterFileFollowupActions" class="actions" style="display:none">
+              <button id="retryDataPanelImportButton" class="ghost" type="button">Retry Remaining</button>
+              <button id="copyFailedDataPanelRowsButton" class="ghost" type="button">Copy Failed Rows</button>
+            </div>
           </section>
 
         </div>
@@ -3950,6 +3955,9 @@
         SEED_TEST_PARAMETERS: "seedTestParameters",
         RESET_TEST_STATE: "resetTestState",
         IMPORT_PARAMETERS: "importParameters",
+        PREVIEW_IMPORT_PARAMETERS_FROM_DATA_PANEL: "previewImportParametersFromDataPanel",
+        IMPORT_PARAMETERS_FROM_DATA_PANEL: "importParametersFromDataPanel",
+        RETRY_IMPORT_PARAMETERS_FROM_DATA_PANEL: "retryImportParametersFromDataPanel",
         EXPORT_PARAMETERS: "exportParameters",
         EXPORT_PARAMETERS_PACKAGE: "exportParametersPackage",
         VALIDATE_PARAMETERS_PACKAGE_IMPORT: "validateParametersPackageImport",
@@ -3971,7 +3979,7 @@
         ACTION.RENAME_PARAMETER, ACTION.UPDATE_MODEL_PARAMETER, ACTION.BATCH_UPDATE_PARAMETERS, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
         ACTION.GET_BACKEND_CONTRACT_INFO, ACTION.GET_PARAMETER_DEPENDENCY_GRAPH, ACTION.RUN_SELF_TEST_SUITE,
         ACTION.SEED_TEST_PARAMETERS, ACTION.RESET_TEST_STATE,
-        ACTION.IMPORT_PARAMETERS, ACTION.EXPORT_PARAMETERS,
+        ACTION.IMPORT_PARAMETERS, ACTION.PREVIEW_IMPORT_PARAMETERS_FROM_DATA_PANEL, ACTION.IMPORT_PARAMETERS_FROM_DATA_PANEL, ACTION.RETRY_IMPORT_PARAMETERS_FROM_DATA_PANEL, ACTION.EXPORT_PARAMETERS,
         ACTION.EXPORT_PARAMETERS_PACKAGE, ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, ACTION.IMPORT_PARAMETERS_PACKAGE,
         ACTION.COPY_TO_CLIPBOARD,
         ACTION.OPEN_HELP_URL,
@@ -3984,18 +3992,19 @@
         ACTION.SAVE_PARAMETER_ORDER, ACTION.SAVE_GROUP_UI_STATE, ACTION.SAVE_SETTINGS, ACTION.SAVE_PALETTE_GEOMETRY,
         ACTION.RENAME_PARAMETER, ACTION.UPDATE_MODEL_PARAMETER, ACTION.BATCH_UPDATE_PARAMETERS, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
         ACTION.SEED_TEST_PARAMETERS, ACTION.RESET_TEST_STATE,
-        ACTION.IMPORT_PARAMETERS, ACTION.IMPORT_PARAMETERS_PACKAGE,
+        ACTION.IMPORT_PARAMETERS, ACTION.IMPORT_PARAMETERS_FROM_DATA_PANEL, ACTION.RETRY_IMPORT_PARAMETERS_FROM_DATA_PANEL, ACTION.IMPORT_PARAMETERS_PACKAGE,
         ACTION.SAVE_TEXT_TUNER_STATE, ACTION.CHECK_FOR_UPDATES, ACTION.DOWNLOAD_AND_STAGE_UPDATE,
         ACTION.SYNC_METADATA_JSON_TO_FUSION, ACTION.SYNC_METADATA_FUSION_TO_JSON, ACTION.REPAIR_METADATA
       ]);
       const READ_ONLY_OR_VALIDATION_ACTIONS = new Set([
         ACTION.GET_TEXT_TUNER_STATE, ACTION.VALIDATE_PARAMETER_NAME, ACTION.VALIDATE_EXPRESSION, ACTION.PREVIEW_EXPRESSION, ACTION.VALIDATE_UNIT, ACTION.GET_MODEL_PARAMETERS,
-        ACTION.EXPORT_PARAMETERS, ACTION.EXPORT_PARAMETERS_PACKAGE, ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, ACTION.COPY_TO_CLIPBOARD, ACTION.OPEN_HELP_URL,
+        ACTION.PREVIEW_IMPORT_PARAMETERS_FROM_DATA_PANEL, ACTION.EXPORT_PARAMETERS, ACTION.EXPORT_PARAMETERS_PACKAGE, ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, ACTION.COPY_TO_CLIPBOARD, ACTION.OPEN_HELP_URL,
         ACTION.GET_BACKEND_CONTRACT_INFO, ACTION.GET_PARAMETER_DEPENDENCY_GRAPH, ACTION.RUN_SELF_TEST_SUITE
       ]);
       // Compatibility: import flows can return ok=true with state=null from current backend paths.
       const STATE_OPTIONAL_MUTATING_ACTIONS = new Set([
         ACTION.IMPORT_PARAMETERS,
+        ACTION.IMPORT_PARAMETERS_FROM_DATA_PANEL,
         ACTION.IMPORT_PARAMETERS_PACKAGE
       ]);
       const QUEUE_STATE_WHILE_EDITING_ACTIONS = new Set([
@@ -4523,6 +4532,7 @@
       let rapidExpressionValidationNonce = 0;
       let rapidComputeAllRowsTimer = null;
       let rapidComputeAllRowsNonce = 0;
+      let dataPanelImportSession = null;
       let pendingConfirmVariant = "";
 
       function reportBackgroundFailure(contextLabel, error) {
@@ -7253,6 +7263,39 @@
         } else if (kind === "success") {
           node.classList.add("status-success");
         }
+      }
+
+      function setParameterFileFollowupActionsVisible(visible) {
+        const node = document.getElementById("parameterFileFollowupActions");
+        if (!node) {
+          return;
+        }
+        node.style.display = visible ? "" : "none";
+      }
+
+      function buildFailedRowsCopyText(session, failedRows) {
+        const rows = Array.isArray(failedRows) ? failedRows : [];
+        const sourceName = String(session?.sourceName || "").trim() || "(unnamed cloud file)";
+        const lines = [
+          `Source: ${sourceName}`,
+          `Failed rows: ${rows.length}`,
+          ""
+        ];
+        rows.forEach((row, index) => {
+          const rowLabel = Number(row?.row || 0) > 0 ? `row ${Number(row.row)}` : `item ${index + 1}`;
+          const name = String(row?.name || "").trim() || "(unnamed)";
+          const expression = String(row?.expression || "");
+          const unit = String(row?.unit || "");
+          const message = String(row?.message || "").trim() || "Unknown failure";
+          lines.push(`${rowLabel} | ${name} | expr=${expression} | unit=${unit} | reason=${message}`);
+        });
+        return lines.join("\n");
+      }
+
+      function showImportReportPopup(title, lines) {
+        const bodyLines = Array.isArray(lines) ? lines.filter(Boolean) : [];
+        const text = [String(title || "Import Report"), "", ...bodyLines].join("\n");
+        window.alert(text);
       }
 
       function formatMetadataTimestamp(ms) {
@@ -14773,6 +14816,219 @@
         } catch (error) {
           setGlobalStatus(error.message, "error");
           setParameterFileSummary(String(error.message || "Import failed."), "error");
+        }
+      });
+
+      document.getElementById("importDataPanelParametersButton").addEventListener("click", async () => {
+        const policy = normalizeConflictPolicy(state.importConflictPolicy);
+        dataPanelImportSession = null;
+        setParameterFileFollowupActionsVisible(false);
+        setParameterFileSummary("");
+        setGlobalStatus("Selecting Data Panel source...");
+        try {
+          const previewResponse = await sendToFusion(ACTION.PREVIEW_IMPORT_PARAMETERS_FROM_DATA_PANEL, {
+            conflictPolicy: policy
+          });
+          if (isDialogCancelledResponse(previewResponse)) {
+            return;
+          }
+          if (!previewResponse.ok) {
+            throw new Error(previewResponse.message || "Data Panel import preview failed.");
+          }
+
+          const selectionToken = String(previewResponse.selectionToken || "").trim();
+          if (!selectionToken) {
+            throw new Error("Data Panel import preview did not return a selection token.");
+          }
+          const sourceName = String(previewResponse.sourceFileName || "").trim();
+          const sourceFileId = String(previewResponse.sourceFileId || "").trim();
+          const sourceWasAlreadyOpen = previewResponse.sourceWasAlreadyOpen === true;
+          const sourceOpenedTemporarily = previewResponse.sourceOpenedTemporarily === true;
+          const previewImported = readResponseCountField(previewResponse, "importedCount", "Data Panel preview");
+          const previewSkipped = readResponseCountField(previewResponse, "skippedCount", "Data Panel preview");
+          const previewFailed = readResponseCountField(previewResponse, "failedCount", "Data Panel preview");
+          const previewFailedRows = readResponseArrayField(previewResponse, "failedRows", "Data Panel preview");
+          const sourceHandling = sourceWasAlreadyOpen
+            ? "Source was already open and was not closed."
+            : (sourceOpenedTemporarily ? "Source was opened temporarily for read and then closed without saving." : "Source file lifecycle unchanged.");
+          const previewLines = [
+            `Source: ${sourceName || "(unnamed cloud file)"}`,
+            sourceFileId ? `Source ID: ${sourceFileId}` : "",
+            sourceHandling,
+            "",
+            `Will add/update: ${previewImported}`,
+            `Will skip: ${previewSkipped}`,
+            `Potential failures: ${previewFailed}`
+          ].filter(Boolean);
+          const previewRowDetailLines = buildRowsNeedingAttentionLines(previewFailedRows);
+          if (previewRowDetailLines.length) {
+            previewLines.push("");
+            previewLines.push(...previewRowDetailLines);
+          }
+          setParameterFileSummary(previewLines.join("\n"), previewFailed > 0 ? "warning" : "success");
+
+          const confirmed = window.confirm(
+            `Import from Fusion file "${sourceName || "selected file"}"?\n\nWill add/update ${previewImported}, skip ${previewSkipped}, potential failures ${previewFailed}.\n\nPrecheck can overestimate failures. Import will auto-retry remaining rows.`
+          );
+          if (!confirmed) {
+            return;
+          }
+
+          setGlobalStatus("Importing parameters from Data Panel source...");
+          const response = await sendToFusion(ACTION.IMPORT_PARAMETERS_FROM_DATA_PANEL, {
+            conflictPolicy: policy,
+            dryRun: false,
+            selectionToken
+          });
+          if (isDialogCancelledResponse(response)) {
+            return;
+          }
+          if (!response.ok) {
+            throw new Error(response.message || "Data Panel import failed.");
+          }
+          if (response.dryRun === true) {
+            appendStatusHistory("Data Panel import returned dryRun=true during commit call; import was not applied.", "warning");
+            setGlobalStatus("Data Panel import did not apply (backend returned dryRun=true).", "warning");
+            return;
+          }
+
+          if (hasObjectStatePayload(response.state)) {
+            applyStateFromFusion(response, { source: "response", action: ACTION.IMPORT_PARAMETERS_FROM_DATA_PANEL });
+          } else {
+            appendStatusHistory("Data Panel import response omitted state; running refresh for compatibility.", "warning");
+            await refreshParameters();
+          }
+
+          const imported = readResponseCountField(response, "importedCount", "Data Panel import");
+          const skipped = readResponseCountField(response, "skippedCount", "Data Panel import");
+          const failed = readResponseCountField(response, "failedCount", "Data Panel import");
+          const failedRows = readResponseArrayField(response, "failedRows", "Data Panel import");
+          const passCount = readResponseCountField(response, "passCount", "Data Panel import");
+          const importedOnRetry = readResponseCountField(response, "importedOnRetryCount", "Data Panel import");
+          dataPanelImportSession = {
+            selectionToken,
+            sourceName: String(response.sourceFileName || sourceName || "").trim() || "(unnamed cloud file)",
+            policy,
+            failedRows
+          };
+          const lines = [
+            `Source: ${dataPanelImportSession.sourceName}`,
+            `Added/Updated: ${imported}`,
+            `Imported on retries: ${importedOnRetry}`,
+            `Skipped: ${skipped}`,
+            `Still failed: ${failed}`,
+            `Passes used: ${passCount}`
+          ];
+          const rowDetailLines = buildRowsNeedingAttentionLines(failedRows);
+          if (rowDetailLines.length) {
+            lines.push("");
+            lines.push(...rowDetailLines);
+          }
+          const summary = String(response.message || "").trim() || (
+            failed > 0
+              ? `Import complete. Imported ${imported} total (${importedOnRetry} on retries), ${failed} still failed.`
+              : `Import complete. Imported ${imported} total (${importedOnRetry} on retries) in ${passCount} pass(es).`
+          );
+          setGlobalStatus(summary, failed > 0 ? "warning" : "success");
+          setParameterFileSummary(lines.join("\n"), failed > 0 ? "warning" : "success");
+          setParameterFileFollowupActionsVisible(failed > 0);
+          showImportReportPopup("Fusion File Import Report", [
+            summary,
+            `Added/Updated: ${imported}`,
+            `Imported on retries: ${importedOnRetry}`,
+            `Skipped: ${skipped}`,
+            `Still failed: ${failed}`,
+            `Passes used: ${passCount}`
+          ]);
+        } catch (error) {
+          dataPanelImportSession = null;
+          setParameterFileFollowupActionsVisible(false);
+          setGlobalStatus(error.message, "error");
+          setParameterFileSummary(String(error.message || "Data Panel import failed."), "error");
+        }
+      });
+
+      document.getElementById("retryDataPanelImportButton").addEventListener("click", async () => {
+        const session = dataPanelImportSession;
+        if (!session || !session.selectionToken) {
+          setGlobalStatus("No pending failed Fusion-file rows to retry.", "warning");
+          return;
+        }
+        const policy = normalizeConflictPolicy(state.importConflictPolicy);
+        setGlobalStatus("Retrying remaining Fusion-file rows...");
+        try {
+          const response = await sendToFusion(ACTION.RETRY_IMPORT_PARAMETERS_FROM_DATA_PANEL, {
+            selectionToken: session.selectionToken,
+            conflictPolicy: policy,
+            dryRun: false
+          });
+          if (!response.ok) {
+            throw new Error(response.message || "Retry failed.");
+          }
+          if (hasObjectStatePayload(response.state)) {
+            applyStateFromFusion(response, { source: "response", action: ACTION.RETRY_IMPORT_PARAMETERS_FROM_DATA_PANEL });
+          } else {
+            await refreshParameters();
+          }
+          const imported = readResponseCountField(response, "importedCount", "Data Panel retry");
+          const skipped = readResponseCountField(response, "skippedCount", "Data Panel retry");
+          const failed = readResponseCountField(response, "failedCount", "Data Panel retry");
+          const failedRows = readResponseArrayField(response, "failedRows", "Data Panel retry");
+          const passCount = readResponseCountField(response, "passCount", "Data Panel retry");
+          const importedOnRetry = readResponseCountField(response, "importedOnRetryCount", "Data Panel retry");
+          dataPanelImportSession = {
+            ...session,
+            policy,
+            failedRows
+          };
+          const lines = [
+            `Source: ${String(response.sourceFileName || session.sourceName || "").trim() || "(unnamed cloud file)"}`,
+            `Retry imported: ${imported}`,
+            `Imported on retries: ${importedOnRetry}`,
+            `Retry skipped: ${skipped}`,
+            `Still failed: ${failed}`,
+            `Passes used: ${passCount}`
+          ];
+          const rowDetailLines = buildRowsNeedingAttentionLines(failedRows);
+          if (rowDetailLines.length) {
+            lines.push("");
+            lines.push(...rowDetailLines);
+          }
+          const summary = String(response.message || "").trim() || (
+            failed > 0
+              ? `Retry complete. Imported ${imported}, ${failed} still failed.`
+              : `Retry complete. All remaining rows imported in ${passCount} pass(es).`
+          );
+          setGlobalStatus(summary, failed > 0 ? "warning" : "success");
+          setParameterFileSummary(lines.join("\n"), failed > 0 ? "warning" : "success");
+          setParameterFileFollowupActionsVisible(failed > 0);
+          showImportReportPopup("Fusion File Retry Report", [
+            summary,
+            `Retry imported: ${imported}`,
+            `Imported on retries: ${importedOnRetry}`,
+            `Retry skipped: ${skipped}`,
+            `Still failed: ${failed}`,
+            `Passes used: ${passCount}`
+          ]);
+        } catch (error) {
+          setGlobalStatus(error.message, "error");
+          setParameterFileSummary(String(error.message || "Retry failed."), "error");
+        }
+      });
+
+      document.getElementById("copyFailedDataPanelRowsButton").addEventListener("click", async () => {
+        const session = dataPanelImportSession;
+        const failedRows = Array.isArray(session?.failedRows) ? session.failedRows : [];
+        if (!session || failedRows.length === 0) {
+          setGlobalStatus("No failed rows to copy.", "warning");
+          return;
+        }
+        const text = buildFailedRowsCopyText(session, failedRows);
+        try {
+          await copyTextToClipboard(text);
+          setGlobalStatus(`Copied ${failedRows.length} failed row(s) to clipboard.`, "success");
+        } catch (error) {
+          setGlobalStatus(String(error?.message || "Copy failed."), "error");
         }
       });
 

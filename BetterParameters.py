@@ -181,7 +181,7 @@ _READ_ONLY_ACTIONS = [
     "getActiveDocumentInfo", "checkForUpdates", "getMetadataDebugSnapshot",
     "validateParametersPackageImport", "exportParameters", "exportParametersPackage",
     "getParameterDependencyGraph", "getBackendContractInfo", "runSelfTestSuite",
-    "copyToClipboard", "getModelParameters",
+    "copyToClipboard", "getModelParameters", "previewImportParametersFromDataPanel",
 ]
 
 _MUTATING_ACTIONS = [
@@ -194,8 +194,11 @@ _MUTATING_ACTIONS = [
     "saveTextTunerState", "downloadAndStageUpdate",
     "syncMetadataJsonToFusion", "syncMetadataFusionToJson", "repairMetadata",
     "importParametersPackage", "seedTestParameters", "resetTestState",
-    "batchUpdateParameters",
+    "batchUpdateParameters", "importParametersFromDataPanel", "retryImportParametersFromDataPanel",
 ]
+
+_DATA_PANEL_SELECTIONS = {}
+_MAX_DATA_PANEL_IMPORT_PASSES = 5
 
 # ---------------------------------------------------------------------------
 # Error codes — stable identifiers for ok:false responses.
@@ -579,6 +582,88 @@ def _handle_palette_action(action, data):
             "dryRun": dry_run,
         }
 
+    if action == "previewImportParametersFromDataPanel":
+        result = _preview_import_parameters_from_data_panel(data)
+        if result.get("cancelled"):
+            return {
+                "ok": False, "message": "Import cancelled.", "errorCode": ERROR_DIALOG_CANCELLED, "state": None,
+                "selectionToken": "",
+                "sourceFileName": "",
+                "sourceFileId": "",
+                "sourceWasAlreadyOpen": False,
+                "sourceOpenedTemporarily": False,
+                "importedCount": 0, "skippedCount": 0, "failedCount": 0, "failedRows": [],
+                "dryRun": True,
+            }
+        return {
+            "ok": result["ok"],
+            "message": result["message"],
+            "state": None,
+            "selectionToken": result.get("selectionToken", ""),
+            "sourceFileName": result.get("sourceFileName", ""),
+            "sourceFileId": result.get("sourceFileId", ""),
+            "sourceWasAlreadyOpen": bool(result.get("sourceWasAlreadyOpen", False)),
+            "sourceOpenedTemporarily": bool(result.get("sourceOpenedTemporarily", False)),
+            "importedCount": result["importedCount"],
+            "skippedCount": result["skippedCount"],
+            "failedCount": result["failedCount"],
+            "failedRows": result["failedRows"],
+            "dryRun": True,
+        }
+
+    if action == "importParametersFromDataPanel":
+        dry_run = bool(data.get("dryRun", False))
+        result = _import_parameters_from_data_panel(data, dry_run=dry_run)
+        if result.get("cancelled"):
+            return {
+                "ok": False, "message": "Import cancelled.", "errorCode": ERROR_DIALOG_CANCELLED, "state": None,
+                "selectionToken": "",
+                "sourceFileName": "",
+                "sourceFileId": "",
+                "sourceWasAlreadyOpen": False,
+                "sourceOpenedTemporarily": False,
+                "importedCount": 0, "skippedCount": 0, "failedCount": 0, "failedRows": [],
+                "dryRun": dry_run,
+            }
+        state = _current_state_payload() if (result["ok"] and not dry_run) else None
+        return {
+            "ok": result["ok"],
+            "message": result["message"],
+            "state": state,
+            "selectionToken": result.get("selectionToken", ""),
+            "sourceFileName": result.get("sourceFileName", ""),
+            "sourceFileId": result.get("sourceFileId", ""),
+            "sourceWasAlreadyOpen": bool(result.get("sourceWasAlreadyOpen", False)),
+            "sourceOpenedTemporarily": bool(result.get("sourceOpenedTemporarily", False)),
+            "importedCount": result["importedCount"],
+            "skippedCount": result["skippedCount"],
+            "failedCount": result["failedCount"],
+            "failedRows": result["failedRows"],
+            "dryRun": dry_run,
+        }
+
+    if action == "retryImportParametersFromDataPanel":
+        dry_run = bool(data.get("dryRun", False))
+        result = _retry_import_parameters_from_data_panel(data, dry_run=dry_run)
+        state = _current_state_payload() if (result["ok"] and not dry_run) else None
+        return {
+            "ok": result["ok"],
+            "message": result["message"],
+            "state": state,
+            "selectionToken": result.get("selectionToken", ""),
+            "sourceFileName": result.get("sourceFileName", ""),
+            "sourceFileId": result.get("sourceFileId", ""),
+            "sourceWasAlreadyOpen": bool(result.get("sourceWasAlreadyOpen", False)),
+            "sourceOpenedTemporarily": bool(result.get("sourceOpenedTemporarily", False)),
+            "importedCount": result["importedCount"],
+            "skippedCount": result["skippedCount"],
+            "failedCount": result["failedCount"],
+            "failedRows": result["failedRows"],
+            "passCount": result.get("passCount", 1),
+            "importedOnRetryCount": result.get("importedOnRetryCount", 0),
+            "dryRun": dry_run,
+        }
+
     if action == "exportParametersPackage":
         result = _export_parameters_package(data)
         if result.get("cancelled"):
@@ -870,6 +955,25 @@ def _collect_user_parameters(order_state=None):
     for item in results:
         item.pop("_sortOrder", None)
         item.pop("_sourceIndex", None)
+    return results
+
+
+def _collect_user_parameters_from_design(design):
+    if not design:
+        return []
+    results = []
+    params = design.userParameters
+    for index in range(params.count):
+        param = params.item(index)
+        if not param:
+            continue
+        results.append({
+            "name": str(param.name or ""),
+            "expression": str(param.expression or ""),
+            "unit": str(param.unit or ""),
+            "comment": str(param.comment or ""),
+            "group": "",
+        })
     return results
 
 
@@ -3010,71 +3114,16 @@ def _import_parameters(data, dry_run=False):
         raise ValueError(parse_error)
 
     design = _require_design()
-    imported_count = 0
-    skipped_count = 0
-    failed_rows = []
-
-    for row_index, row in enumerate(rows):
-        row_label = row.get("name") or f"row {row_index + 2}"
-        name = row.get("name", "")
-        expression = row.get("expression", "")
-        unit = row.get("unit", "")
-        comment = row.get("comment", "")
-        group = _normalize_group_name(row.get("group", ""))
-
-        if not name:
-            failed_rows.append({"row": row_index + 2, "name": "", "message": "Name is required."})
-            continue
-        if not expression:
-            failed_rows.append({"row": row_index + 2, "name": name, "message": "Expression is required."})
-            continue
-
-        existing = design.userParameters.itemByName(name)
-
-        if existing:
-            if conflict_policy == "skip":
-                skipped_count += 1
-                continue
-            # overwrite: update expression and comment.
-            if dry_run:
-                imported_count += 1
-            else:
-                try:
-                    existing.expression = expression
-                    if comment:
-                        existing.comment = comment
-                    # Update group if specified.
-                    if group:
-                        _set_parameter_group({"name": name, "group": group})
-                    imported_count += 1
-                except Exception as exc:
-                    failed_rows.append({"row": row_index + 2, "name": name, "message": str(exc)})
-        else:
-            # Validate before creating.
-            name_check = _validate_parameter_name_response(name)
-            if not name_check["ok"]:
-                failed_rows.append({"row": row_index + 2, "name": name, "message": name_check["message"]})
-                continue
-
-            expr_check = _validate_expression_response(expression, name, unit)
-            if not expr_check["ok"] and not expr_check.get("isIncomplete"):
-                failed_rows.append({"row": row_index + 2, "name": name, "message": expr_check["message"]})
-                continue
-
-            if dry_run:
-                imported_count += 1
-            else:
-                try:
-                    value_input = adsk.core.ValueInput.createByString(expression)
-                    created = design.userParameters.add(name, value_input, unit, comment)
-                    if not created:
-                        raise ValueError("Fusion rejected the parameter.")
-                    if group:
-                        _set_parameter_group({"name": name, "group": group})
-                    imported_count += 1
-                except Exception as exc:
-                    failed_rows.append({"row": row_index + 2, "name": name, "message": str(exc)})
-
+    import_result = _import_parameter_rows_into_design(
+        rows,
+        design,
+        conflict_policy=conflict_policy,
+        dry_run=dry_run,
+        row_number_base=2
+    )
+    imported_count = import_result["importedCount"]
+    skipped_count = import_result["skippedCount"]
+    failed_rows = import_result["failedRows"]
     failed_count = len(failed_rows)
     ok = True  # file was read and processed successfully even if some rows failed
     if imported_count == 0 and failed_count > 0:
@@ -3095,6 +3144,452 @@ def _import_parameters(data, dry_run=False):
         "skippedCount": skipped_count,
         "failedCount": failed_count,
         "failedRows": failed_rows,
+    }
+
+
+def _import_parameter_rows_into_design(rows, design, conflict_policy="skip", dry_run=False, row_number_base=2):
+    imported_count = 0
+    skipped_count = 0
+    failed_rows = []
+
+    for row_index, row in enumerate(rows):
+        row_number = row_number_base + row_index
+        name = row.get("name", "")
+        expression = row.get("expression", "")
+        unit = row.get("unit", "")
+        comment = row.get("comment", "")
+        group = _normalize_group_name(row.get("group", ""))
+        row_payload = {
+            "name": name,
+            "expression": expression,
+            "unit": unit,
+            "comment": comment,
+            "group": group,
+        }
+
+        if not name:
+            failed_rows.append({"row": row_number, "name": "", "message": "Name is required.", **row_payload})
+            continue
+        if not expression:
+            failed_rows.append({"row": row_number, "name": name, "message": "Expression is required.", **row_payload})
+            continue
+
+        existing = design.userParameters.itemByName(name)
+        if existing:
+            if conflict_policy == "skip":
+                skipped_count += 1
+                continue
+            if dry_run:
+                imported_count += 1
+            else:
+                try:
+                    existing.expression = expression
+                    if comment:
+                        existing.comment = comment
+                    if group:
+                        _set_parameter_group({"name": name, "group": group})
+                    imported_count += 1
+                except Exception as exc:
+                    failed_rows.append({"row": row_number, "name": name, "message": str(exc), **row_payload})
+            continue
+
+        name_check = _validate_parameter_name_response(name)
+        if not name_check["ok"]:
+            failed_rows.append({"row": row_number, "name": name, "message": name_check["message"], **row_payload})
+            continue
+
+        expr_check = _validate_expression_response(expression, name, unit)
+        if not expr_check["ok"] and not expr_check.get("isIncomplete"):
+            failed_rows.append({"row": row_number, "name": name, "message": expr_check["message"], **row_payload})
+            continue
+
+        if dry_run:
+            imported_count += 1
+        else:
+            try:
+                value_input = adsk.core.ValueInput.createByString(expression)
+                created = design.userParameters.add(name, value_input, unit, comment)
+                if not created:
+                    raise ValueError("Fusion rejected the parameter.")
+                if group:
+                    _set_parameter_group({"name": name, "group": group})
+                imported_count += 1
+            except Exception as exc:
+                failed_rows.append({"row": row_number, "name": name, "message": str(exc), **row_payload})
+
+    return {
+        "importedCount": imported_count,
+        "skippedCount": skipped_count,
+        "failedCount": len(failed_rows),
+        "failedRows": failed_rows,
+    }
+
+
+def _open_cloud_file_dialog_for_source():
+    if not ui:
+        raise RuntimeError("UI is not available to open a cloud file dialog.")
+    dialog = ui.createCloudFileDialog()
+    if not dialog:
+        raise RuntimeError("Could not create cloud file dialog.")
+    dialog.title = "Select Source Design - Better Parameters"
+    dialog.isMultiSelectEnabled = False
+    result = dialog.showOpen()
+    if result != adsk.core.DialogResults.DialogOK:
+        return None
+    return getattr(dialog, "dataFile", None)
+
+
+def _find_open_document_for_data_file_id(data_file_id):
+    if not app or not data_file_id:
+        return None
+    documents = app.documents
+    for index in range(documents.count):
+        document = documents.item(index)
+        if not document:
+            continue
+        doc_data_file = _safe_call(lambda: document.dataFile)
+        doc_data_file_id = str(_safe_call(lambda: doc_data_file.id) or "")
+        if doc_data_file_id and doc_data_file_id == data_file_id:
+            return document
+    return None
+
+
+def _design_from_document(document):
+    if not document:
+        return None
+    products = _safe_call(lambda: document.products)
+    if not products:
+        return None
+    product = _safe_call(lambda: products.itemByProductType("DesignProductType"))
+    return adsk.fusion.Design.cast(product)
+
+
+def _cache_data_panel_selection(data_file):
+    token = str(uuid.uuid4())
+    _DATA_PANEL_SELECTIONS[token] = {
+        "dataFile": data_file,
+        "pendingRows": [],
+        "sourceFileName": str(_safe_call(lambda: data_file.name) or ""),
+        "sourceFileId": str(_safe_call(lambda: data_file.id) or ""),
+    }
+    return token
+
+
+def _get_cached_data_panel_selection(token):
+    if not token:
+        return None
+    return _DATA_PANEL_SELECTIONS.get(token)
+
+
+def _cached_data_panel_entry_parts(cached):
+    if isinstance(cached, dict):
+        return {
+            "dataFile": cached.get("dataFile"),
+            "sourceFileName": str(cached.get("sourceFileName") or ""),
+            "sourceFileId": str(cached.get("sourceFileId") or ""),
+            "pendingRows": list(cached.get("pendingRows") or []),
+        }
+    # Backward compatibility with older cache shape where value was the DataFile directly.
+    return {
+        "dataFile": cached,
+        "sourceFileName": str(_safe_call(lambda: cached.name) or ""),
+        "sourceFileId": str(_safe_call(lambda: cached.id) or ""),
+        "pendingRows": [],
+    }
+
+
+def _set_cached_data_panel_pending_rows(token, failed_rows):
+    cached = _get_cached_data_panel_selection(token)
+    if not isinstance(cached, dict):
+        return
+    rows = []
+    for row in failed_rows or []:
+        if not isinstance(row, dict):
+            continue
+        rows.append({
+            "name": str(row.get("name", "")),
+            "expression": str(row.get("expression", "")),
+            "unit": str(row.get("unit", "")),
+            "comment": str(row.get("comment", "")),
+            "group": str(row.get("group", "")),
+            "message": str(row.get("message", "")),
+        })
+    cached["pendingRows"] = rows
+
+
+def _extract_source_rows_from_data_file(data_file):
+    source_file_id = str(_safe_call(lambda: data_file.id) or "")
+    source_file_name = str(_safe_call(lambda: data_file.name) or "")
+    source_document = _find_open_document_for_data_file_id(source_file_id) if source_file_id else None
+    source_was_already_open = bool(source_document)
+    source_opened_temporarily = False
+    active_before = app.activeDocument if app else None
+
+    if not source_document:
+        source_document = _safe_call(lambda: app.documents.open(data_file, False)) if app else None
+        if not source_document:
+            source_document = _safe_call(lambda: app.documents.open(data_file)) if app else None
+        source_opened_temporarily = bool(source_document)
+        if not source_document:
+            raise RuntimeError("Could not open source design.")
+
+    try:
+        source_design = _design_from_document(source_document)
+        if not source_design:
+            raise RuntimeError("Selected source document does not contain a Fusion design.")
+        source_rows = _collect_user_parameters_from_design(source_design)
+    finally:
+        if source_opened_temporarily and source_document:
+            _safe_call(lambda: source_document.close(False))
+        if active_before and app and app.activeDocument != active_before:
+            _safe_call(lambda: active_before.activate())
+
+    return {
+        "sourceRows": source_rows,
+        "sourceFileName": source_file_name,
+        "sourceFileId": source_file_id,
+        "sourceWasAlreadyOpen": source_was_already_open,
+        "sourceOpenedTemporarily": source_opened_temporarily,
+    }
+
+
+def _run_multi_pass_import(rows, design, conflict_policy, dry_run=False, max_passes=_MAX_DATA_PANEL_IMPORT_PASSES):
+    pending_rows = list(rows or [])
+    total_imported = 0
+    total_skipped = 0
+    pass_count = 0
+    imported_on_retry_count = 0
+    last_failed_rows = []
+    while pass_count < max(1, int(max_passes)) and pending_rows:
+        pass_count += 1
+        result = _import_parameter_rows_into_design(
+            pending_rows,
+            design,
+            conflict_policy=conflict_policy,
+            dry_run=dry_run,
+            row_number_base=2
+        )
+        imported_this_pass = int(result.get("importedCount", 0))
+        skipped_this_pass = int(result.get("skippedCount", 0))
+        failed_this_pass = list(result.get("failedRows") or [])
+        total_imported += imported_this_pass
+        total_skipped += skipped_this_pass
+        if pass_count > 1:
+            imported_on_retry_count += imported_this_pass
+        if imported_this_pass <= 0:
+            last_failed_rows = failed_this_pass
+            break
+        pending_rows = failed_this_pass
+        last_failed_rows = failed_this_pass
+        if not failed_this_pass:
+            break
+    return {
+        "importedCount": total_imported,
+        "skippedCount": total_skipped,
+        "failedCount": len(last_failed_rows),
+        "failedRows": last_failed_rows,
+        "passCount": pass_count,
+        "importedOnRetryCount": imported_on_retry_count,
+    }
+
+
+def _preview_import_parameters_from_data_panel(data):
+    _require_design()
+    data_file = _open_cloud_file_dialog_for_source()
+    if not data_file:
+        return {"cancelled": True}
+    selection_token = _cache_data_panel_selection(data_file)
+    extraction = _extract_source_rows_from_data_file(data_file)
+    conflict_policy = str(data.get("conflictPolicy") or "skip").strip().lower()
+    if conflict_policy not in ("skip", "overwrite"):
+        conflict_policy = "skip"
+    result = _import_parameter_rows_into_design(
+        extraction["sourceRows"],
+        _require_design(),
+        conflict_policy=conflict_policy,
+        dry_run=True,
+        row_number_base=2
+    )
+    failed_count = result["failedCount"]
+    imported_count = result["importedCount"]
+    ok = True
+    message = ""
+    if imported_count == 0 and failed_count > 0:
+        ok = False
+        message = f"No parameters were importable. {failed_count} row(s) failed validation."
+    elif failed_count > 0:
+        message = f"{failed_count} row(s) may fail on import."
+    return {
+        "cancelled": False,
+        "ok": ok,
+        "message": message,
+        "selectionToken": selection_token,
+        "sourceFileName": extraction["sourceFileName"],
+        "sourceFileId": extraction["sourceFileId"],
+        "sourceWasAlreadyOpen": extraction["sourceWasAlreadyOpen"],
+        "sourceOpenedTemporarily": extraction["sourceOpenedTemporarily"],
+        "importedCount": imported_count,
+        "skippedCount": result["skippedCount"],
+        "failedCount": failed_count,
+        "failedRows": result["failedRows"],
+    }
+
+
+def _import_parameters_from_data_panel(data, dry_run=False):
+    _require_design()
+    token = str(data.get("selectionToken") or "").strip()
+    cached = _get_cached_data_panel_selection(token)
+    if not cached:
+        raise ValueError("Source selection expired. Please run preview and select a source file again.")
+    cached_parts = _cached_data_panel_entry_parts(cached)
+    data_file = cached_parts.get("dataFile")
+    if not data_file:
+        raise ValueError("Source selection is missing file data. Please re-run preview and select a source file again.")
+    extraction = _extract_source_rows_from_data_file(data_file)
+    if not extraction["sourceRows"]:
+        _set_cached_data_panel_pending_rows(token, [])
+        return {
+            "cancelled": False,
+            "ok": False,
+            "message": "Selected Fusion file has no user parameters to import.",
+            "selectionToken": token,
+            "sourceFileName": extraction["sourceFileName"] or cached_parts.get("sourceFileName", ""),
+            "sourceFileId": extraction["sourceFileId"] or cached_parts.get("sourceFileId", ""),
+            "sourceWasAlreadyOpen": extraction["sourceWasAlreadyOpen"],
+            "sourceOpenedTemporarily": extraction["sourceOpenedTemporarily"],
+            "importedCount": 0,
+            "skippedCount": 0,
+            "failedCount": 0,
+            "failedRows": [],
+            "passCount": 1,
+            "importedOnRetryCount": 0,
+        }
+    conflict_policy = str(data.get("conflictPolicy") or "skip").strip().lower()
+    if conflict_policy not in ("skip", "overwrite"):
+        conflict_policy = "skip"
+    result = _run_multi_pass_import(
+        extraction["sourceRows"],
+        _require_design(),
+        conflict_policy=conflict_policy,
+        dry_run=dry_run,
+        max_passes=_MAX_DATA_PANEL_IMPORT_PASSES
+    )
+    failed_count = result["failedCount"]
+    imported_count = result["importedCount"]
+    skipped_count = result["skippedCount"]
+    failed_rows = result["failedRows"]
+    ok = True
+    if imported_count == 0 and failed_count > 0:
+        ok = False
+        message = f"No parameters were imported. {failed_count} row(s) failed."
+    elif failed_count > 0:
+        message = (
+            f"Import complete. Imported {imported_count} total "
+            f"({result.get('importedOnRetryCount', 0)} on retries), "
+            f"{failed_count} row(s) still failed after {result.get('passCount', 1)} pass(es)."
+        )
+    elif skipped_count > 0 and imported_count == 0:
+        message = f"{skipped_count} parameter(s) already exist and were skipped (conflictPolicy: skip)."
+    else:
+        message = (
+            f"Import complete. Imported {imported_count} total "
+            f"({result.get('importedOnRetryCount', 0)} on retries) in {result.get('passCount', 1)} pass(es)."
+        )
+    _set_cached_data_panel_pending_rows(token, failed_rows)
+    return {
+        "cancelled": False,
+        "ok": ok,
+        "message": message,
+        "selectionToken": token,
+        "sourceFileName": extraction["sourceFileName"],
+        "sourceFileId": extraction["sourceFileId"],
+        "sourceWasAlreadyOpen": extraction["sourceWasAlreadyOpen"],
+        "sourceOpenedTemporarily": extraction["sourceOpenedTemporarily"],
+        "importedCount": imported_count,
+        "skippedCount": skipped_count,
+        "failedCount": failed_count,
+        "failedRows": failed_rows,
+        "passCount": result.get("passCount", 1),
+        "importedOnRetryCount": result.get("importedOnRetryCount", 0),
+    }
+
+
+def _retry_import_parameters_from_data_panel(data, dry_run=False):
+    _require_design()
+    token = str(data.get("selectionToken") or "").strip()
+    cached = _get_cached_data_panel_selection(token)
+    if not isinstance(cached, dict):
+        raise ValueError("Source selection expired. Please re-run Import From Fusion File.")
+    cached_parts = _cached_data_panel_entry_parts(cached)
+    pending_rows = list(cached_parts.get("pendingRows") or [])
+    if not pending_rows:
+        return {
+            "ok": True,
+            "message": "No remaining failed rows to retry.",
+            "selectionToken": token,
+            "sourceFileName": cached_parts.get("sourceFileName", ""),
+            "sourceFileId": cached_parts.get("sourceFileId", ""),
+            "sourceWasAlreadyOpen": False,
+            "sourceOpenedTemporarily": False,
+            "importedCount": 0,
+            "skippedCount": 0,
+            "failedCount": 0,
+            "failedRows": [],
+            "passCount": 1,
+            "importedOnRetryCount": 0,
+        }
+    conflict_policy = str(data.get("conflictPolicy") or "skip").strip().lower()
+    if conflict_policy not in ("skip", "overwrite"):
+        conflict_policy = "skip"
+    result = _run_multi_pass_import(
+        pending_rows,
+        _require_design(),
+        conflict_policy=conflict_policy,
+        dry_run=dry_run,
+        max_passes=_MAX_DATA_PANEL_IMPORT_PASSES
+    )
+    failed_rows = result.get("failedRows") or []
+    _set_cached_data_panel_pending_rows(token, failed_rows)
+    failed_count = int(result.get("failedCount", 0))
+    imported_count = int(result.get("importedCount", 0))
+    skipped_count = int(result.get("skippedCount", 0))
+    ok = True
+    if imported_count == 0 and failed_count > 0:
+        ok = False
+        message = (
+            f"Retry complete. Imported {imported_count} "
+            f"({result.get('importedOnRetryCount', 0)} on retries), "
+            f"{failed_count} row(s) still failed after {result.get('passCount', 1)} pass(es)."
+        )
+    elif failed_count > 0:
+        message = (
+            f"Retry complete. Imported {imported_count} "
+            f"({result.get('importedOnRetryCount', 0)} on retries), "
+            f"{failed_count} row(s) still failed after {result.get('passCount', 1)} pass(es)."
+        )
+    elif imported_count > 0:
+        message = (
+            f"Retry complete. All remaining rows imported in {result.get('passCount', 1)} pass(es) "
+            f"({result.get('importedOnRetryCount', 0)} on retries)."
+        )
+    elif skipped_count > 0:
+        message = f"Retry complete. {skipped_count} row(s) skipped by conflict policy."
+    else:
+        message = "No remaining failed rows to retry."
+    return {
+        "ok": ok,
+        "message": message,
+        "selectionToken": token,
+        "sourceFileName": cached_parts.get("sourceFileName", ""),
+        "sourceFileId": cached_parts.get("sourceFileId", ""),
+        "sourceWasAlreadyOpen": False,
+        "sourceOpenedTemporarily": False,
+        "importedCount": imported_count,
+        "skippedCount": skipped_count,
+        "failedCount": failed_count,
+        "failedRows": failed_rows,
+        "passCount": result.get("passCount", 1),
+        "importedOnRetryCount": result.get("importedOnRetryCount", 0),
     }
 
 
