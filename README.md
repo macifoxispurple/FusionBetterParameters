@@ -137,10 +137,10 @@ You can disable update checks in settings if you prefer.
 
 ## Project files
 
-- `BetterParameters.py` — main add-in logic :contentReference[oaicite:0]{index=0}  
-- `palette.html` — UI for the parameter editor :contentReference[oaicite:1]{index=1}  
-- `update_helper.py` — update application logic :contentReference[oaicite:2]{index=2}  
-- `update_state.py` — update state tracking :contentReference[oaicite:3]{index=3}  
+- `BetterParameters.py` — main add-in logic
+- `palette.html` — UI for the parameter editor
+- `update_helper.py` — update application logic
+- `update_state.py` — update state tracking 
 
 ## Status
 
