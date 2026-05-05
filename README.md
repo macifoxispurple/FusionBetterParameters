@@ -41,7 +41,7 @@ There’s also a fast path for creating a bunch of parameters at once.
 - Mix delimiters if needed
 - Each row is validated and processed individually
 
-It’s meant for quickly pasting in or building out parameter sets without switching context.
+It’s meant for quickly pasting in or building out parameter sets without switching context or touching your mouse.
 
 ## Working with groups
 
