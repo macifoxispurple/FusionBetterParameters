@@ -2,6 +2,17 @@
 
 Scope: durable verification process for remaining FE roadmap items in `CONTEXT.md` (M3 + M4).
 
+## 0) Current Baseline FE Tests (new default)
+
+Run from repo root:
+- `python -m pytest tests/test_fe_current_baseline.py -q`
+
+What this locks:
+- dev harness points at the active palette path.
+- mock fixture loading path uses the new `devtools/` location (with legacy fallback).
+- Ctrl/Cmd shortcut parity wiring stays present.
+- core FE control ids expected by current workflows remain present.
+
 ## 1) Automated Coverage
 
 Run inside Fusion:
