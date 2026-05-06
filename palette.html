@@ -8296,6 +8296,7 @@
               `Deleted ${deletedCount}, failed ${failedCount}.${firstMessage ? ` ${firstName ? `${firstName}: ` : ""}${firstMessage}` : ""}`,
               deletedCount > 0 ? "warning" : "error"
             );
+            await showDeleteFailureReport(count, deletedCount, failedDetails);
           } else {
             setGlobalStatus(`Deleted ${deletedCount} parameter${deletedCount === 1 ? "" : "s"}.`, "success");
           }
@@ -8461,6 +8462,33 @@
           state.hasRememberedUnitSelection = true;
           setExplicitNoUnitsRemembered(resolvedValue === "");
         }
+      }
+
+      async function showDeleteFailureReport(totalRequested, deletedCount, failedDetails) {
+        const rows = Array.isArray(failedDetails) ? failedDetails : [];
+        if (!rows.length) {
+          return;
+        }
+        const lines = [
+          `Requested: ${Number(totalRequested || 0)}`,
+          `Deleted: ${Number(deletedCount || 0)}`,
+          `Remaining: ${rows.length}`,
+          ""
+        ];
+        rows.slice(0, 20).forEach((detail, idx) => {
+          const name = String(detail?.name || "").trim() || "(unnamed)";
+          const message = String(detail?.message || "").trim() || "Delete failed.";
+          lines.push(`${idx + 1}. ${name}: ${message}`);
+        });
+        if (rows.length > 20) {
+          lines.push(`... ${rows.length - 20} more`);
+        }
+        await requestConfirmation(lines.join("\n"), {
+          title: "Delete Report",
+          confirmLabel: "OK",
+          showCancel: false,
+          preserveLineBreaks: true
+        });
       }
 
       function normalizeCreateExpressionForFusion(expression, units = "") {
@@ -14261,6 +14289,7 @@
               `Deleted ${deletedCount}, failed ${failedCount}.${firstMessage ? ` ${firstName ? `${firstName}: ` : ""}${firstMessage}` : ""}`,
               deletedCount > 0 ? "warning" : "error"
             );
+            await showDeleteFailureReport(count, deletedCount, failedDetails);
           } else {
             setGlobalStatus(`Deleted ${deletedCount} parameter${deletedCount === 1 ? "" : "s"}.`, "success");
           }

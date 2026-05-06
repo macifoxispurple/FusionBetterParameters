@@ -2932,25 +2932,104 @@ def _delete_parameters_batch(data):
             if not any(d.get("name") == name for d in failed_details):
                 failed_details.append({"key": "", "name": name, "message": "Parameter not found."})
 
+    def _dependency_order_for_delete(target_records):
+        """Return target records ordered to delete dependents before dependencies."""
+        if not target_records:
+            return []
+        index_by_name = {}
+        for idx, rec in enumerate(target_records):
+            name = str(rec.get("name") or "")
+            if name and name not in index_by_name:
+                index_by_name[name] = idx
+
+        deps = {idx: set() for idx in range(len(target_records))}
+        indegree = {idx: 0 for idx in range(len(target_records))}
+
+        for idx, rec in enumerate(target_records):
+            param = rec.get("param")
+            expression = str(getattr(param, "expression", "") or "")
+            masked_expr, _ = _mask_expression_literals(expression)
+            scan_expr = masked_expr if masked_expr is not None else expression
+            refs = set()
+            for match in EXPRESSION_TOKEN_PATTERN.finditer(scan_expr):
+                token = match.group(0)
+                if token == rec.get("name"):
+                    continue
+                ref_idx = index_by_name.get(token)
+                if ref_idx is None or ref_idx == idx:
+                    continue
+                refs.add(ref_idx)
+            deps[idx] = refs
+            for ref_idx in refs:
+                indegree[ref_idx] += 1
+
+        queue = sorted([idx for idx, deg in indegree.items() if deg == 0], key=lambda i: i)
+        ordered = []
+        while queue:
+            idx = queue.pop(0)
+            ordered.append(target_records[idx])
+            for ref_idx in sorted(deps.get(idx, ())):
+                indegree[ref_idx] -= 1
+                if indegree[ref_idx] == 0:
+                    queue.append(ref_idx)
+            queue.sort()
+
+        if len(ordered) != len(target_records):
+            remaining = [target_records[i] for i in range(len(target_records)) if target_records[i] not in ordered]
+            ordered.extend(remaining)
+        return ordered
+
+    ordered_targets = _dependency_order_for_delete(targets)
+    max_passes = 10
     deleted_count = 0
-    for target in targets:
-        try:
-            target["param"].deleteMe()
-            deleted_count += 1
-        except Exception as exc:
-            failed_details.append({
-                "key": target["key"],
-                "name": target["name"],
-                "message": f"Fusion could not delete this parameter: {exc}",
-            })
+    remaining = list(ordered_targets)
+    failure_by_key = {}
+    failure_by_name = {}
+
+    for _pass_index in range(max_passes):
+        if not remaining:
+            break
+        next_remaining = []
+        progress = False
+        for target in remaining:
+            try:
+                target["param"].deleteMe()
+                deleted_count += 1
+                progress = True
+            except Exception as exc:
+                reason = f"Fusion could not delete this parameter: {exc}"
+                key = str(target.get("key") or "").strip()
+                name = str(target.get("name") or "").strip()
+                if key:
+                    failure_by_key[key] = reason
+                if name:
+                    failure_by_name[name] = reason
+                next_remaining.append(target)
+        remaining = next_remaining
+        if not progress:
+            break
+
+    for target in remaining:
+        key = str(target.get("key") or "").strip()
+        name = str(target.get("name") or "").strip()
+        reason = (
+            failure_by_key.get(key)
+            or failure_by_name.get(name)
+            or "Parameter could not be deleted. It may still be referenced by another parameter."
+        )
+        failed_details.append({
+            "key": key,
+            "name": name,
+            "message": reason,
+        })
 
     failed_count = len(failed_details)
-    ok = deleted_count > 0
+    ok = deleted_count > 0 or failed_count > 0
     if not ok:
         first_msg = failed_details[0]["message"] if failed_details else "No parameters specified."
         message = f"No parameters were deleted. {first_msg}"
     elif failed_count > 0:
-        message = f"{failed_count} parameter(s) could not be deleted."
+        message = f"{failed_count} parameter(s) could not be deleted, likely due to dependency references."
     else:
         message = ""
 
