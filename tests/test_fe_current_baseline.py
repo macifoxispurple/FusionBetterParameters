@@ -3,21 +3,15 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PALETTE_PATH = REPO_ROOT / "BetterParameters" / "palette.html"
-HARNESS_PATH = REPO_ROOT / "devtools" / "dev_harness.html"
 
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_dev_harness_targets_current_palette_path():
-    text = _read(HARNESS_PATH)
-    assert "../BetterParameters/palette.html?" in text
-
-
-def test_palette_mock_fixture_loader_prefers_devtools_path():
+def test_palette_mock_bridge_mode_wiring_present():
     text = _read(PALETTE_PATH)
-    assert "../devtools/dev/mock_bridge_fixtures.js" in text
+    assert "__BP_USE_MOCK_BRIDGE" in text
     assert "dev/mock_bridge_fixtures.js" in text
 
 
@@ -43,4 +37,3 @@ def test_palette_contains_core_controls_ids():
     ]
     for control_id in expected_ids:
         assert f'id="{control_id}"' in text
-

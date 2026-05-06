@@ -17,8 +17,9 @@ def _playwright_import():
 
 def _harness_url() -> str:
     repo_root = Path(__file__).resolve().parents[1]
-    harness = repo_root / "devtools" / "dev_harness.html"
-    return f"file:///{quote(str(harness).replace('\\', '/'), safe='/:')}"
+    palette = repo_root / "BetterParameters" / "palette.html"
+    base = f"file:///{quote(str(palette).replace('\\', '/'), safe='/:')}"
+    return f"{base}?mock=1&layoutdebug=1"
 
 
 @pytest.fixture(scope="module")
@@ -37,33 +38,23 @@ def browser_page():
 
 
 def _wait_palette_ready(page):
-    page.wait_for_selector("#paletteFrame", timeout=10000)
-    frame = page.frame_locator("#paletteFrame")
-    frame.locator("#computeModeButton").wait_for(timeout=10000)
-    frame.locator("#parameterRows tr.parameter-row[data-parameter-key]").first.wait_for(timeout=10000)
-    return frame
+    page.locator("#computeModeButton").wait_for(timeout=10000)
+    page.locator("#parameterRows tr.parameter-row[data-parameter-key]").first.wait_for(timeout=10000)
+    return page
 
 
-def _palette_frame(page):
-    for frame in page.frames:
-        if "palette.html" in (frame.url or ""):
-            return frame
-    raise AssertionError("Palette frame not found.")
-
-
-def test_dev_harness_loads_palette(browser_page):
+def test_palette_loads_directly(browser_page):
     page = browser_page
     page.goto(_harness_url())
-    frame = _wait_palette_ready(page)
-    assert frame.locator("#computeModeButton").count() == 1
+    ready_page = _wait_palette_ready(page)
+    assert ready_page.locator("#computeModeButton").count() == 1
 
 
 def test_fe_shortcut_toggle_layout_debug(browser_page):
     page = browser_page
     page.goto(_harness_url())
     _wait_palette_ready(page)
-    frame = page.frame_locator("#paletteFrame")
-    body = frame.locator("body")
+    body = page.locator("body")
     initial = body.get_attribute("class") or ""
     page.keyboard.press("Control+Alt+D")
     page.wait_for_timeout(120)
@@ -74,29 +65,28 @@ def test_fe_shortcut_toggle_layout_debug(browser_page):
 def test_apply_all_and_discard_all_controls_present(browser_page):
     page = browser_page
     page.goto(_harness_url())
-    frame = _wait_palette_ready(page)
-    assert frame.locator("#applyAllButton").count() == 1
-    assert frame.locator("#discardAllButton").count() == 1
-    assert frame.locator("#timelineSortButton").count() == 1
+    ready_page = _wait_palette_ready(page)
+    assert ready_page.locator("#applyAllButton").count() == 1
+    assert ready_page.locator("#discardAllButton").count() == 1
+    assert ready_page.locator("#timelineSortButton").count() == 1
 
 
 def test_timeline_sort_disabled_when_row_dirty(browser_page):
     page = browser_page
     page.goto(_harness_url())
     _wait_palette_ready(page)
-    frame = _palette_frame(page)
-    row = frame.query_selector("#parameterRows tr.parameter-row[data-parameter-key]")
+    row = page.query_selector("#parameterRows tr.parameter-row[data-parameter-key]")
     assert row is not None
     comment = row.query_selector(".comment-input")
     assert comment is not None
-    frame.evaluate(
+    page.evaluate(
         """(el) => {
             el.value = "timeline-dirty-smoke";
             el.dispatchEvent(new Event("input", { bubbles: true }));
         }""",
         comment,
     )
-    timeline = frame.query_selector("#timelineSortButton")
+    timeline = page.query_selector("#timelineSortButton")
     assert timeline is not None
     assert timeline.is_disabled()
 
@@ -105,19 +95,18 @@ def test_apply_all_disabled_when_expression_invalid(browser_page):
     page = browser_page
     page.goto(_harness_url())
     _wait_palette_ready(page)
-    frame = _palette_frame(page)
-    row = frame.query_selector("#parameterRows tr.parameter-row[data-parameter-key]")
+    row = page.query_selector("#parameterRows tr.parameter-row[data-parameter-key]")
     assert row is not None
     expr = row.query_selector(".expression-input")
     assert expr is not None
-    frame.evaluate(
+    page.evaluate(
         """(el) => {
             el.value = "";
             el.dispatchEvent(new Event("input", { bubbles: true }));
         }""",
         expr,
     )
-    apply_all = frame.query_selector("#applyAllButton")
+    apply_all = page.query_selector("#applyAllButton")
     assert apply_all is not None
     assert apply_all.is_disabled()
 
@@ -126,13 +115,12 @@ def test_discard_all_clears_dirty_rows(browser_page):
     page = browser_page
     page.goto(_harness_url())
     _wait_palette_ready(page)
-    frame = _palette_frame(page)
-    rows = frame.query_selector_all("#parameterRows tr.parameter-row[data-parameter-key]")
+    rows = page.query_selector_all("#parameterRows tr.parameter-row[data-parameter-key]")
     assert len(rows) >= 2
     for idx, row in enumerate(rows[:2]):
         comment = row.query_selector(".comment-input")
         assert comment is not None
-        frame.evaluate(
+        page.evaluate(
             """([el, text]) => {
                 el.value = text;
                 el.dispatchEvent(new Event("input", { bubbles: true }));
@@ -140,9 +128,9 @@ def test_discard_all_clears_dirty_rows(browser_page):
             [comment, f"discard-all-{idx}"],
         )
         assert "is-dirty" in (row.get_attribute("class") or "")
-    discard_all = frame.query_selector("#discardAllButton")
+    discard_all = page.query_selector("#discardAllButton")
     assert discard_all is not None
     discard_all.click()
-    frame.wait_for_timeout(150)
+    page.wait_for_timeout(150)
     for row in rows[:2]:
         assert "is-dirty" not in (row.get_attribute("class") or "")

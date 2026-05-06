@@ -3239,7 +3239,7 @@
           if (getFlag("mock")) {
             window.__BP_USE_MOCK_BRIDGE = true;
             try {
-              var fixturePaths = ["../devtools/dev/mock_bridge_fixtures.js", "dev/mock_bridge_fixtures.js"];
+              var fixturePaths = ["dev/mock_bridge_fixtures.js"];
               for (var i = 0; i < fixturePaths.length; i += 1) {
                 var xhr = new XMLHttpRequest();
                 xhr.open("GET", fixturePaths[i], false);
