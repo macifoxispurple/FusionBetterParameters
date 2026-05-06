@@ -3239,11 +3239,15 @@
           if (getFlag("mock")) {
             window.__BP_USE_MOCK_BRIDGE = true;
             try {
-              var xhr = new XMLHttpRequest();
-              xhr.open("GET", "dev/mock_bridge_fixtures.js", false);
-              xhr.send(null);
-              if ((xhr.status === 0 || xhr.status === 200) && String(xhr.responseText || "").trim()) {
-                (0, eval)(xhr.responseText);
+              var fixturePaths = ["../devtools/dev/mock_bridge_fixtures.js", "dev/mock_bridge_fixtures.js"];
+              for (var i = 0; i < fixturePaths.length; i += 1) {
+                var xhr = new XMLHttpRequest();
+                xhr.open("GET", fixturePaths[i], false);
+                xhr.send(null);
+                if ((xhr.status === 0 || xhr.status === 200) && String(xhr.responseText || "").trim()) {
+                  (0, eval)(xhr.responseText);
+                  break;
+                }
               }
             } catch (_) {}
           }

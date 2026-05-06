@@ -33,7 +33,7 @@ Pass criteria:
 - Harness summary reports `0 failed`.
 
 Additional FE DOM automation (local/dev):
-- File: `C:\Users\Maci\Documents\Codex\OpenParameters\BetterParameters\dev_harness.html`
+- File: `C:\Users\Maci\Documents\Codex\OpenParameters\devtools\dev_harness.html`
 - Control: `Run FE Regression Tests`
 
 What FE DOM runner verifies:

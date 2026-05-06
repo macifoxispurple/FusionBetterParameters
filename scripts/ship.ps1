@@ -334,7 +334,7 @@ function Build-DeterministicPackage(
 
     & robocopy $SourceRootPath $PackageRootPath /E `
         /XD .git __pycache__ dev .release_stage _release_stage _releases_packages `
-        /XF settings.json update_state.json *.zip .gitignore dev_harness.html `
+        /XF settings.json update_state.json *.zip .gitignore `
         /NFL /NDL /NJH /NJS /NC /NS | Out-Null
     if ($LASTEXITCODE -ge 8) {
         throw "robocopy failed while staging package (exit code $LASTEXITCODE)."
