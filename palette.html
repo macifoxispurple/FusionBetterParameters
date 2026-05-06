@@ -3581,6 +3581,9 @@
           </div>
           <div class="create-modal-body stack section">
             <p id="confirmModalMessage"></p>
+            <div id="confirmModalTextInputWrap" hidden>
+              <input id="confirmModalTextInput" class="mono" type="text" autocomplete="off" />
+            </div>
             <div class="actions">
               <button id="confirmModalConfirmButton" class="primary" type="button">OK</button>
               <button id="confirmModalCancelButton" class="ghost" type="button">Cancel</button>
@@ -4535,6 +4538,8 @@
       let dataPanelImportSession = null;
       let parameterFileImportSession = null;
       let pendingConfirmVariant = "";
+      let pendingConfirmMode = "confirm";
+      let pendingTextInputResolver = null;
 
       function reportBackgroundFailure(contextLabel, error) {
         const reason = String(error?.message || error || "Unknown error");
@@ -10810,7 +10815,12 @@
         if (!existing) {
           return;
         }
-        const promptValue = window.prompt("Rename group:", existing);
+        const promptValue = await requestTextInput("Rename group:", {
+          title: "Rename Group",
+          confirmLabel: "Rename",
+          cancelLabel: "Cancel",
+          initialValue: existing
+        });
         if (promptValue === null) {
           return;
         }
@@ -13095,15 +13105,26 @@
         }
       }
 
+      function resolvePendingTextInput(result, value) {
+        if (typeof pendingTextInputResolver === "function") {
+          const resolver = pendingTextInputResolver;
+          pendingTextInputResolver = null;
+          resolver(result === true ? String(value || "") : null);
+        }
+      }
+
       function setConfirmModalOpen(isOpen, options = {}) {
         const backdrop = document.getElementById("confirmModalBackdrop");
         const modal = document.getElementById("confirmModal");
         const card = modal?.querySelector(".create-modal-card");
         const confirmButton = document.getElementById("confirmModalConfirmButton");
         const cancelButton = document.getElementById("confirmModalCancelButton");
+        const textInputWrap = document.getElementById("confirmModalTextInputWrap");
+        const textInput = document.getElementById("confirmModalTextInput");
         if (!backdrop || !modal || !confirmButton || !cancelButton) {
           if (!isOpen) {
             resolvePendingConfirmation(false);
+            resolvePendingTextInput(false, "");
           }
           return;
         }
@@ -13123,14 +13144,32 @@
 
         if (isOpen) {
           setSettingsPanelOpen(false);
-          requestAnimationFrame(() => confirmButton.focus());
+          requestAnimationFrame(() => {
+            if (pendingConfirmMode === "text" && textInput && !textInput.hidden) {
+              textInput.focus();
+              textInput.select();
+            } else {
+              confirmButton.focus();
+            }
+          });
           return;
         }
 
         if (shouldResolve) {
-          resolvePendingConfirmation(options.result === true);
+          if (pendingConfirmMode === "text") {
+            resolvePendingTextInput(options.result === true, textInput?.value || "");
+          } else {
+            resolvePendingConfirmation(options.result === true);
+          }
         }
         pendingConfirmVariant = "";
+        pendingConfirmMode = "confirm";
+        if (textInputWrap) {
+          textInputWrap.hidden = true;
+        }
+        if (textInput) {
+          textInput.value = "";
+        }
       }
 
       function requestConfirmation(message, options = {}) {
@@ -13138,11 +13177,15 @@
         const titleNode = document.getElementById("confirmModalTitle");
         const confirmButton = document.getElementById("confirmModalConfirmButton");
         const cancelButton = document.getElementById("confirmModalCancelButton");
+        const textInputWrap = document.getElementById("confirmModalTextInputWrap");
+        const textInput = document.getElementById("confirmModalTextInput");
         if (!messageNode || !titleNode || !confirmButton || !cancelButton) {
           return Promise.resolve(window.confirm(String(message || "Are you sure?")));
         }
 
         resolvePendingConfirmation(false);
+        resolvePendingTextInput(false, "");
+        pendingConfirmMode = "confirm";
         titleNode.textContent = String(options.title || "Confirmation");
         messageNode.textContent = String(message || "Are you sure?");
         messageNode.style.whiteSpace = options.preserveLineBreaks ? "pre-wrap" : "";
@@ -13150,11 +13193,48 @@
         cancelButton.textContent = String(options.cancelLabel || "Cancel");
         const showCancel = options.showCancel !== false;
         cancelButton.hidden = !showCancel;
+        if (textInputWrap) {
+          textInputWrap.hidden = true;
+        }
+        if (textInput) {
+          textInput.value = "";
+        }
         pendingConfirmVariant = String(options.variant || "");
 
         setConfirmModalOpen(true);
         return new Promise((resolve) => {
           pendingConfirmResolver = resolve;
+        });
+      }
+
+      function requestTextInput(message, options = {}) {
+        const messageNode = document.getElementById("confirmModalMessage");
+        const titleNode = document.getElementById("confirmModalTitle");
+        const confirmButton = document.getElementById("confirmModalConfirmButton");
+        const cancelButton = document.getElementById("confirmModalCancelButton");
+        const textInputWrap = document.getElementById("confirmModalTextInputWrap");
+        const textInput = document.getElementById("confirmModalTextInput");
+        if (!messageNode || !titleNode || !confirmButton || !cancelButton || !textInputWrap || !textInput) {
+          const raw = window.prompt(String(message || "Enter value"), String(options.initialValue || ""));
+          return Promise.resolve(raw === null ? null : String(raw));
+        }
+
+        resolvePendingConfirmation(false);
+        resolvePendingTextInput(false, "");
+        pendingConfirmMode = "text";
+        titleNode.textContent = String(options.title || "Input");
+        messageNode.textContent = String(message || "Enter value");
+        messageNode.style.whiteSpace = options.preserveLineBreaks ? "pre-wrap" : "";
+        confirmButton.textContent = String(options.confirmLabel || "OK");
+        cancelButton.textContent = String(options.cancelLabel || "Cancel");
+        cancelButton.hidden = false;
+        textInputWrap.hidden = false;
+        textInput.value = String(options.initialValue || "");
+        pendingConfirmVariant = String(options.variant || "");
+
+        setConfirmModalOpen(true);
+        return new Promise((resolve) => {
+          pendingTextInputResolver = resolve;
         });
       }
 
@@ -13378,6 +13458,17 @@
 
       document.getElementById("confirmModalBackdrop").addEventListener("click", () => {
         setConfirmModalOpen(false, { result: false });
+      });
+      document.getElementById("confirmModalTextInput").addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          setConfirmModalOpen(false, { result: true });
+          return;
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setConfirmModalOpen(false, { result: false });
+        }
       });
 
       document.getElementById("themeToggle").addEventListener("click", async () => {
@@ -15523,7 +15614,12 @@
             warnings: previewWarnings,
             failedRows: previewFailedRows
           }, previewPayload);
-          const confirmed = window.confirm(confirmSummary);
+          const confirmed = await requestConfirmation(confirmSummary, {
+            title: "Import BP Package",
+            confirmLabel: "Import",
+            cancelLabel: "Cancel",
+            preserveLineBreaks: true
+          });
           if (!confirmed) {
             return;
           }
