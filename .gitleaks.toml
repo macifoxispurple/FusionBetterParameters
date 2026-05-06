@@ -1,0 +1,16 @@
+title = "BetterParameters secret scan baseline"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "private-paths"
+description = "Detect accidental local absolute paths"
+regex = '''(?i)(c:\\users\\|/users/|appdata\\roaming\\autodesk|library/application support/autodesk)'''
+secretGroup = 0
+
+[allowlist]
+paths = [
+  '''^CONTEXT\.md$''',
+  '''^HANDOFF\.md$'''
+]

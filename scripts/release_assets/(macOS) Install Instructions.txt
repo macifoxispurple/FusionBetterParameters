@@ -1,0 +1,10 @@
+﻿macOS Install Instructions (BetterParameters)
+
+1) In Finder, press Cmd+Shift+G.
+2) Paste this path exactly:
+   ~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns
+3) Press Enter.
+4) Drag the BetterParameters folder into this AddIns folder.
+5) In Fusion: Utilities > Scripts and Add-Ins > Add-Ins, then enable BetterParameters.
+
+If the AddIns folder does not exist yet, create it.

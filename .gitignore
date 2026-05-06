@@ -1,0 +1,45 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Python cache / venv / test artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.pytest_tmp/
+pytest_tmp/
+.tmp/
+tmp_py/
+
+# Runtime/local add-in state
+settings.json
+update_state.json
+_pending_update/
+
+# Build, stage, release artifacts
+_release_stage/
+_releases_packages/
+_tmp_zip_check/
+archive/
+scripts/_ship_reports/
+
+# Legacy/local migration helpers
+BetterParameters_legacy/
+BetterParameters.py/
+
+# Local operational logs (machine-specific)
+CONTEXT.md
+HANDOFF.md
+
+# Secrets and env files
+*.pem
+*.key
+*.p12
+*.pfx
+.env
+.env.*
+*.local
