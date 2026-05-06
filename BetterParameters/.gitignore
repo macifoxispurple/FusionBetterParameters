@@ -1,0 +1,24 @@
+# User settings and local state
+settings.json
+update_state.json
+
+# Staged update downloads
+_pending_update/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Secrets / keys
+*.pem
+*.key
+*.p12
+*.pfx
