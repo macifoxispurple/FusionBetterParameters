@@ -24,6 +24,23 @@ python -m pytest
 - Tests live under `tests/`.
 - Keep runtime/build artifacts untracked (`.gitignore` enforced).
 
+## FE Browser Regression Tests (from scratch suite)
+
+Install once:
+
+```bash
+python -m pip install playwright
+python -m playwright install chromium
+```
+
+Run FE browser suite:
+
+```bash
+python -m pytest tests/test_fe_browser_current.py -q
+```
+
+If Playwright is not installed, these tests skip cleanly.
+
 ## Sync to Live Fusion Add-In (example)
 
 ```bash
