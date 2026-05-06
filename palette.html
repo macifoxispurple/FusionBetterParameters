@@ -5214,11 +5214,19 @@
         const normalizedUnits = String(units || "").trim().toLowerCase();
         // For text-unit rows, ensure Fusion always receives a backtick-delimited text literal.
         if (normalizedUnits === "text") {
+          let body = raw;
           if (raw.startsWith("`") && raw.endsWith("`") && raw.length >= 2) {
-            return raw;
-          } else {
-            return `\`${raw}\``;
+            body = raw.slice(1, -1);
           }
+          const trimmedBody = body.trim();
+          if (trimmedBody.length >= 2) {
+            if (trimmedBody.startsWith("'") && trimmedBody.endsWith("'")) {
+              body = trimmedBody.slice(1, -1).replace(/''/g, "'");
+            } else if (trimmedBody.startsWith("\"") && trimmedBody.endsWith("\"")) {
+              body = trimmedBody.slice(1, -1);
+            }
+          }
+          return `\`${body}\``;
         }
         // For non-text units, submit exactly what the user authored and let
         // backend/Fusion validation handle literal semantics.
@@ -8444,6 +8452,79 @@
         }
       }
 
+      function normalizeCreateExpressionForFusion(expression, units = "") {
+        const raw = String(expression || "");
+        if (String(units || "").trim().toLowerCase() !== "text") {
+          return raw;
+        }
+        let body = raw.replace(/^`+/, "").replace(/`+$/, "");
+        const trimmedBody = body.trim();
+        if (trimmedBody.length >= 2) {
+          if (trimmedBody.startsWith("'") && trimmedBody.endsWith("'")) {
+            body = trimmedBody.slice(1, -1).replace(/''/g, "'");
+          } else if (trimmedBody.startsWith("\"") && trimmedBody.endsWith("\"")) {
+            body = trimmedBody.slice(1, -1);
+          }
+        }
+        if (!body && !raw.trim()) {
+          return "";
+        }
+        return `\`${body}\``;
+      }
+
+      function applyTextUnitBacktickShellOnFocus(input) {
+        if (!input) {
+          return;
+        }
+        const unitValue = String(
+          input.getAttribute?.("data-parameter-unit")
+          || document.getElementById("newUnit")?.value
+          || ""
+        ).trim().toLowerCase();
+        if (unitValue !== "text") {
+          return;
+        }
+        const value = String(input.value || "");
+        if (!value.trim()) {
+          input.value = "``";
+          window.requestAnimationFrame(() => {
+            try {
+              input.setSelectionRange(1, 1);
+            } catch (_) {
+              // best effort only
+            }
+          });
+          return;
+        }
+        const normalized = normalizeCreateExpressionForFusion(value, "text");
+        if (normalized !== value) {
+          input.value = normalized;
+        }
+      }
+
+      function normalizeTextUnitBackticksOnBlur(input) {
+        if (!input) {
+          return;
+        }
+        const unitValue = String(
+          input.getAttribute?.("data-parameter-unit")
+          || document.getElementById("newUnit")?.value
+          || ""
+        ).trim().toLowerCase();
+        if (unitValue !== "text") {
+          return;
+        }
+        const value = String(input.value || "");
+        if (!value.trim() || value === "``") {
+          input.value = "";
+          return;
+        }
+        const normalized = normalizeCreateExpressionForFusion(value, "text");
+        if (normalized !== value) {
+          input.value = normalized;
+        }
+      }
+
       function renderToggle(id, isOn) {
         const toggle = document.getElementById(id);
         toggle.classList.toggle("is-on", isOn);
@@ -8634,6 +8715,110 @@
           document.querySelector(".unit-picker").appendChild(menu);
           state.unitMenuAnchorEl = null;
         }
+      }
+
+      let unitPickerTypeaheadBuffer = "";
+      let unitPickerTypeaheadTimer = null;
+
+      function getUnitMenuOptionButtons() {
+        const menu = document.getElementById("unitPickerMenu");
+        if (!menu) {
+          return [];
+        }
+        return Array.from(menu.querySelectorAll("[data-unit-value]"));
+      }
+
+      function focusUnitMenuOption(direction = 1) {
+        const options = getUnitMenuOptionButtons();
+        if (!options.length) {
+          return false;
+        }
+        const active = document.activeElement;
+        const currentIndex = options.indexOf(active);
+        let nextIndex = 0;
+        if (currentIndex >= 0) {
+          nextIndex = (currentIndex + direction + options.length) % options.length;
+        } else if (direction < 0) {
+          nextIndex = options.length - 1;
+        }
+        options[nextIndex].focus();
+        return true;
+      }
+
+      function focusUnitMenuOptionByPrefix(prefixRaw) {
+        const prefix = String(prefixRaw || "").trim().toLowerCase();
+        if (!prefix) {
+          return false;
+        }
+        const options = getUnitMenuOptionButtons();
+        if (!options.length) {
+          return false;
+        }
+        const active = document.activeElement;
+        const startIndex = Math.max(0, options.indexOf(active));
+        for (let i = 1; i <= options.length; i += 1) {
+          const idx = (startIndex + i) % options.length;
+          const button = options[idx];
+          const value = String(button.getAttribute("data-unit-value") || "").toLowerCase();
+          const text = String(button.textContent || "").trim().toLowerCase();
+          if (value.startsWith(prefix) || text.startsWith(prefix)) {
+            button.focus();
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function pushUnitPickerTypeahead(char) {
+        if (unitPickerTypeaheadTimer) {
+          window.clearTimeout(unitPickerTypeaheadTimer);
+        }
+        unitPickerTypeaheadBuffer = `${unitPickerTypeaheadBuffer}${char}`.slice(-24);
+        unitPickerTypeaheadTimer = window.setTimeout(() => {
+          unitPickerTypeaheadBuffer = "";
+          unitPickerTypeaheadTimer = null;
+        }, 600);
+        return unitPickerTypeaheadBuffer;
+      }
+
+      function getKeyboardUnitCandidates() {
+        const seen = new Set();
+        const ordered = [];
+        const push = (value, label = "") => {
+          const key = String(value || "").toLowerCase();
+          if (!key || seen.has(key)) {
+            return;
+          }
+          seen.add(key);
+          ordered.push({ value: String(value), label: String(label || "") });
+        };
+        TOP_LEVEL_UNITS.forEach((unit) => push(unit.value, unit.label));
+        UNIT_CATEGORIES.forEach((category) => {
+          category.units.forEach((unit) => push(unit.value, unit.label));
+        });
+        (state.settings.customUnits || []).forEach((value) => push(value, value));
+        return ordered;
+      }
+
+      function resolveUnitByTypedBuffer(bufferRaw) {
+        const buffer = String(bufferRaw || "").trim().toLowerCase();
+        if (!buffer) {
+          return "";
+        }
+        const candidates = getKeyboardUnitCandidates();
+        const exact = candidates.find((item) => item.value.toLowerCase() === buffer);
+        if (exact) {
+          return exact.value;
+        }
+        const prefixMatches = candidates.filter((item) => {
+          const value = item.value.toLowerCase();
+          const label = item.label.toLowerCase();
+          return value.startsWith(buffer) || label.startsWith(buffer);
+        });
+        if (prefixMatches.length === 1) {
+          return prefixMatches[0].value;
+        }
+        return "";
       }
 
       function renderParameters(parameters) {
@@ -11880,8 +12065,8 @@
       }
 
       async function validateExpressionAgainstFusion(input) {
-        const expression = typeof input === "string" ? input : input.value;
-        const expressionAtRequest = String(expression || "");
+        const expressionRaw = typeof input === "string" ? input : input.value;
+        let expression = expressionRaw;
         const isRowInput = typeof input !== "string" && input && input.id !== "newExpression";
         let validationNonce = "";
         if (isRowInput) {
@@ -11905,6 +12090,7 @@
                 input.getAttribute("data-parameter-unit")
                 || (input.id === "newExpression" ? document.getElementById("newUnit").value : "")
               );
+        const expressionAtRequest = String(expression || "");
         if (!expression || !expression.trim()) {
           if (typeof input === "string") {
             setExpressionError("Expression is required.");
@@ -13275,6 +13461,10 @@
         updateFunctionHelper(event.currentTarget);
       });
 
+      document.getElementById("newExpression").addEventListener("focus", (event) => {
+        applyTextUnitBacktickShellOnFocus(event.currentTarget);
+      });
+
       document.getElementById("newExpression").addEventListener("keydown", (event) => {
         if (
           event.key === "Backspace" &&
@@ -13326,6 +13516,7 @@
       });
 
       document.getElementById("newExpression").addEventListener("blur", async (event) => {
+        normalizeTextUnitBackticksOnBlur(event.currentTarget);
         window.setTimeout(() => closeExpressionSuggestions(), FIELD_HELPER_CLOSE_DELAY_MS);
         window.setTimeout(() => closeFunctionHelper(), FIELD_HELPER_CLOSE_DELAY_MS);
         if (expressionValidationTimer) {
@@ -13739,6 +13930,7 @@
         if (!expressionInput) {
           return;
         }
+        normalizeTextUnitBackticksOnBlur(expressionInput);
         const expressionRow = expressionInput.closest("tr.parameter-row[data-parameter-key]");
         if (!isParameterRowAttached(expressionRow)) {
           return;
@@ -13764,6 +13956,10 @@
 
         const row = event.target.closest("tr.parameter-row[data-parameter-key]");
         if (row) {
+          const expressionInput = event.target.closest(".expression-input");
+          if (expressionInput) {
+            applyTextUnitBacktickShellOnFocus(expressionInput);
+          }
           const key = String(row.getAttribute("data-parameter-key") || "");
           if (key && state.suppressNextFocusSelectionKey === key) {
             state.suppressNextFocusSelectionKey = "";
@@ -14303,6 +14499,78 @@
       document.getElementById("unitPickerButton").addEventListener("click", (event) => {
         event.stopPropagation();
         setUnitMenuOpen(!state.isUnitMenuOpen);
+      });
+
+      document.getElementById("unitPickerButton").addEventListener("keydown", (event) => {
+        const key = String(event.key || "");
+        if (key === "ArrowDown" || key === "ArrowUp") {
+          event.preventDefault();
+          if (!state.isUnitMenuOpen) {
+            setUnitMenuOpen(true);
+          }
+          window.requestAnimationFrame(() => {
+            focusUnitMenuOption(key === "ArrowDown" ? 1 : -1);
+          });
+          return;
+        }
+        if (key === "Enter" || key === " ") {
+          event.preventDefault();
+          setUnitMenuOpen(!state.isUnitMenuOpen);
+          if (!state.isUnitMenuOpen) {
+            window.requestAnimationFrame(() => focusUnitMenuOption(1));
+          }
+          return;
+        }
+        if (key === "Backspace") {
+          event.preventDefault();
+          unitPickerTypeaheadBuffer = unitPickerTypeaheadBuffer.slice(0, -1);
+          return;
+        }
+        if (key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          event.preventDefault();
+          const buffer = pushUnitPickerTypeahead(key.toLowerCase());
+          const resolved = resolveUnitByTypedBuffer(buffer);
+          if (resolved) {
+            applySelectedUnit(resolved, { persistLastUnit: true, markRememberedSelection: true });
+            renderUnitPicker();
+          }
+          return;
+        }
+      });
+
+      document.getElementById("unitPickerMenu").addEventListener("keydown", (event) => {
+        const key = String(event.key || "");
+        const target = event.target;
+        const isCustomInput = target && target.id === "customUnitInput";
+        if (key === "Escape") {
+          event.preventDefault();
+          setUnitMenuOpen(false);
+          document.getElementById("unitPickerButton")?.focus();
+          return;
+        }
+        if (isCustomInput) {
+          return;
+        }
+        if (key === "ArrowDown" || key === "ArrowUp") {
+          event.preventDefault();
+          focusUnitMenuOption(key === "ArrowDown" ? 1 : -1);
+          return;
+        }
+        if (key === "Enter" || key === " ") {
+          const option = target?.closest?.("[data-unit-value]");
+          if (option) {
+            event.preventDefault();
+            option.click();
+          }
+          return;
+        }
+        if (key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          const buffer = pushUnitPickerTypeahead(key.toLowerCase());
+          const found = focusUnitMenuOptionByPrefix(buffer);
+          if (found) {
+            event.preventDefault();
+          }
+        }
       });
 
       document.addEventListener("click", (event) => {
@@ -15230,6 +15498,11 @@
       document.getElementById("createForm").addEventListener("submit", async (event) => {
         event.preventDefault();
         const form = event.currentTarget;
+        const selectedUnit = String(document.getElementById("newUnit").value || "");
+        const normalizedExpression = normalizeCreateExpressionForFusion(form.expression.value, selectedUnit);
+        if (normalizedExpression !== String(form.expression.value || "")) {
+          form.expression.value = normalizedExpression;
+        }
         const isNameValid = await validateCreateNameAgainstFusion(form.name.value);
         if (!isNameValid) {
           return;
@@ -15242,8 +15515,8 @@
 
         const data = {
           name: form.name.value,
-          unit: document.getElementById("newUnit").value,
-          expression: form.expression.value,
+          unit: selectedUnit,
+          expression: normalizedExpression,
           comment: form.comment.value
         };
 

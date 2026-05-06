@@ -933,7 +933,7 @@ def _collect_user_parameters(order_state=None):
             {
                 "key": parameter_key,
                 "name": param.name,
-                "expression": param.expression,
+                "expression": _normalize_text_expression_for_ui(param.expression, param.unit),
                 "unit": param.unit,
                 "comment": param.comment or "",
                 "isFavorite": param.isFavorite,
@@ -969,7 +969,7 @@ def _collect_user_parameters_from_design(design):
             continue
         results.append({
             "name": str(param.name or ""),
-            "expression": str(param.expression or ""),
+            "expression": _normalize_text_expression_for_ui(param.expression, param.unit),
             "unit": str(param.unit or ""),
             "comment": str(param.comment or ""),
             "group": "",
@@ -1078,7 +1078,7 @@ def _serialize_model_parameter(param, units_manager, component_name="", componen
     return {
         "key": _parameter_entity_token(param),
         "name": param.name,
-        "expression": param.expression,
+        "expression": _normalize_text_expression_for_ui(param.expression, param.unit),
         "unit": param.unit,
         "comment": param.comment or "",
         "isFavorite": param.isFavorite,
@@ -2097,7 +2097,10 @@ def _update_parameter(data):
     if not parameter:
         raise ValueError("User parameter was not found.")
 
-    parameter.expression = expression
+    expression_for_fusion = expression
+    if str(parameter.unit or "").strip().lower() == "text":
+        expression_for_fusion = _normalize_text_expression_for_fusion(expression)
+    parameter.expression = expression_for_fusion
     parameter.comment = comment
 
 
@@ -2143,8 +2146,11 @@ def _batch_update_parameters(data):
             })
             continue
 
+        expression_for_fusion = expression
+        if str(param.unit or "").strip().lower() == "text":
+            expression_for_fusion = _normalize_text_expression_for_fusion(expression)
         try:
-            value_input = adsk.core.ValueInput.createByString(expression)
+            value_input = adsk.core.ValueInput.createByString(expression_for_fusion)
         except Exception as exc:
             failed_rows.append({"name": param.name, "message": str(exc)})
             continue
@@ -2554,12 +2560,20 @@ def _create_parameter(data):
     if not validation["ok"]:
         raise ValueError(validation["message"])
 
-    expression_validation = _validate_expression_response(expression, name, units)
+    expression_for_fusion = expression
+    if str(units or "").strip().lower() == "text":
+        expression_for_fusion = _normalize_text_expression_for_fusion(expression)
+    expression_validation = _validate_expression_response(expression_for_fusion, name, units)
     if not expression_validation["ok"]:
         raise ValueError(expression_validation["message"])
 
     unit_value = units or ""
-    value_input = adsk.core.ValueInput.createByString(expression)
+    if unit_value:
+        normalized_unit = _validate_unit_response(unit_value)
+        if not normalized_unit.get("ok"):
+            raise ValueError(normalized_unit.get("message") or "Invalid unit.")
+        unit_value = str(normalized_unit.get("unit") or unit_value)
+    value_input = adsk.core.ValueInput.createByString(expression_for_fusion)
     created = design.userParameters.add(name, value_input, unit_value, comment)
     if not created:
         raise ValueError("Fusion rejected the new parameter.")
@@ -3159,10 +3173,25 @@ def _import_parameter_rows_into_design(rows, design, conflict_policy="skip", dry
         unit = row.get("unit", "")
         comment = row.get("comment", "")
         group = _normalize_group_name(row.get("group", ""))
+        normalized_unit = unit
+        if str(unit or "").strip():
+            unit_check = _validate_unit_response(unit)
+            if not unit_check.get("ok"):
+                failed_rows.append({
+                    "row": row_number,
+                    "name": name,
+                    "message": unit_check.get("message", "Invalid unit."),
+                    "expression": expression,
+                    "unit": unit,
+                    "comment": comment,
+                    "group": group,
+                })
+                continue
+            normalized_unit = str(unit_check.get("unit") or unit)
         row_payload = {
             "name": name,
             "expression": expression,
-            "unit": unit,
+            "unit": normalized_unit,
             "comment": comment,
             "group": group,
         }
@@ -3176,6 +3205,9 @@ def _import_parameter_rows_into_design(rows, design, conflict_policy="skip", dry
 
         existing = design.userParameters.itemByName(name)
         if existing:
+            existing_expression_for_fusion = expression
+            if str(existing.unit or "").strip().lower() == "text":
+                existing_expression_for_fusion = _normalize_text_expression_for_fusion(expression)
             if conflict_policy == "skip":
                 skipped_count += 1
                 continue
@@ -3183,7 +3215,7 @@ def _import_parameter_rows_into_design(rows, design, conflict_policy="skip", dry
                 imported_count += 1
             else:
                 try:
-                    existing.expression = expression
+                    existing.expression = existing_expression_for_fusion
                     if comment:
                         existing.comment = comment
                     if group:
@@ -3198,7 +3230,10 @@ def _import_parameter_rows_into_design(rows, design, conflict_policy="skip", dry
             failed_rows.append({"row": row_number, "name": name, "message": name_check["message"], **row_payload})
             continue
 
-        expr_check = _validate_expression_response(expression, name, unit)
+        expression_for_fusion = expression
+        if str(normalized_unit or "").strip().lower() == "text":
+            expression_for_fusion = _normalize_text_expression_for_fusion(expression)
+        expr_check = _validate_expression_response(expression_for_fusion, name, normalized_unit)
         if not expr_check["ok"] and not expr_check.get("isIncomplete"):
             failed_rows.append({"row": row_number, "name": name, "message": expr_check["message"], **row_payload})
             continue
@@ -3207,8 +3242,8 @@ def _import_parameter_rows_into_design(rows, design, conflict_policy="skip", dry
             imported_count += 1
         else:
             try:
-                value_input = adsk.core.ValueInput.createByString(expression)
-                created = design.userParameters.add(name, value_input, unit, comment)
+                value_input = adsk.core.ValueInput.createByString(expression_for_fusion)
+                created = design.userParameters.add(name, value_input, normalized_unit, comment)
                 if not created:
                     raise ValueError("Fusion rejected the parameter.")
                 if group:
@@ -4400,6 +4435,7 @@ def _mask_expression_literals(text):
 
     Rules:
     - ``"..."``  – double-quoted strings; ``\"`` is an escape sequence inside them.
+    - ``'...'``  – single-quoted strings; ``''`` is an escaped single quote.
     - `` `...` `` – backtick strings; no escape sequences needed for v1.
     - The entire literal region (including delimiters) is replaced by a single ``0``
       digit, which cannot start or extend an identifier token.
@@ -4429,6 +4465,22 @@ def _mask_expression_literals(text):
             if not closed:
                 return None, 'Unclosed text literal.'
             result.append('0')      # entire "..." → single non-token digit
+        elif ch == "'":
+            i += 1
+            closed = False
+            while i < n:
+                c = text[i]
+                if c == "'" and i + 1 < n and text[i + 1] == "'":
+                    i += 2          # escaped single quote inside '...'
+                elif c == "'":
+                    i += 1
+                    closed = True
+                    break
+                else:
+                    i += 1
+            if not closed:
+                return None, 'Unclosed text literal.'
+            result.append('0')      # entire '...' → single non-token digit
         elif ch == '`':
             i += 1
             closed = False
@@ -4453,6 +4505,24 @@ def _validate_expression_response(expression, current_parameter_name="", units="
     text = (expression or "").strip()
     if not text:
         return {"ok": False, "message": "Expression is required.", "isIncomplete": False}
+    requested_units = str(units or "").strip()
+    if requested_units.lower() == "text":
+        # Text parameters are validated as text literals in UI space (backticks),
+        # not as numeric/math expressions.
+        if len(text) >= 2 and text.startswith("'") and text.endswith("'"):
+            inner = text[1:-1].replace("''", "'")
+            text = f"`{inner.replace('`', '``')}`"
+        elif len(text) >= 2 and text.startswith('"') and text.endswith('"'):
+            text = f"`{text[1:-1].replace('`', '``')}`"
+        elif not (len(text) >= 2 and text.startswith("`") and text.endswith("`")):
+            text = f"`{text.replace('`', '``')}`"
+
+        masked_text, literal_error = _mask_expression_literals(text)
+        if literal_error:
+            return {"ok": False, "message": literal_error, "isIncomplete": False}
+        if masked_text is None:
+            return {"ok": False, "message": "Unclosed text literal.", "isIncomplete": False}
+        return {"ok": True, "message": "", "isIncomplete": False}
 
     # Mask literal regions before token scanning so content inside "..." or `...`
     # is never misidentified as parameter references.
@@ -4480,7 +4550,7 @@ def _validate_expression_response(expression, current_parameter_name="", units="
     design = _design()
     if design:
         try:
-            validate_units = units or design.unitsManager.defaultLengthUnits or "mm"
+            validate_units = requested_units or design.unitsManager.defaultLengthUnits or "mm"
             if design.unitsManager.isValidExpression(text, validate_units):
                 return {"ok": True, "message": "", "isIncomplete": False}
             if unknown_tokens:
@@ -4536,6 +4606,34 @@ def _validate_expression_response(expression, current_parameter_name="", units="
         }
 
     return {"ok": True, "message": "", "isIncomplete": False}
+
+
+def _normalize_text_expression_for_fusion(expression):
+    text = str(expression or "").strip()
+    if len(text) >= 2 and text.startswith("`") and text.endswith("`"):
+        inner = text[1:-1]
+        inner = inner.replace("'", "''")
+        return f"'{inner}'"
+    if len(text) >= 2 and text.startswith("'") and text.endswith("'"):
+        inner = text[1:-1].replace("''", "'")
+        inner = inner.replace("'", "''")
+        return f"'{inner}'"
+    if len(text) >= 2 and text.startswith('"') and text.endswith('"'):
+        inner = text[1:-1].replace("'", "''")
+        return f"'{inner}'"
+    return text
+
+
+def _normalize_text_expression_for_ui(expression, units=""):
+    text = str(expression or "").strip()
+    if str(units or "").strip().lower() != "text":
+        return text
+    if len(text) >= 2 and text.startswith("'") and text.endswith("'"):
+        inner = text[1:-1]
+        inner = inner.replace("''", "'")
+        inner = inner.replace("`", "``")
+        return f"`{inner}`"
+    return text
 
 
 def _incomplete_expression_hint(text):
@@ -4618,6 +4716,26 @@ def _preview_expression_response(expression, current_parameter_name="", units=""
             "ok": False,
             "message": validation["message"],
             "preview": str(fallback_preview or "")
+        }
+    expression_text = str(expression or "").strip()
+    preview_units = str(units or "").strip()
+    if preview_units.lower() == "text":
+        if expression_text.startswith("`") and expression_text.endswith("`") and len(expression_text) >= 2:
+            return {
+                "ok": True,
+                "message": "",
+                "preview": expression_text[1:-1]
+            }
+        if expression_text.startswith("'") and expression_text.endswith("'") and len(expression_text) >= 2:
+            return {
+                "ok": True,
+                "message": "",
+                "preview": expression_text[1:-1].replace("''", "'")
+            }
+        return {
+            "ok": True,
+            "message": "",
+            "preview": expression_text
         }
 
     design = _design()
