@@ -1,85 +1,43 @@
-# FE M3/M4 Verification Matrix
+# FE Verification Matrix (Current)
 
-Scope: durable verification process for remaining FE roadmap items in `CONTEXT.md` (M3 + M4).
+This file documents the current automated FE checks and the final manual-only list where Fusion-native behavior cannot be reliably automated.
 
-## 0) Current Baseline FE Tests (new default)
+## 1) Automated suites
 
 Run from repo root:
 - `python -m pytest tests/test_fe_current_baseline.py -q`
+- `python -m pytest tests/test_fe_browser_current.py -q` (requires Playwright)
 
-What this locks:
-- dev harness points at the active palette path.
-- mock fixture loading path uses the new `devtools/` location (with legacy fallback).
-- Ctrl/Cmd shortcut parity wiring stays present.
-- core FE control ids expected by current workflows remain present.
+Coverage:
+- baseline wiring:
+  - harness -> active palette path
+  - mock fixture path from `devtools/`
+  - Ctrl/Cmd shortcut parity wiring
+  - required core control IDs
+- browser behavior checks:
+  - palette loads in harness
+  - layout-debug shortcut toggle path
+  - timeline sort disabled when row is dirty
+  - apply-all disabled when invalid dirty expression exists
+  - discard-all clears dirty state for edited rows
 
-## 1) Automated Coverage
+Fusion action-level automation:
+- `python scripts/fusion_bp_test_harness.py` (run inside Fusion Scripts)
+- validates backend action semantics/state envelopes for copy/delete/timeline/import/export flows.
 
-Run inside Fusion:
-- Script: `C:\Users\Maci\Documents\Codex\OpenParameters\scripts\fusion_bp_test_harness.py`
+## 2) Final manual-only list (not fully automatable)
 
-What this now verifies:
-- M3 Copy
-  - auto-name copy by key (`copyParameter`)
-  - explicit-name copy by target name
-- M3 Delete
-  - partial-success delete path (`deleteParameters`) with mixed existing/missing items
-- M3 Timeline Sort
-  - `sortByTimelineOrder` returns `ok:true`
-  - expected relative order for seeded timeline test params (`_bptest_timeline_c -> _bptest_timeline_a -> _bptest_timeline_b`)
-- M4 CSV Export
-  - `exportParameters` writes a CSV
-  - header row shape matches expected contract
-- M4 CSV Import
-  - dry-run is non-mutating (`state:null`)
-  - commit mutates
-  - conflict policy behavior
-    - `skip` does not overwrite existing expression, still creates new rows
-    - `overwrite` updates existing expression
-- M4 Apply-All action-level invariant
-  - sequential `updateParameter` calls each return `state`
-  - dependent expression update path remains valid
+These require live Fusion UI/runtime behavior and remain manual by design:
+- actual Fusion palette docking/position behavior across monitor/RDP geometry changes
+- true Fusion recompute timing/performance feel under real model complexity
+- native Fusion file/data-panel picker interactions and cancellation UX
+- visual parity/readability in Fusion-hosted WebView (font/render differences vs standalone browser)
+- toolbar/ribbon discoverability and command placement in Fusion workspace contexts
+- live model side-effects that depend on Fusion document state and external references
 
-Pass criteria:
-- Harness summary reports `0 failed`.
+## 3) Execution order for release confidence
 
-Additional FE DOM automation (local/dev):
-- File: `C:\Users\Maci\Documents\Codex\OpenParameters\devtools\dev_harness.html`
-- Control: `Run FE Regression Tests`
-
-What FE DOM runner verifies:
-- Single-row Apply keeps other dirty rows intact.
-- Resize preserves dirty drafts.
-- Timeline sort is blocked when local edits are dirty (disabled + guidance tooltip).
-- CSV import cancel path does not emit error/cancel status noise.
-- Package import partial-failure details render in summary.
-- Auto mode: blur applies valid edits.
-- Auto mode: invalid expression remains dirty with persistent error.
-- Auto mode: comment-field discard click clears draft (no unintended apply).
-- Manual mode: Apply All disabled when any dirty row is invalid.
-- Manual mode: Discard All resets all dirty rows to last-known-good values.
-
-## 2) Manual UI Coverage (required)
-
-The harness does not drive palette DOM interactions. These checks stay manual until dedicated UI automation exists.
-
-M3 manual checks:
-- Copy action discoverability in UI for single and multi-select.
-- Delete action confirm prompt text and selected-count accuracy.
-- Timeline sort command blocked when unsaved edits exist, with visible attention message.
-
-M4 manual checks:
-- Export/import controls and user messaging readability.
-- Manual: row Apply only applies that row; other dirty rows remain queued.
-
-## 3) Execution Order (for FE completion)
-
-1. Run Fusion harness and record result.
-2. Run manual UI checklist for current change set.
-3. If any fail, fix and re-run both.
-4. Only mark task complete in `CONTEXT.md` when both automated + manual checks pass.
-
-## 4) Known Limits
-
-- This script validates action semantics and state envelopes, not visual layout correctness.
-- Full row-level UI behavior requires future DOM automation (separate project).
+1. Run `python -m pytest` (includes baseline FE tests).
+2. Run FE browser suite where Playwright is available.
+3. Run Fusion harness in Fusion.
+4. Run the manual-only list above for release candidates.

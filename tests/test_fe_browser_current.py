@@ -44,6 +44,13 @@ def _wait_palette_ready(page):
     return frame
 
 
+def _palette_frame(page):
+    for frame in page.frames:
+        if "palette.html" in (frame.url or ""):
+            return frame
+    raise AssertionError("Palette frame not found.")
+
+
 def test_dev_harness_loads_palette(browser_page):
     page = browser_page
     page.goto(_harness_url())
@@ -72,3 +79,70 @@ def test_apply_all_and_discard_all_controls_present(browser_page):
     assert frame.locator("#discardAllButton").count() == 1
     assert frame.locator("#timelineSortButton").count() == 1
 
+
+def test_timeline_sort_disabled_when_row_dirty(browser_page):
+    page = browser_page
+    page.goto(_harness_url())
+    _wait_palette_ready(page)
+    frame = _palette_frame(page)
+    row = frame.query_selector("#parameterRows tr.parameter-row[data-parameter-key]")
+    assert row is not None
+    comment = row.query_selector(".comment-input")
+    assert comment is not None
+    frame.evaluate(
+        """(el) => {
+            el.value = "timeline-dirty-smoke";
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+        }""",
+        comment,
+    )
+    timeline = frame.query_selector("#timelineSortButton")
+    assert timeline is not None
+    assert timeline.is_disabled()
+
+
+def test_apply_all_disabled_when_expression_invalid(browser_page):
+    page = browser_page
+    page.goto(_harness_url())
+    _wait_palette_ready(page)
+    frame = _palette_frame(page)
+    row = frame.query_selector("#parameterRows tr.parameter-row[data-parameter-key]")
+    assert row is not None
+    expr = row.query_selector(".expression-input")
+    assert expr is not None
+    frame.evaluate(
+        """(el) => {
+            el.value = "";
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+        }""",
+        expr,
+    )
+    apply_all = frame.query_selector("#applyAllButton")
+    assert apply_all is not None
+    assert apply_all.is_disabled()
+
+
+def test_discard_all_clears_dirty_rows(browser_page):
+    page = browser_page
+    page.goto(_harness_url())
+    _wait_palette_ready(page)
+    frame = _palette_frame(page)
+    rows = frame.query_selector_all("#parameterRows tr.parameter-row[data-parameter-key]")
+    assert len(rows) >= 2
+    for idx, row in enumerate(rows[:2]):
+        comment = row.query_selector(".comment-input")
+        assert comment is not None
+        frame.evaluate(
+            """([el, text]) => {
+                el.value = text;
+                el.dispatchEvent(new Event("input", { bubbles: true }));
+            }""",
+            [comment, f"discard-all-{idx}"],
+        )
+        assert "is-dirty" in (row.get_attribute("class") or "")
+    discard_all = frame.query_selector("#discardAllButton")
+    assert discard_all is not None
+    discard_all.click()
+    frame.wait_for_timeout(150)
+    for row in rows[:2]:
+        assert "is-dirty" not in (row.get_attribute("class") or "")
