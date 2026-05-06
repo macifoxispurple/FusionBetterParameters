@@ -4533,6 +4533,7 @@
       let rapidComputeAllRowsTimer = null;
       let rapidComputeAllRowsNonce = 0;
       let dataPanelImportSession = null;
+      let parameterFileImportSession = null;
       let pendingConfirmVariant = "";
 
       function reportBackgroundFailure(contextLabel, error) {
@@ -7283,7 +7284,7 @@
 
       function buildFailedRowsCopyText(session, failedRows) {
         const rows = Array.isArray(failedRows) ? failedRows : [];
-        const sourceName = String(session?.sourceName || "").trim() || "(unnamed cloud file)";
+        const sourceName = String(session?.sourceName || "").trim() || "(unknown source)";
         const lines = [
           `Source: ${sourceName}`,
           `Failed rows: ${rows.length}`,
@@ -7302,8 +7303,13 @@
 
       function showImportReportPopup(title, lines) {
         const bodyLines = Array.isArray(lines) ? lines.filter(Boolean) : [];
-        const text = [String(title || "Import Report"), "", ...bodyLines].join("\n");
-        window.alert(text);
+        const text = bodyLines.join("\n");
+        void requestConfirmation(text, {
+          title: String(title || "Import Report"),
+          confirmLabel: "OK",
+          showCancel: false,
+          preserveLineBreaks: true
+        });
       }
 
       function formatMetadataTimestamp(ms) {
@@ -13129,16 +13135,21 @@
 
       function requestConfirmation(message, options = {}) {
         const messageNode = document.getElementById("confirmModalMessage");
+        const titleNode = document.getElementById("confirmModalTitle");
         const confirmButton = document.getElementById("confirmModalConfirmButton");
         const cancelButton = document.getElementById("confirmModalCancelButton");
-        if (!messageNode || !confirmButton || !cancelButton) {
+        if (!messageNode || !titleNode || !confirmButton || !cancelButton) {
           return Promise.resolve(window.confirm(String(message || "Are you sure?")));
         }
 
         resolvePendingConfirmation(false);
+        titleNode.textContent = String(options.title || "Confirmation");
         messageNode.textContent = String(message || "Are you sure?");
+        messageNode.style.whiteSpace = options.preserveLineBreaks ? "pre-wrap" : "";
         confirmButton.textContent = String(options.confirmLabel || "OK");
         cancelButton.textContent = String(options.cancelLabel || "Cancel");
+        const showCancel = options.showCancel !== false;
+        cancelButton.hidden = !showCancel;
         pendingConfirmVariant = String(options.variant || "");
 
         setConfirmModalOpen(true);
@@ -15002,6 +15013,8 @@
 
       document.getElementById("importParametersButton").addEventListener("click", async () => {
         const policy = normalizeConflictPolicy(state.importConflictPolicy);
+        parameterFileImportSession = null;
+        setParameterFileFollowupActionsVisible(false);
         setParameterFileSummary("");
         setGlobalStatus("Previewing CSV import...");
         try {
@@ -15033,8 +15046,13 @@
           }
           setParameterFileSummary(previewLines.join("\n"), (previewFailed > 0) ? "warning" : "success");
 
-          const confirmed = window.confirm(
-            `Import CSV?\n\nWill add/update ${previewImported}, skip ${previewSkipped}, potential failures ${previewFailed}.`
+          const confirmed = await requestConfirmation(
+            `Will add/update ${previewImported}, skip ${previewSkipped}, potential failures ${previewFailed}.`,
+            {
+              title: "Import CSV",
+              confirmLabel: "Import",
+              cancelLabel: "Cancel"
+            }
           );
           if (!confirmed) {
             return;
@@ -15068,7 +15086,15 @@
           const skipped = readResponseCountField(response, "skippedCount", "CSV import");
           const failed = readResponseCountField(response, "failedCount", "CSV import");
           const failedRows = readResponseArrayField(response, "failedRows", "CSV import");
+          parameterFileImportSession = {
+            kind: "csv",
+            sourceName: String(response.filePath || resolvedFilePath || "").trim() || "CSV file",
+            filePath: String(response.filePath || resolvedFilePath || "").trim(),
+            policy,
+            failedRows
+          };
           const lines = [
+            parameterFileImportSession.filePath ? `Source: ${parameterFileImportSession.filePath}` : "Source: CSV file",
             `Added/Updated: ${imported}`,
             `Skipped: ${skipped}`,
             `Failed: ${failed}`
@@ -15081,7 +15107,16 @@
           const summary = `Import complete. Added/updated ${imported}, skipped ${skipped}, failed ${failed}.`;
           setGlobalStatus(summary, failed > 0 ? "warning" : "success");
           setParameterFileSummary(lines.join("\n"), failed > 0 ? "warning" : "success");
+          setParameterFileFollowupActionsVisible(failed > 0);
+          showImportReportPopup("CSV Import Report", [
+            summary,
+            `Added/Updated: ${imported}`,
+            `Skipped: ${skipped}`,
+            `Failed: ${failed}`
+          ]);
         } catch (error) {
+          parameterFileImportSession = null;
+          setParameterFileFollowupActionsVisible(false);
           setGlobalStatus(error.message, "error");
           setParameterFileSummary(String(error.message || "Import failed."), "error");
         }
@@ -15090,6 +15125,7 @@
       document.getElementById("importDataPanelParametersButton").addEventListener("click", async () => {
         const policy = normalizeConflictPolicy(state.importConflictPolicy);
         dataPanelImportSession = null;
+        parameterFileImportSession = null;
         setParameterFileFollowupActionsVisible(false);
         setParameterFileSummary("");
         setGlobalStatus("Selecting Data Panel source...");
@@ -15135,8 +15171,20 @@
           }
           setParameterFileSummary(previewLines.join("\n"), previewFailed > 0 ? "warning" : "success");
 
-          const confirmed = window.confirm(
-            `Import from Fusion file "${sourceName || "selected file"}"?\n\nWill add/update ${previewImported}, skip ${previewSkipped}, potential failures ${previewFailed}.\n\nPrecheck can overestimate failures. Import will auto-retry remaining rows.`
+          const confirmed = await requestConfirmation(
+            [
+              `Import from Fusion file "${sourceName || "selected file"}"?`,
+              "",
+              `Will add/update ${previewImported}, skip ${previewSkipped}, potential failures ${previewFailed}.`,
+              "",
+              "Precheck can overestimate failures. Import will auto-retry remaining rows."
+            ].join("\n"),
+            {
+              title: "Import From Fusion File",
+              confirmLabel: "Import",
+              cancelLabel: "Cancel",
+              preserveLineBreaks: true
+            }
           );
           if (!confirmed) {
             return;
@@ -15179,6 +15227,13 @@
             policy,
             failedRows
           };
+          parameterFileImportSession = {
+            kind: "fusion-file",
+            sourceName: dataPanelImportSession.sourceName,
+            selectionToken,
+            policy,
+            failedRows
+          };
           const lines = [
             `Source: ${dataPanelImportSession.sourceName}`,
             `Added/Updated: ${imported}`,
@@ -15210,6 +15265,7 @@
           ]);
         } catch (error) {
           dataPanelImportSession = null;
+          parameterFileImportSession = null;
           setParameterFileFollowupActionsVisible(false);
           setGlobalStatus(error.message, "error");
           setParameterFileSummary(String(error.message || "Data Panel import failed."), "error");
@@ -15217,16 +15273,80 @@
       });
 
       document.getElementById("retryDataPanelImportButton").addEventListener("click", async () => {
-        const session = dataPanelImportSession;
-        if (!session || !session.selectionToken) {
-          setGlobalStatus("No pending failed Fusion-file rows to retry.", "warning");
+        const session = parameterFileImportSession;
+        if (!session) {
+          setGlobalStatus("No pending failed import rows to retry.", "warning");
           return;
         }
         const policy = normalizeConflictPolicy(state.importConflictPolicy);
+        if (session.kind === "csv") {
+          if (!session.filePath) {
+            setGlobalStatus("No CSV file path available for retry.", "warning");
+            return;
+          }
+          setGlobalStatus("Retrying remaining CSV rows...");
+          try {
+            const response = await sendToFusion(ACTION.IMPORT_PARAMETERS, {
+              filePath: session.filePath,
+              conflictPolicy: policy,
+              dryRun: false
+            });
+            if (!response.ok) {
+              throw new Error(response.message || "Retry failed.");
+            }
+            if (hasObjectStatePayload(response.state)) {
+              applyStateFromFusion(response, { source: "response", action: ACTION.IMPORT_PARAMETERS });
+            } else {
+              await refreshParameters();
+            }
+            const imported = readResponseCountField(response, "importedCount", "CSV retry");
+            const skipped = readResponseCountField(response, "skippedCount", "CSV retry");
+            const failed = readResponseCountField(response, "failedCount", "CSV retry");
+            const failedRows = readResponseArrayField(response, "failedRows", "CSV retry");
+            parameterFileImportSession = {
+              ...session,
+              policy,
+              failedRows
+            };
+            const lines = [
+              `Source: ${session.filePath}`,
+              `Retry imported: ${imported}`,
+              `Retry skipped: ${skipped}`,
+              `Still failed: ${failed}`
+            ];
+            const rowDetailLines = buildRowsNeedingAttentionLines(failedRows);
+            if (rowDetailLines.length) {
+              lines.push("");
+              lines.push(...rowDetailLines);
+            }
+            const summary = failed > 0
+              ? `Retry complete. Imported ${imported}, ${failed} still failed.`
+              : "Retry complete. All remaining rows imported.";
+            setGlobalStatus(summary, failed > 0 ? "warning" : "success");
+            setParameterFileSummary(lines.join("\n"), failed > 0 ? "warning" : "success");
+            setParameterFileFollowupActionsVisible(failed > 0);
+            showImportReportPopup("CSV Retry Report", [
+              summary,
+              `Retry imported: ${imported}`,
+              `Retry skipped: ${skipped}`,
+              `Still failed: ${failed}`
+            ]);
+          } catch (error) {
+            setGlobalStatus(error.message, "error");
+            setParameterFileSummary(String(error.message || "Retry failed."), "error");
+          }
+          return;
+        }
+
+        const dataSession = dataPanelImportSession;
+        if (!dataSession || !dataSession.selectionToken) {
+          setGlobalStatus("No pending failed Fusion-file rows to retry.", "warning");
+          return;
+        }
         setGlobalStatus("Retrying remaining Fusion-file rows...");
         try {
           const response = await sendToFusion(ACTION.RETRY_IMPORT_PARAMETERS_FROM_DATA_PANEL, {
-            selectionToken: session.selectionToken,
+            selectionToken: dataSession.selectionToken,
             conflictPolicy: policy,
             dryRun: false
           });
@@ -15245,12 +15365,19 @@
           const passCount = readResponseCountField(response, "passCount", "Data Panel retry");
           const importedOnRetry = readResponseCountField(response, "importedOnRetryCount", "Data Panel retry");
           dataPanelImportSession = {
-            ...session,
+            ...dataSession,
+            policy,
+            failedRows
+          };
+          parameterFileImportSession = {
+            kind: "fusion-file",
+            sourceName: String(response.sourceFileName || dataSession.sourceName || "").trim() || "(unnamed cloud file)",
+            selectionToken: dataSession.selectionToken,
             policy,
             failedRows
           };
           const lines = [
-            `Source: ${String(response.sourceFileName || session.sourceName || "").trim() || "(unnamed cloud file)"}`,
+            `Source: ${String(response.sourceFileName || dataSession.sourceName || "").trim() || "(unnamed cloud file)"}`,
             `Retry imported: ${imported}`,
             `Imported on retries: ${importedOnRetry}`,
             `Retry skipped: ${skipped}`,
@@ -15285,7 +15412,7 @@
       });
 
       document.getElementById("copyFailedDataPanelRowsButton").addEventListener("click", async () => {
-        const session = dataPanelImportSession;
+        const session = parameterFileImportSession;
         const failedRows = Array.isArray(session?.failedRows) ? session.failedRows : [];
         if (!session || failedRows.length === 0) {
           setGlobalStatus("No failed rows to copy.", "warning");

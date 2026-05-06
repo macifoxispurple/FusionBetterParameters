@@ -3007,14 +3007,22 @@ def _serialize_parameters_to_csv(parameters):
     """Serialize a list of parameter dicts to a CSV string (UTF-8, with header row)."""
     buf = io.StringIO()
     writer = csv.writer(buf, lineterminator="\n")
-    writer.writerow(["name", "expression", "unit", "comment", "group"])
+    writer.writerow(["name", "unit", "expression", "value", "comment", "favorite"])
     for p in parameters:
+        unit_value = str(p.get("unit", "") or "")
+        expression_value = p.get("expression", "")
+        if unit_value.strip().lower() == "text":
+            expression_value = _normalize_text_expression_for_fusion(expression_value)
+        favorite_value = p.get("favorite", p.get("isFavorite", ""))
+        if isinstance(favorite_value, bool):
+            favorite_value = "true" if favorite_value else "false"
         writer.writerow([
             p.get("name", ""),
-            p.get("expression", ""),
-            p.get("unit", ""),
+            unit_value,
+            expression_value,
+            p.get("value", p.get("valuePreview", "")),
             p.get("comment", ""),
-            p.get("group", ""),
+            favorite_value,
         ])
     return buf.getvalue()
 
