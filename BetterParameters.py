@@ -39,6 +39,9 @@ from update_state import (
 CMD_ID = "betterParametersShowPalette"
 CMD_NAME = "Better Parameters"
 CMD_DESCRIPTION = "Show a non-blocking palette for Fusion user parameters."
+RESTORE_WINDOW_POSITION_CMD_ID = "betterParametersRestoreWindowPosition"
+RESTORE_WINDOW_POSITION_CMD_NAME = "Restore Window Position"
+RESTORE_WINDOW_POSITION_CMD_DESCRIPTION = "Restore the Better Parameters palette to a visible on-screen position."
 WORKSPACE_ID = "FusionSolidEnvironment"
 TAB_ID = "ToolsTab"
 PANEL_ID = "BetterParametersPanel"
@@ -52,6 +55,8 @@ TEXT_TUNER_STATE_FILE = "text_tuner_temp.json"
 DOCUMENT_ORDER_DIRNAME = "document_orders"
 DEFAULT_PALETTE_WIDTH = 760
 DEFAULT_PALETTE_HEIGHT = 640
+PALETTE_CREATE_SEED_WIDTH = 420
+PALETTE_CREATE_SEED_HEIGHT = 320
 ATTRIBUTE_NAMESPACE = "BetterParameters"
 ATTRIBUTE_PARAMETER_GROUP_NAME = "group"
 ATTRIBUTE_METADATA_CHANGED_AT_NAME = "metadataChangedAt"
@@ -250,6 +255,7 @@ handlers = []
 app = adsk.core.Application.cast(None)
 ui = adsk.core.UserInterface.cast(None)
 command_handler_registered = False
+restore_window_position_command_handler_registered = False
 _updated_runtime_module = None
 
 
@@ -296,7 +302,7 @@ def stop(_context):
 
 
 def _register_command():
-    global command_handler_registered
+    global command_handler_registered, restore_window_position_command_handler_registered
 
     cmd_def = ui.commandDefinitions.itemById(CMD_ID)
     if not cmd_def:
@@ -307,13 +313,28 @@ def _register_command():
             COMMAND_RESOURCES,
         )
 
+    restore_cmd_def = ui.commandDefinitions.itemById(RESTORE_WINDOW_POSITION_CMD_ID)
+    if not restore_cmd_def:
+        restore_cmd_def = ui.commandDefinitions.addButtonDefinition(
+            RESTORE_WINDOW_POSITION_CMD_ID,
+            RESTORE_WINDOW_POSITION_CMD_NAME,
+            RESTORE_WINDOW_POSITION_CMD_DESCRIPTION,
+            COMMAND_RESOURCES,
+        )
+
     if not command_handler_registered:
         on_command_created = ShowPaletteCommandCreatedHandler()
         cmd_def.commandCreated.add(on_command_created)
         handlers.append(on_command_created)
         command_handler_registered = True
 
-    _ensure_command_controls(cmd_def)
+    if not restore_window_position_command_handler_registered:
+        on_restore_command_created = RestoreWindowPositionCommandCreatedHandler()
+        restore_cmd_def.commandCreated.add(on_restore_command_created)
+        handlers.append(on_restore_command_created)
+        restore_window_position_command_handler_registered = True
+
+    _ensure_command_controls(cmd_def, restore_cmd_def)
 
 
 def _register_application_events():
@@ -346,6 +367,30 @@ class ShowPaletteExecuteHandler(adsk.core.CommandEventHandler):
             _push_parameter_list()
         except Exception:
             _message_box(f"Opening palette failed:\n{traceback.format_exc()}")
+
+
+class RestoreWindowPositionCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
+    def __init__(self):
+        super().__init__()
+
+    def notify(self, args):
+        try:
+            on_execute = RestoreWindowPositionExecuteHandler()
+            args.command.execute.add(on_execute)
+            handlers.append(on_execute)
+        except Exception:
+            _message_box(f"Restore command creation failed:\n{traceback.format_exc()}")
+
+
+class RestoreWindowPositionExecuteHandler(adsk.core.CommandEventHandler):
+    def __init__(self):
+        super().__init__()
+
+    def notify(self, _args):
+        try:
+            _restore_palette_window_position()
+        except Exception:
+            _message_box(f"Restore window position failed:\n{traceback.format_exc()}")
 
 
 class DocumentActivatedHandler(adsk.core.DocumentEventHandler):
@@ -414,8 +459,8 @@ def _ensure_palette():
         True,
         True,
         True,
-        DEFAULT_PALETTE_WIDTH,
-        DEFAULT_PALETTE_HEIGHT,
+        PALETTE_CREATE_SEED_WIDTH,
+        PALETTE_CREATE_SEED_HEIGHT,
     )
     _apply_saved_palette_docking_state(palette)
     _apply_saved_palette_size(palette)
@@ -465,12 +510,16 @@ def _ensure_toolbar_panel():
     return tools_tab.toolbarPanels.add(PANEL_ID, PANEL_NAME)
 
 
-def _ensure_command_controls(cmd_def):
+def _ensure_command_controls(cmd_def, restore_cmd_def):
     utility_panel = _ensure_toolbar_panel()
     if utility_panel and not utility_panel.controls.itemById(CMD_ID):
         control = utility_panel.controls.addCommand(cmd_def)
         control.isPromotedByDefault = True
         control.isPromoted = True
+    if utility_panel and restore_cmd_def and not utility_panel.controls.itemById(RESTORE_WINDOW_POSITION_CMD_ID):
+        restore_control = utility_panel.controls.addCommand(restore_cmd_def)
+        restore_control.isPromotedByDefault = False
+        restore_control.isPromoted = False
 
     for panel_id in TARGET_PANEL_IDS:
         if panel_id == PANEL_ID:
@@ -2016,6 +2065,47 @@ def _apply_saved_palette_position(palette):
     except Exception:
         if app:
             app.log(f"Better Parameters palette position restore failed:\n{traceback.format_exc()}")
+
+
+def _restore_palette_window_position():
+    palette = _ensure_palette()
+    palette.isVisible = True
+
+    mapping = _palette_docking_state_name_map()
+    floating_state = mapping.get("floating")
+    if floating_state is not None:
+        try:
+            palette.dockingState = floating_state
+        except Exception:
+            if app:
+                app.log(f"Better Parameters palette docking set failed during restore:\n{traceback.format_exc()}")
+
+    width = DEFAULT_PALETTE_WIDTH
+    height = DEFAULT_PALETTE_HEIGHT
+    try:
+        width = int(palette.width)
+        height = int(palette.height)
+    except Exception:
+        pass
+
+    centered = _first_launch_centered_position(width, height)
+    if centered is None:
+        centered = (80, 80)
+    x, y = centered
+
+    try:
+        palette.left = int(x)
+        palette.top = int(y)
+    except Exception:
+        if app:
+            app.log(f"Better Parameters palette position apply failed during restore:\n{traceback.format_exc()}")
+
+    _save_settings(
+        {
+            "paletteDockingState": "floating",
+            "palettePosition": {"x": int(x), "y": int(y)},
+        }
+    )
 
 
 def _first_launch_centered_position(width, height):
