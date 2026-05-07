@@ -2717,3 +2717,22 @@ Legend:
   - Hash verification: `VERIFY OK palette.html`.
 - Remaining risk / next check:
   - In-Fusion smoke: verify remaining minimum-width stepping is reduced/eliminated during continuous narrowing drag.
+
+## 2026-05-07 - Resize stepping follow-up: suppress mode-change auto-fit churn during active drag
+- What changed:
+  - `BetterParameters/palette.html`
+    - Added active-resize lifecycle flag:
+      - `state.isPaletteResizeActive`
+      - `paletteResizeSettleFlagTimer` (set true on resize, clear after 420ms quiet period)
+    - Guarded mode-change auto-fit/persist branch in `applyColumnWidths()`:
+      - skip `modeChanged && !isNarrowMode` auto-fit/persist cycle while resize is active.
+    - Added timer cleanup in `beforeunload`.
+- Why:
+  - Remaining stepping likely from resize-triggered layout-mode transitions causing extra auto-fit/persist churn while user is still dragging.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 413 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed file only: `BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: retest continuous narrow drag; compare step frequency vs previous build.

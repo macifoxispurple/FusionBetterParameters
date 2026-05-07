@@ -4594,6 +4594,7 @@
         selectionAnchorRowIndex: -1,
         shiftRangeGestureActive: false,
         lastNarrowLayoutMode: null,
+        isPaletteResizeActive: false,
         viewportModeAutoFitPending: false,
         rowDraftsByKey: {},
         pendingRenderPushEnvelope: null,
@@ -4646,6 +4647,7 @@
       let textTunerHoverLastTarget = null;
       let textTunerHoverHighlightedBindingIds = new Set();
       let liveResizeLayoutRaf = null;
+      let paletteResizeSettleFlagTimer = null;
       let selectedActionInFlight = false;
       let rowExpressionValidationTimersByInput = new Map();
       let rowNameValidationTimersByInput = new Map();
@@ -5954,7 +5956,7 @@
         if (modeChanged) {
           applyCommentInputPlaceholders(document.getElementById("parameterRows") || document);
         }
-        if (modeChanged && !isNarrowMode && !state.viewportModeAutoFitPending) {
+        if (modeChanged && !isNarrowMode && !state.viewportModeAutoFitPending && !state.isPaletteResizeActive) {
           state.viewportModeAutoFitPending = true;
           requestAnimationFrame(() => {
             state.viewportModeAutoFitPending = false;
@@ -15201,6 +15203,14 @@
       });
 
       window.addEventListener("resize", () => {
+        state.isPaletteResizeActive = true;
+        if (paletteResizeSettleFlagTimer) {
+          window.clearTimeout(paletteResizeSettleFlagTimer);
+        }
+        paletteResizeSettleFlagTimer = window.setTimeout(() => {
+          paletteResizeSettleFlagTimer = null;
+          state.isPaletteResizeActive = false;
+        }, 420);
         if (state.isUnitMenuOpen) {
           positionUnitMenu();
         }
@@ -16900,6 +16910,10 @@
         if (liveResizeLayoutRaf) {
           window.cancelAnimationFrame(liveResizeLayoutRaf);
           liveResizeLayoutRaf = null;
+        }
+        if (paletteResizeSettleFlagTimer) {
+          window.clearTimeout(paletteResizeSettleFlagTimer);
+          paletteResizeSettleFlagTimer = null;
         }
         clearTextTunerHoverInfluenceHighlight();
       });
