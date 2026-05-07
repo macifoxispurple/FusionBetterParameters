@@ -2795,3 +2795,21 @@ Legend:
 - Remaining risk / next check:
   - In-Fusion smoke: verify whether final residual micro-steps now occur less often near narrow threshold and near true minimum.
   - If stepping remains, likely next source is discrete rail control wrapping/intrinsic min-content changes in the top action rail.
+
+## 2026-05-07 - Startup settings hydration gate (no pre-READY settings render)
+- What changed:
+  - `BetterParameters/palette.html`
+    - Removed startup-time pre-hydration settings render in `window.load`:
+      - removed `applySettings(state.settings, { deferColumnLayout: true })`
+      - removed immediate `syncDefaultUnit(true)`
+      - removed immediate `renderUnitPicker()`
+      - moved `autoSizeCommentInputs()` to run only after successful `READY` response apply.
+- Why:
+  - User observed ultralight toggle appearing reset after `palette.html` swaps despite `settings.json` persistence; startup default FE state was being rendered before backend settings hydration.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 413 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed runtime file only: `BetterParameters/palette.html` -> `~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: confirm ultralight toggle/class now reflects persisted backend state immediately after add-in/palette reloads without transient reset behavior.

@@ -16813,10 +16813,6 @@
           renderRawTraceInfo();
           renderRawTraceLog();
           initializeTextTunerCard();
-          applySettings(state.settings, { deferColumnLayout: true });
-          syncDefaultUnit(true);
-          renderUnitPicker();
-          autoSizeCommentInputs();
 
           const bridgeReady = await waitForFusionBridge();
           if (!bridgeReady) {
@@ -16839,6 +16835,7 @@
           const response = await sendToFusion(ACTION.READY);
           if (response.ok) {
             applyStateFromFusion(response, { source: "response", action: ACTION.READY });
+            autoSizeCommentInputs();
             if (TEMP_TEXT_TUNER_ENABLED && !state.textTunerStateLoaded) {
               applyPersistedTextTunerValues(state.textTunerState || {});
             }
