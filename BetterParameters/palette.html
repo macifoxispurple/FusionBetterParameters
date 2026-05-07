@@ -1623,7 +1623,7 @@
 
       body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row {
         display: grid;
-        grid-template-columns: minmax(110px, 0.9fr) minmax(0, 1.6fr);
+        grid-template-columns: minmax(96px, 0.9fr) minmax(0, 1.6fr);
         align-items: center;
         gap: 8px;
         padding: 3px 8px;
@@ -1819,6 +1819,7 @@
         position: relative;
         display: flex;
         align-items: center;
+        min-width: 0;
       }
 
       .parameter-rail {
@@ -1833,6 +1834,11 @@
         position: sticky;
         top: 36px;
         z-index: 1100;
+        min-width: 0;
+      }
+
+      .parameter-rail > * {
+        min-width: 0;
       }
 
       body.inline-status-visible .parameter-rail {
@@ -1939,12 +1945,31 @@
 
       .native-search {
         max-width: 700px;
+        min-width: 0;
+        width: 100%;
       }
 
       .rail-actions {
         display: flex;
         align-items: center;
         gap: 3px;
+      }
+
+      .selection-chip {
+        max-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      body.narrow-stack .rail-actions {
+        min-width: 0;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        row-gap: 2px;
+      }
+
+      body.narrow-stack.ultralight-narrow-ui .rail-actions {
+        gap: 2px;
       }
 
       .rail-actions .icon-btn {
@@ -2017,6 +2042,8 @@
         padding-right: 26px;
         border-color: var(--line-subtle);
         background: var(--search-field-bg);
+        width: 100%;
+        min-width: 0;
       }
 
       .search-input::placeholder {
@@ -4008,6 +4035,7 @@
         value: 120
       };
       const NARROW_NAME_EXPRESSION_ONLY_PX = 520;
+      const NARROW_LAYOUT_HYSTERESIS_PX = 18;
 
       // Maps new column key names â†’ old names stored before the rename.
       // Used in migrateColumnWidths to upgrade persisted settings transparently.
@@ -5756,6 +5784,19 @@
         return offsetWidth > 0 ? offsetWidth : 0;
       }
 
+      function resolveNarrowLayoutMode(containerWidth) {
+        if (!(containerWidth > 0)) {
+          return state.lastNarrowLayoutMode === true;
+        }
+        const wasNarrow = state.lastNarrowLayoutMode === true;
+        const enterNarrowAt = NARROW_NAME_EXPRESSION_ONLY_PX - NARROW_LAYOUT_HYSTERESIS_PX;
+        const exitNarrowAt = NARROW_NAME_EXPRESSION_ONLY_PX + NARROW_LAYOUT_HYSTERESIS_PX;
+        if (wasNarrow) {
+          return containerWidth < exitNarrowAt;
+        }
+        return containerWidth < enterNarrowAt;
+      }
+
       function buildAutoFitColumnWidths() {
         const table = document.querySelector(".table-wrap table");
         const wrap = table ? table.parentElement : null;
@@ -5892,7 +5933,7 @@
         const table = document.querySelector(".table-wrap table");
         const headers = document.querySelectorAll(".table-wrap table thead th");
         const containerWidth = getTableWrapInnerWidth() || 600;
-        const isNarrowMode = containerWidth < NARROW_NAME_EXPRESSION_ONLY_PX;
+        const isNarrowMode = resolveNarrowLayoutMode(containerWidth);
         document.body.classList.toggle("narrow-stack", isNarrowMode);
         const userShowsComments = !document.body.classList.contains("hide-comment");
         const columnPx = {};
@@ -6009,8 +6050,9 @@
 
         if (table) {
           table.style.width = "";
+          const fluidResizeWidth = state.isPaletteResizeActive === true;
           if (isNarrowMode) {
-            table.style.width = `${containerWidth}px`;
+            table.style.width = fluidResizeWidth ? "100%" : `${containerWidth}px`;
             if (headers[5]) headers[5].style.width = "";
             scheduleLayoutDebugPanelUpdate();
             return;
@@ -6023,7 +6065,7 @@
           if (headers[5]) {
             headers[5].style.width = commentsVisible && commentsWidth > 0 ? `${commentsWidth}px` : "0px";
           }
-          table.style.width = `${containerWidth}px`;
+          table.style.width = fluidResizeWidth ? "100%" : `${containerWidth}px`;
         }
         scheduleLayoutDebugPanelUpdate();
       }
@@ -15210,6 +15252,15 @@
         paletteResizeSettleFlagTimer = window.setTimeout(() => {
           paletteResizeSettleFlagTimer = null;
           state.isPaletteResizeActive = false;
+          savePaletteSize();
+          if (!state.initialLayoutDone) {
+            return;
+          }
+          if (state.settings.autoFitColumns === true) {
+            const nextColumns = buildAutoFitColumnWidths();
+            state.settings.parameterTableColumns = nextColumns;
+            applyColumnWidths();
+          }
         }, 420);
         if (state.isUnitMenuOpen) {
           positionUnitMenu();
@@ -15233,24 +15284,6 @@
           });
         }
         scheduleLayoutDebugPanelUpdate();
-      });
-
-      let paletteResizeTimer = null;
-      window.addEventListener("resize", () => {
-        if (paletteResizeTimer) {
-          window.clearTimeout(paletteResizeTimer);
-        }
-        paletteResizeTimer = window.setTimeout(() => {
-          savePaletteSize();
-          if (!state.initialLayoutDone) {
-            return;
-          }
-          if (state.settings.autoFitColumns === true) {
-            const nextColumns = buildAutoFitColumnWidths();
-            state.settings.parameterTableColumns = nextColumns;
-            applyColumnWidths();
-          }
-        }, 320);
       });
 
       window.addEventListener("scroll", () => {
@@ -16879,10 +16912,6 @@
           expressionValidationTimer = null;
         }
         clearAllManagedRowTimers();
-        if (paletteResizeTimer) {
-          window.clearTimeout(paletteResizeTimer);
-          paletteResizeTimer = null;
-        }
         if (focusRefreshTimer) {
           window.clearTimeout(focusRefreshTimer);
           focusRefreshTimer = null;

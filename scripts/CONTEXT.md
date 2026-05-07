@@ -2736,3 +2736,62 @@ Legend:
   - Hash verification: `VERIFY OK palette.html`.
 - Remaining risk / next check:
   - In-Fusion smoke: retest continuous narrow drag; compare step frequency vs previous build.
+
+## 2026-05-07 - Resize stepping follow-up: run persistence/final autofit only after resize settles
+- What changed:
+  - `BetterParameters/palette.html`
+    - Consolidated resize-finalization into the resize settle timer (`paletteResizeSettleFlagTimer`):
+      - after 420ms no-resize period, now performs:
+        - `savePaletteSize()`
+        - final auto-fit recompute/apply (if enabled)
+    - Removed separate debounced resize listener (`paletteResizeTimer`) that previously ran geometry save/final autofit on its own cadence during resize sessions.
+    - Removed now-unused `paletteResizeTimer` cleanup block.
+- Why:
+  - A separate debounce path could still fire during short pauses mid-drag, introducing extra mutation points and residual resize stepping.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 413 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed file only: `BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: retest continuous narrow drag and compare residual stepping frequency.
+
+## 2026-05-07 - Resize stepping follow-up: fluid table width during active resize
+- What changed:
+  - `BetterParameters/palette.html`
+    - In `applyColumnWidths()`, while `state.isPaletteResizeActive === true`, table width is now set to `100%` (fluid) instead of fixed pixel width.
+    - Applied in both narrow and non-narrow branches:
+      - previous: `table.style.width = "${containerWidth}px"`
+      - active-resize now: `table.style.width = "100%"`
+      - settled path remains pixel width for deterministic post-resize layout.
+- Why:
+  - User-observed stepping pattern suggested fixed pixel table width writes might be acting as transient hard stops during drag.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 413 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed file only: `BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: retest continuous narrow drag for reduced staircase stopping, especially around first major stop and later 2px micro-steps.
+
+## 2026-05-07 - Resize stepping follow-up: narrow-mode hysteresis + smaller ultralight name min
+- What changed:
+  - `BetterParameters/palette.html`
+    - Added narrow-layout hysteresis constant and resolver:
+      - `NARROW_LAYOUT_HYSTERESIS_PX = 18`
+      - `resolveNarrowLayoutMode(containerWidth)`
+      - `applyColumnWidths()` now uses hysteresis-based narrow toggle instead of a hard single-pixel breakpoint.
+    - Reduced ultralight row left-column minimum width:
+      - `grid-template-columns` changed from `minmax(110px, 0.9fr) ...` to `minmax(96px, 0.9fr) ...`.
+    - Existing in-progress rail/min-width and active-resize fluid width adjustments remain in place.
+- Why:
+  - User reported continued stepped minimum resizing with larger first stop/jump patterns; breakpoint thrash and rigid ultralight minimums were likely contributors.
+- Validation run + pass/fail counts:
+  - `python3 -m pytest` => failed to start (`No module named pytest`) in host interpreter.
+  - `.venv/bin/python -m pytest` => 413 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed runtime file only: `BetterParameters/palette.html` -> `~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: verify whether final residual micro-steps now occur less often near narrow threshold and near true minimum.
+  - If stepping remains, likely next source is discrete rail control wrapping/intrinsic min-content changes in the top action rail.
