@@ -2236,3 +2236,33 @@ Legend:
 - Validation: python -m pytest => 411 passed, 6 skipped, 0 failed. Canonical sync verify => 0 errors with VERIFY OK BetterParameters.py and VERIFY OK palette.html.
 - Remaining risk/next check: None expected functionally; if desired, run staged-update path smoke in Fusion to confirm generated helper executes identically during apply-update lifecycle.
 
+
+## 2026-05-07 - macOS parity + docs path normalization
+- What changed:
+  - Implemented minimal production patch set (no extra feature changes):
+    - `BetterParameters.py`
+      - Added palette create-seed constants:
+        - `PALETTE_CREATE_SEED_WIDTH = 420`
+        - `PALETTE_CREATE_SEED_HEIGHT = 320`
+      - `_ensure_palette()` `ui.palettes.add(...)` now uses create-seed dimensions, while keeping existing saved-size restore flow untouched.
+    - `palette.html`
+      - Updated global keydown shortcut gating to support macOS `Cmd` parity with `Ctrl`:
+        - added `const ctrlOrMeta = event.ctrlKey || event.metaKey;`
+        - switched D/T/M/C shortcut checks to `ctrlOrMeta` while preserving existing Alt/Shift semantics.
+  - Updated test compatibility for cross-platform execution:
+    - `tests/test_clipboard.py`
+      - Windows clipboard tests now patch `ctypes.windll` with `create=True` so tests run on platforms where `ctypes.windll` is not present (e.g., macOS/Python 3.14).
+  - Updated operational docs pathing in `scripts/HANDOFF.md`:
+    - Added Windows/macOS variants where applicable.
+    - Removed username-bound absolute path forms in favor of `%USERPROFILE%` / `%APPDATA%` and `~/` / `$HOME` forms.
+    - Added macOS equivalent release-notes/`gh release` command example.
+- Why:
+  - Ensure the app behavior and keyboard shortcuts are consistent on macOS.
+  - Ensure test suite reliability on both Windows and macOS.
+  - Normalize maintainer path references for cross-platform operations.
+- Validation run + pass/fail counts:
+  - Full test suite in local venv:
+    - `python -m pytest` => 411 passed, 6 skipped, 0 failed.
+- Remaining risk / next check:
+  - None identified for these scoped changes.
+  - Optional: run quick in-Fusion smoke on macOS for Cmd shortcuts and palette resize floor behavior after create-seed adjustment.

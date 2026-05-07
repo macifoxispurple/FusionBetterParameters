@@ -57,7 +57,7 @@ def _patch_win32(kernel32, user32):
 def test_win32_happy_path_calls_set_clipboard_data():
     kernel32, user32 = _make_win32_mocks()
     with patch("platform.system", return_value="Windows"), \
-         patch.object(BP.ctypes, "windll", MagicMock(kernel32=kernel32, user32=user32)), \
+         patch.object(BP.ctypes, "windll", MagicMock(kernel32=kernel32, user32=user32), create=True), \
          patch.object(BP.ctypes, "memmove", MagicMock()):
         result = BP._copy_to_clipboard({"text": "hello"})
     assert result["ok"] is True
@@ -67,7 +67,7 @@ def test_win32_happy_path_calls_set_clipboard_data():
 def test_win32_global_alloc_fail_raises():
     kernel32, user32 = _make_win32_mocks(global_alloc_returns=0)
     with patch("platform.system", return_value="Windows"), \
-         patch.object(BP.ctypes, "windll", MagicMock(kernel32=kernel32, user32=user32)), \
+         patch.object(BP.ctypes, "windll", MagicMock(kernel32=kernel32, user32=user32), create=True), \
          patch.object(BP.ctypes, "memmove", MagicMock()):
         with pytest.raises(BP.BPError) as exc_info:
             BP._copy_to_clipboard({"text": "hello"})
@@ -77,7 +77,7 @@ def test_win32_global_alloc_fail_raises():
 def test_win32_global_lock_fail_raises():
     kernel32, user32 = _make_win32_mocks(global_lock_returns=0)
     with patch("platform.system", return_value="Windows"), \
-         patch.object(BP.ctypes, "windll", MagicMock(kernel32=kernel32, user32=user32)), \
+         patch.object(BP.ctypes, "windll", MagicMock(kernel32=kernel32, user32=user32), create=True), \
          patch.object(BP.ctypes, "memmove", MagicMock()):
         with pytest.raises(BP.BPError) as exc_info:
             BP._copy_to_clipboard({"text": "hello"})
@@ -87,7 +87,7 @@ def test_win32_global_lock_fail_raises():
 def test_win32_open_clipboard_fail_raises():
     kernel32, user32 = _make_win32_mocks(open_clipboard_returns=0)
     with patch("platform.system", return_value="Windows"), \
-         patch.object(BP.ctypes, "windll", MagicMock(kernel32=kernel32, user32=user32)), \
+         patch.object(BP.ctypes, "windll", MagicMock(kernel32=kernel32, user32=user32), create=True), \
          patch.object(BP.ctypes, "memmove", MagicMock()):
         with pytest.raises(BP.BPError) as exc_info:
             BP._copy_to_clipboard({"text": "hello"})
@@ -97,7 +97,7 @@ def test_win32_open_clipboard_fail_raises():
 def test_win32_set_clipboard_data_fail_raises():
     kernel32, user32 = _make_win32_mocks(set_clipboard_data_returns=0)
     with patch("platform.system", return_value="Windows"), \
-         patch.object(BP.ctypes, "windll", MagicMock(kernel32=kernel32, user32=user32)), \
+         patch.object(BP.ctypes, "windll", MagicMock(kernel32=kernel32, user32=user32), create=True), \
          patch.object(BP.ctypes, "memmove", MagicMock()):
         with pytest.raises(BP.BPError) as exc_info:
             BP._copy_to_clipboard({"text": "hello"})
@@ -108,7 +108,7 @@ def test_win32_free_called_on_set_clipboard_failure():
     """GlobalFree must be called when SetClipboardData fails (clipboard doesn't own h_mem)."""
     kernel32, user32 = _make_win32_mocks(set_clipboard_data_returns=0)
     with patch("platform.system", return_value="Windows"), \
-         patch.object(BP.ctypes, "windll", MagicMock(kernel32=kernel32, user32=user32)), \
+         patch.object(BP.ctypes, "windll", MagicMock(kernel32=kernel32, user32=user32), create=True), \
          patch.object(BP.ctypes, "memmove", MagicMock()):
         with pytest.raises(BP.BPError):
             BP._copy_to_clipboard({"text": "hello"})
@@ -119,7 +119,7 @@ def test_win32_free_not_called_on_success():
     """GlobalFree must NOT be called on success (clipboard owns the memory)."""
     kernel32, user32 = _make_win32_mocks()
     with patch("platform.system", return_value="Windows"), \
-         patch.object(BP.ctypes, "windll", MagicMock(kernel32=kernel32, user32=user32)), \
+         patch.object(BP.ctypes, "windll", MagicMock(kernel32=kernel32, user32=user32), create=True), \
          patch.object(BP.ctypes, "memmove", MagicMock()):
         BP._copy_to_clipboard({"text": "hello"})
     kernel32.GlobalFree.assert_not_called()
@@ -129,7 +129,7 @@ def test_win32_close_clipboard_always_called():
     """CloseClipboard must be called whether SetClipboardData succeeds or fails."""
     kernel32, user32 = _make_win32_mocks(set_clipboard_data_returns=0)
     with patch("platform.system", return_value="Windows"), \
-         patch.object(BP.ctypes, "windll", MagicMock(kernel32=kernel32, user32=user32)), \
+         patch.object(BP.ctypes, "windll", MagicMock(kernel32=kernel32, user32=user32), create=True), \
          patch.object(BP.ctypes, "memmove", MagicMock()):
         with pytest.raises(BP.BPError):
             BP._copy_to_clipboard({"text": "hello"})
@@ -141,7 +141,7 @@ def test_win32_unicode_text_encoded_utf16():
     kernel32, user32 = _make_win32_mocks()
     memmove_mock = MagicMock()
     with patch("platform.system", return_value="Windows"), \
-         patch.object(BP.ctypes, "windll", MagicMock(kernel32=kernel32, user32=user32)), \
+         patch.object(BP.ctypes, "windll", MagicMock(kernel32=kernel32, user32=user32), create=True), \
          patch.object(BP.ctypes, "memmove", memmove_mock):
         BP._copy_to_clipboard({"text": "hi"})
     # First positional arg to memmove is dst pointer; second is the encoded bytes.
