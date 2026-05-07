@@ -2359,6 +2359,16 @@
         padding: 10px;
       }
 
+      #newExpression {
+        width: 100%;
+        min-height: 22px;
+        max-height: 160px;
+        resize: none;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
       .rapid-create-layout {
         display: grid;
         gap: 8px;
@@ -3519,7 +3529,7 @@
               <label>
                 Expression
                 <div class="field-shell">
-                  <input id="newExpression" name="expression" required autocomplete="off" />
+                  <textarea id="newExpression" name="expression" required autocomplete="off"></textarea>
                   <div id="expressionSuggestions" class="expression-suggestions" hidden></div>
                 </div>
                 <div id="expressionError" class="field-error" aria-live="polite"></div>
@@ -8339,7 +8349,7 @@
         }
       }
 
-      function autoSizeTextarea(textarea) {
+      function autoSizeTextarea(textarea, options = {}) {
         if (!textarea) {
           return;
         }
@@ -8349,9 +8359,16 @@
           return;
         }
 
-        const minHeight = 60;
+        const minHeight = Math.max(0, Number(options.minHeight || 60));
+        const maxHeight = Math.max(0, Number(options.maxHeight || 0));
         textarea.style.height = "auto";
-        textarea.style.height = `${Math.max(textarea.scrollHeight, minHeight)}px`;
+        const nextHeight = Math.max(textarea.scrollHeight, minHeight);
+        if (maxHeight > 0) {
+          textarea.style.height = `${Math.min(nextHeight, maxHeight)}px`;
+          textarea.style.overflowY = nextHeight > maxHeight ? "auto" : "hidden";
+        } else {
+          textarea.style.height = `${nextHeight}px`;
+        }
       }
 
       function autoSizeCommentInputs(root = document) {
@@ -11979,6 +11996,9 @@
         const caret = replaceStart + prefix.length + name.length + (isCallable ? 2 : 0);
         input.focus();
         input.setSelectionRange(caret, caret);
+        if (input.id === "newExpression") {
+          autoSizeTextarea(input, { minHeight: 22, maxHeight: 160 });
+        }
         closeExpressionSuggestions();
         if (input.classList.contains("expression-input")) {
           previewRowExpression(input);
@@ -13221,6 +13241,7 @@
           normalizeNullableField("newName");
           normalizeNullableField("newExpression");
           normalizeNullableField("newComment");
+          autoSizeTextarea(document.getElementById("newExpression"), { minHeight: 22, maxHeight: 160 });
           const nameInput = document.getElementById("newName");
           if (shouldFocusName && nameInput) {
             requestAnimationFrame(() => {
@@ -13704,6 +13725,7 @@
 
       let expressionValidationTimer = null;
       document.getElementById("newExpression").addEventListener("input", (event) => {
+        autoSizeTextarea(event.currentTarget, { minHeight: 22, maxHeight: 160 });
         updateExpressionSuggestions(event.currentTarget, document.getElementById("newName").value.trim());
         updateFunctionHelper(event.currentTarget);
 
@@ -13725,6 +13747,7 @@
 
       document.getElementById("newExpression").addEventListener("focus", (event) => {
         applyTextUnitBacktickShellOnFocus(event.currentTarget);
+        autoSizeTextarea(event.currentTarget, { minHeight: 22, maxHeight: 160 });
       });
 
       document.getElementById("newExpression").addEventListener("keydown", (event) => {

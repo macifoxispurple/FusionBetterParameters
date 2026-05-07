@@ -2360,3 +2360,24 @@ Legend:
   - Hash verification: `VERIFY OK palette.html`.
 - Remaining risk / next check:
   - In-Fusion smoke: verify new modal Value line updates quickly while typing, re-evaluates when units change, clears on invalid/empty expressions, and resets after successful create/close.
+
+## 2026-05-07 - New Parameter expression field auto-wrap + auto-grow
+- What changed:
+  - `BetterParameters/palette.html`
+    - Standard New Parameter modal expression control changed from single-line `<input>` to `<textarea id="newExpression">` so long expressions wrap instead of horizontal one-line scrolling.
+    - Added create-modal expression textarea styling (`#newExpression`) for wrapped content with capped growth:
+      - `min-height: 22px`, `max-height: 160px`, `resize: none`, wrapped word behavior.
+    - Enhanced `autoSizeTextarea(...)` to support optional min/max height bounds.
+    - Wired autosize for new expression field:
+      - on create modal open
+      - on `newExpression` input/focus
+      - after expression suggestion insertion for `newExpression`.
+- Why:
+  - User requested standard New Parameter expression field to wrap and expand in height as content grows, rather than staying a horizontally scrolling single line.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 411 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed file only: `BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: verify newline/Enter interaction in create-expression textarea still aligns with expected create workflow and expression helper behavior.
