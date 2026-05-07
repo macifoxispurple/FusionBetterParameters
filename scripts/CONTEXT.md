@@ -2813,3 +2813,24 @@ Legend:
   - Hash verification: `VERIFY OK palette.html`.
 - Remaining risk / next check:
   - In-Fusion smoke: confirm ultralight toggle/class now reflects persisted backend state immediately after add-in/palette reloads without transient reset behavior.
+
+## 2026-05-07 - Resize boundary diagnostic: latch normal/narrow mode during active drag
+- What changed:
+  - `BetterParameters/palette.html`
+    - Added resize-session mode latch state:
+      - `state.resizeNarrowLayoutModeLatch` (boolean or null).
+    - `applyColumnWidths()` now uses latched mode while `state.isPaletteResizeActive` is true, preventing normal<->narrow mode flips during the drag.
+    - `window.resize` handler now:
+      - captures the starting mode into the latch at beginning of a resize session.
+      - clears latch on resize settle.
+      - applies one post-settle `applyColumnWidths()` pass before optional auto-fit recompute.
+- Why:
+  - User observed repeatable shrink hang at the normal-table to narrow-card transition boundary; likely caused by expensive layout-mode flip thrash while dragging.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 413 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed runtime file only: `BetterParameters/palette.html` -> `~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: retest shrink drag across the previous boundary; expected behavior is continuous drag with mode transition deferred until resize settle.
+  - Tradeoff: while dragging, display mode may stay in previous layout until release/settle, then snap once.

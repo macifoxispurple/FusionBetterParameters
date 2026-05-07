@@ -4622,6 +4622,7 @@
         selectionAnchorRowIndex: -1,
         shiftRangeGestureActive: false,
         lastNarrowLayoutMode: null,
+        resizeNarrowLayoutModeLatch: null,
         isPaletteResizeActive: false,
         viewportModeAutoFitPending: false,
         rowDraftsByKey: {},
@@ -5933,7 +5934,11 @@
         const table = document.querySelector(".table-wrap table");
         const headers = document.querySelectorAll(".table-wrap table thead th");
         const containerWidth = getTableWrapInnerWidth() || 600;
-        const isNarrowMode = resolveNarrowLayoutMode(containerWidth);
+        const resolvedNarrowMode = resolveNarrowLayoutMode(containerWidth);
+        const hasResizeModeLatch = typeof state.resizeNarrowLayoutModeLatch === "boolean";
+        const isNarrowMode = (state.isPaletteResizeActive === true && hasResizeModeLatch)
+          ? state.resizeNarrowLayoutModeLatch
+          : resolvedNarrowMode;
         document.body.classList.toggle("narrow-stack", isNarrowMode);
         const userShowsComments = !document.body.classList.contains("hide-comment");
         const columnPx = {};
@@ -15245,6 +15250,13 @@
       });
 
       window.addEventListener("resize", () => {
+        if (state.isPaletteResizeActive !== true) {
+          if (typeof state.lastNarrowLayoutMode === "boolean") {
+            state.resizeNarrowLayoutModeLatch = state.lastNarrowLayoutMode;
+          } else {
+            state.resizeNarrowLayoutModeLatch = document.body.classList.contains("narrow-stack");
+          }
+        }
         state.isPaletteResizeActive = true;
         if (paletteResizeSettleFlagTimer) {
           window.clearTimeout(paletteResizeSettleFlagTimer);
@@ -15252,10 +15264,12 @@
         paletteResizeSettleFlagTimer = window.setTimeout(() => {
           paletteResizeSettleFlagTimer = null;
           state.isPaletteResizeActive = false;
+          state.resizeNarrowLayoutModeLatch = null;
           savePaletteSize();
           if (!state.initialLayoutDone) {
             return;
           }
+          applyColumnWidths();
           if (state.settings.autoFitColumns === true) {
             const nextColumns = buildAutoFitColumnWidths();
             state.settings.parameterTableColumns = nextColumns;
