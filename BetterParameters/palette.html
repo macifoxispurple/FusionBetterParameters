@@ -2082,6 +2082,11 @@
         pointer-events: auto;
       }
 
+      #parameterRows tr.parameter-row.is-revert-available .row-actions {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
       #parameterRows tr.parameter-row .expression-input:hover,
       #parameterRows tr.parameter-row .comment-input:hover {
         border-color: color-mix(in srgb, var(--line) 65%, transparent);
@@ -9079,7 +9084,7 @@
                   : "No previous value"
               );
             const revertButton = (showRevert && hasRevert)
-              ? `<button class="revert-button" type="button" data-previous-expression="${safePreviousExpression}" title="${revertTitle}"${previousExpression ? "" : " disabled"}>Revert</button>`
+              ? `<button class="revert-button is-ready" type="button" data-previous-expression="${safePreviousExpression}" title="${revertTitle}">Revert</button>`
               : "";
             // Hybrid striping:
             // - Non-favorites rows keep a stable continuous phase.
@@ -12157,6 +12162,9 @@
           const canRevert = !!previousExpression && !isDirty;
           revertButton.disabled = !canRevert;
           revertButton.classList.toggle("is-ready", canRevert);
+          row.classList.toggle("is-revert-available", canRevert && state.settings.showRevertButtons !== false);
+        } else {
+          row.classList.remove("is-revert-available");
         }
         if (rowActions) {
           rowActions.classList.toggle("has-revert-action", !!revertButton);
@@ -12586,13 +12594,14 @@
             if (!response.ok) {
               throw new Error(response.message || "Save failed.");
             }
+            if (parameterKey && expressionDirty && previousSavedExpression && previousSavedExpression !== expression) {
+              state.localPreviousExpressions[parameterKey] = previousSavedExpression;
+            }
             applyStateFromFusion(response, { source: "response", action: ACTION.UPDATE_PARAMETER });
           }
 
           if (parameterKey) {
-            if (previousSavedExpression && previousSavedExpression !== expression) {
-              state.localPreviousExpressions[parameterKey] = previousSavedExpression;
-            } else {
+            if (!(expressionDirty && previousSavedExpression && previousSavedExpression !== expression)) {
               delete state.localPreviousExpressions[parameterKey];
             }
             clearRowDraftByKey(parameterKey);

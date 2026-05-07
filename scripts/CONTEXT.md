@@ -2401,3 +2401,26 @@ Legend:
   - Hash verification: `VERIFY OK palette.html`.
 - Remaining risk / next check:
   - In-Fusion smoke: verify substring suggestions appear for parameter names like `HoopThickness` when typing `thi`, and confirm suggestion replacement behavior in standard + row + rapid expression contexts.
+
+## 2026-05-07 - Revert availability first-change + persistent visibility
+- What changed:
+  - `BetterParameters/palette.html`
+    - Revert visibility behavior:
+      - added row class path `is-revert-available` and CSS so row actions remain visible when a row has a currently-available Revert and `Show Revert` is enabled.
+      - updateRowSaveState now toggles `is-revert-available` based on `canRevert` and setting state.
+    - Revert button render baseline:
+      - revert button now renders with `is-ready` class when available at render time.
+    - First-change tracking timing fix:
+      - moved local previous-expression assignment (`state.localPreviousExpressions[key] = previousSavedExpression`) to occur immediately after successful `UPDATE_PARAMETER` response and before `applyStateFromFusion(...)` render pass.
+      - preserves first-change revert availability in the very next render, rather than requiring a second edit cycle.
+- Why:
+  - User reported revert effectively appearing only after a second expression change; requested first-change availability and persistent visible Revert button in main table when available.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 411 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed file only: `BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke:
+    - after first successful expression change, verify Revert is available immediately.
+    - with Show Revert On, verify revert-available rows keep row-actions visible without hover.
