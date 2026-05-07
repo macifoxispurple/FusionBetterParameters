@@ -2424,3 +2424,55 @@ Legend:
   - In-Fusion smoke:
     - after first successful expression change, verify Revert is available immediately.
     - with Show Revert On, verify revert-available rows keep row-actions visible without hover.
+
+## 2026-05-07 - ship.py auth reliability hardening (SSH-default)
+- What changed:
+  - `scripts/ship.py`
+    - Added auth/network hardening flags:
+      - `--auth-mode {ssh,gh,auto}` (default: `ssh`)
+      - `--git-ssh-key <path>`
+      - `--git-ssh-command <cmd>`
+      - `--check-auth-only`
+    - Added SSH command resolution helper:
+      - if `--git-ssh-command` provided, use it.
+      - else if `--git-ssh-key` provided, auto-build `GIT_SSH_COMMAND="ssh -i <key> -o IdentitiesOnly=yes"`.
+    - Added early dual-channel preflight before mutation:
+      - git remote access probe: `git ls-remote --heads origin` (with configured SSH env)
+      - gh auth probe (when release is enabled): `gh auth status --hostname github.com`
+      - hard fail with actionable diagnostics if either fails.
+    - Added remote/repo mismatch guard:
+      - compares origin-derived repo slug to `--repo-slug`.
+    - Added standalone `--check-auth-only` mode:
+      - runs auth preflight and exits without mutations.
+    - Applied SSH env to git network calls that matter:
+      - remote-tag checks, push branch/tag, commit-only push.
+    - Added push-failure recovery guidance:
+      - if push fails after local release commit/tag creation, error now includes explicit push + finalize commands.
+    - Added auth diagnostics to ship report JSON (`report["auth"]`).
+- Why:
+  - Prevent late-stage ship failures from auth-context mismatch and wrong push identity; fail earlier with clear remediation and support explicit SSH key routing.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 411 passed, 6 skipped, 0 failed.
+- Remaining risk / next check:
+  - Optional dry validation on this host:
+    - `python3 ./scripts/ship.py --check-auth-only --fusion-tested --auth-mode ssh --git-ssh-key <keypath>`
+  - Optional plan check:
+    - `python3 ./scripts/ship.py --bump-type patch --fusion-tested --plan`
+
+## 2026-05-07 - HANDOFF update for ship auth/reliability changes
+- What changed:
+  - `scripts/HANDOFF.md`
+    - Added startup auth check guidance using `ship.py --check-auth-only --fusion-tested`.
+    - Documented SSH-default ship behavior and new auth/SSH flags:
+      - `--auth-mode {ssh,gh,auto}`
+      - `--git-ssh-key`
+      - `--git-ssh-command`
+      - `--check-auth-only`
+    - Updated preflight section to include dual-channel auth/network checks and origin/repo slug guard.
+    - Added push-failure recovery note describing printed branch/tag push + finalize-existing-tag commands.
+- Why:
+  - Keep canonical maintainer docs aligned with implemented ship.py reliability hardening and avoid future auth-context ship failures.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 411 passed, 6 skipped, 0 failed.
+- Remaining risk / next check:
+  - Optional: run `python3 ./scripts/ship.py --check-auth-only --fusion-tested` on release day before bump/tag.

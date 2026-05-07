@@ -41,8 +41,13 @@ class ShipError(RuntimeError):
     pass
 
 
-def _run(cmd: list[str], cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
-    proc = subprocess.run(cmd, cwd=str(cwd) if cwd else None, text=True, capture_output=True)
+def _run(
+    cmd: list[str],
+    cwd: Path | None = None,
+    check: bool = True,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    proc = subprocess.run(cmd, cwd=str(cwd) if cwd else None, text=True, capture_output=True, env=env)
     if check and proc.returncode != 0:
         raise ShipError(
             "Command failed:\n"
@@ -268,17 +273,73 @@ def _git_branch(repo_root: Path) -> str:
     return _run(["git", "-C", str(repo_root), "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
 
 
+def _git_remote_url(repo_root: Path, remote: str = "origin") -> str:
+    return _run(["git", "-C", str(repo_root), "remote", "get-url", remote]).stdout.strip()
+
+
+def _build_git_env(git_ssh_command: str) -> dict[str, str] | None:
+    if not git_ssh_command:
+        return None
+    env = os.environ.copy()
+    env["GIT_SSH_COMMAND"] = git_ssh_command
+    return env
+
+
+def _resolve_git_ssh_command(git_ssh_command: str, git_ssh_key: str) -> str:
+    explicit = (git_ssh_command or "").strip()
+    if explicit:
+        return explicit
+    key = (git_ssh_key or "").strip()
+    if not key:
+        return ""
+    return f"ssh -i {key} -o IdentitiesOnly=yes"
+
+
+def _extract_repo_slug_from_remote(remote_url: str) -> str:
+    raw = (remote_url or "").strip()
+    if not raw:
+        return ""
+    # git@github.com:owner/repo.git
+    ssh_match = re.match(r"^[^@]+@[^:]+:(?P<slug>.+?)(?:\.git)?$", raw)
+    if ssh_match:
+        return ssh_match.group("slug")
+    # https://github.com/owner/repo(.git)
+    https_match = re.match(r"^https?://[^/]+/(?P<slug>.+?)(?:\.git)?/?$", raw)
+    if https_match:
+        return https_match.group("slug")
+    return ""
+
+
 def _local_tag_exists(repo_root: Path, tag: str) -> bool:
     out = _run(["git", "-C", str(repo_root), "tag", "-l", tag]).stdout.strip()
     return bool(out)
 
 
-def _remote_tag_exists(repo_root: Path, tag: str) -> bool:
+def _remote_tag_exists(repo_root: Path, tag: str, env: dict[str, str] | None = None) -> bool:
     proc = _run(
         ["git", "-C", str(repo_root), "ls-remote", "--tags", "origin", f"refs/tags/{tag}"],
         check=False,
+        env=env,
     )
     return bool(proc.stdout.strip())
+
+
+def _git_remote_accessible(repo_root: Path, env: dict[str, str] | None = None) -> tuple[bool, str]:
+    proc = _run(
+        ["git", "-C", str(repo_root), "ls-remote", "--heads", "origin"],
+        check=False,
+        env=env,
+    )
+    if proc.returncode == 0:
+        return True, ""
+    return False, (proc.stderr or proc.stdout or "").strip()
+
+
+def _gh_auth_ok() -> tuple[bool, str]:
+    proc = _run(["gh", "auth", "status", "--hostname", "github.com"], check=False)
+    if proc.returncode == 0:
+        return True, ""
+    return False, (proc.stderr or proc.stdout or "").strip()
 
 
 def _dirty_worktree_lines(repo_root: Path) -> list[str]:
@@ -423,22 +484,29 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--fusion-tested", action="store_true")
     parser.add_argument("--skip-push", action="store_true")
     parser.add_argument("--skip-release", action="store_true")
+    parser.add_argument("--auth-mode", choices=("ssh", "gh", "auto"), default="ssh")
+    parser.add_argument("--git-ssh-key", default="")
+    parser.add_argument("--git-ssh-command", default="")
+    parser.add_argument("--check-auth-only", action="store_true")
     return parser.parse_args()
 
 
 def main() -> int:
     args = _parse_args()
-    if not args.commit_only and not args.fusion_tested:
+    if not args.check_auth_only and not args.commit_only and not args.fusion_tested:
         raise ShipError("Missing --fusion-tested.")
     finalize_mode = bool(args.finalize_existing_tag)
     mode_count = int(bool(args.bump_type)) + int(finalize_mode) + int(args.commit_only)
-    if mode_count != 1:
+    if not args.check_auth_only and mode_count != 1:
         raise ShipError("Choose exactly one mode: --bump-type, --finalize-existing-tag, or --commit-only.")
 
     _require_tool("git")
     python_exe = _python_tool()
     if not args.skip_release and not args.commit_only:
         _require_tool("gh")
+
+    git_ssh_command = _resolve_git_ssh_command(args.git_ssh_command, args.git_ssh_key)
+    git_env = _build_git_env(git_ssh_command)
 
     workspace_root = Path(args.workspace_root).resolve() if args.workspace_root else _repo_root_from_script()
     source_root = Path(args.source_root).resolve() if args.source_root else (workspace_root / "BetterParameters")
@@ -477,7 +545,59 @@ def main() -> int:
         print(f"- target_tag: {next_tag_plan}")
         print(f"- push_enabled: {not args.skip_push}")
         print(f"- release_enabled: {not args.skip_release and not args.commit_only}")
+        print(f"- auth_mode: {args.auth_mode}")
+        print(f"- git_ssh_command: {git_ssh_command if git_ssh_command else '(default)'}")
         return 0
+
+    remote_url = _git_remote_url(workspace_root)
+    remote_slug = _extract_repo_slug_from_remote(remote_url)
+
+    # Network/auth preflight before any mutation.
+    git_ok, git_err = _git_remote_accessible(workspace_root, env=git_env)
+    gh_ok = True
+    gh_err = ""
+    if not args.skip_release:
+        gh_ok, gh_err = _gh_auth_ok()
+
+    auth_report = {
+        "auth_mode": args.auth_mode,
+        "remote_url": remote_url,
+        "remote_slug": remote_slug,
+        "git_ssh_command": git_ssh_command,
+        "git_remote_access_ok": git_ok,
+        "gh_auth_ok": gh_ok if not args.skip_release else None,
+    }
+
+    if args.check_auth_only:
+        if git_ok and (args.skip_release or gh_ok):
+            print("Auth preflight OK.")
+            print(json.dumps(auth_report, indent=2))
+            return 0
+        failures = []
+        if not git_ok:
+            failures.append(f"git remote access failed:\n{git_err}")
+        if not args.skip_release and not gh_ok:
+            failures.append(f"gh auth failed:\n{gh_err}")
+        raise ShipError("Auth preflight failed.\n" + "\n\n".join(failures))
+
+    if not git_ok:
+        raise ShipError(
+            "Git remote preflight failed (`git ls-remote --heads origin`).\n"
+            f"remote: {remote_url}\n"
+            f"{git_err}\n"
+            "Fix remote/SSH auth before shipping. You can run with --check-auth-only to verify."
+        )
+    if not args.skip_release and not gh_ok:
+        raise ShipError(
+            "GitHub CLI auth preflight failed (`gh auth status --hostname github.com`).\n"
+            f"{gh_err}\n"
+            "Run `gh auth login -h github.com` and verify with --check-auth-only."
+        )
+
+    if remote_slug and args.repo_slug and remote_slug.lower() != args.repo_slug.lower():
+        raise ShipError(
+            f"Remote/repo mismatch: origin resolves to '{remote_slug}' but --repo-slug is '{args.repo_slug}'."
+        )
 
     if args.commit_only:
         dirty = _dirty_worktree_lines(workspace_root)
@@ -491,7 +611,7 @@ def main() -> int:
             raise ShipError("No staged changes to commit in --commit-only mode.")
         _run(["git", "-C", str(workspace_root), "commit", "-m", commit_message])
         if not args.skip_push:
-            _run(["git", "-C", str(workspace_root), "push", "origin", branch])
+            _run(["git", "-C", str(workspace_root), "push", "origin", branch], env=git_env)
         report = {
             "mode": "commit-only",
             "branch": branch,
@@ -506,23 +626,20 @@ def main() -> int:
         return 0
 
     _assert_clean_worktree(workspace_root)
-    if not args.skip_release:
-        _run(["gh", "auth", "status", "--hostname", "github.com"])
-
     branch = _git_branch(workspace_root)
     current_version = _parse_manifest_version(manifest_path)
 
     if finalize_mode:
         tag = args.finalize_existing_tag.strip()
         new_version = _semver_from_tag(tag)
-        if not args.skip_push and not _remote_tag_exists(workspace_root, tag):
+        if not args.skip_push and not _remote_tag_exists(workspace_root, tag, env=git_env):
             raise ShipError(f"Finalize target tag not found on remote: {tag}")
     else:
         new_version = _bumped_version(current_version, args.bump_type)
         tag = f"v{new_version}"
         if _local_tag_exists(workspace_root, tag):
             raise ShipError(f"Local tag already exists: {tag}")
-        if not args.skip_push and _remote_tag_exists(workspace_root, tag):
+        if not args.skip_push and _remote_tag_exists(workspace_root, tag, env=git_env):
             raise ShipError(f"Remote tag already exists: {tag}")
 
     notes_temp = _release_notes_file(workspace_root, tag, new_version, args.notes_file)
@@ -533,6 +650,7 @@ def main() -> int:
         "version": new_version,
         "release_url": "",
         "steps": [],
+        "auth": auth_report,
     }
 
     try:
@@ -563,8 +681,19 @@ def main() -> int:
             report["steps"].append("commit_and_tag:ok")
 
             if not args.skip_push:
-                _run(["git", "-C", str(workspace_root), "push", "origin", branch])
-                _run(["git", "-C", str(workspace_root), "push", "origin", tag])
+                try:
+                    _run(["git", "-C", str(workspace_root), "push", "origin", branch], env=git_env)
+                    _run(["git", "-C", str(workspace_root), "push", "origin", tag], env=git_env)
+                except ShipError as exc:
+                    recovery = (
+                        "\nPush failed after local release commit/tag creation.\n"
+                        f"Recovery commands:\n"
+                        f"  git -C {workspace_root} push origin {branch}\n"
+                        f"  git -C {workspace_root} push origin {tag}\n"
+                        f"Then finalize release with:\n"
+                        f"  python3 ./scripts/ship.py --finalize-existing-tag {tag} --fusion-tested --notes-file {args.notes_file or 'scripts/release_notes_pending.md'}\n"
+                    )
+                    raise ShipError(str(exc) + recovery) from exc
                 report["steps"].append("push:ok")
         else:
             zip_path = workspace_root / "_releases_packages" / f"BetterParameters-{new_version}.zip"

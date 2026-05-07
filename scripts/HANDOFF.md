@@ -334,6 +334,16 @@ Run from workspace root.
 - macOS executable form:
   - `python3 ./scripts/ship.py ...`
 
+Auth startup check (recommended before release work):
+
+- Validate network/auth context with no mutations:
+  - `python3 ./scripts/ship.py --check-auth-only --fusion-tested`
+- SSH is the default ship auth mode.
+- Optional explicit key routing:
+  - `python3 ./scripts/ship.py --check-auth-only --fusion-tested --auth-mode ssh --git-ssh-key <path-to-private-key>`
+- Optional explicit SSH command override:
+  - `python3 ./scripts/ship.py --check-auth-only --fusion-tested --git-ssh-command "ssh -i <path> -o IdentitiesOnly=yes"`
+
 Modes:
 
 1. Normal ship (bump + package + commit/tag + push + optional release):
@@ -363,13 +373,21 @@ Modes:
 - `python3 ./scripts/ship.py --bump-type patch --fusion-tested --plan`
 - `python3 ./scripts/ship.py --commit-only --plan`
 
+7. Auth preflight-only mode (no mutations):
+- `python3 ./scripts/ship.py --check-auth-only --fusion-tested`
+
 Important preflight behavior:
 
 - `--bump-type` and `--finalize-existing-tag` require `--fusion-tested`.
 - `--commit-only` does not require `--fusion-tested`.
 - Exactly one mode selector is required:
   - `--bump-type` OR `--finalize-existing-tag` OR `--commit-only`.
+  - Exception: `--check-auth-only` runs standalone and does not require mode selection.
 - `--skip-release` skips GitHub release publish, but normal ship mode still performs bump/tag/package steps.
+- Auth defaults/overrides:
+  - default auth mode is SSH (`--auth-mode ssh`)
+  - optional: `--auth-mode gh` or `--auth-mode auto`
+  - optional SSH routing: `--git-ssh-key` or `--git-ssh-command` (command takes precedence)
 
 
 Release notes responsibility (required at ship start):
@@ -384,7 +402,10 @@ python .\scripts\ship.py --bump-type <major|feature|patch> --fusion-tested --not
 
 What script does:
 
-1. Preflight (`git`, `gh`, `python`, auth, path checks, mode checks, tag collision checks).
+1. Preflight (`git`, `gh`, `python`, auth/network checks, path checks, mode checks, tag collision checks).
+  - includes git remote access probe (`git ls-remote --heads origin`) in effective ship auth context
+  - includes `gh auth status` when release publishing is enabled
+  - includes origin/`--repo-slug` mismatch guard
 2. Preflight release-notes preparation/quality gate (before any version bump, commit, tag, or push).
 3. Sync source -> live add-in and verify sync hashes for core files.
 4. Build + verify deterministic zip in canonical artifact dirs **before bump/tag/push** (staged manifest is rewritten to target release version).
@@ -417,6 +438,13 @@ Finalize/recovery mode:
   - release-notes preflight preparation
   - existing zip verification (`BetterParameters-X.Y.Z.zip` manifest/version/root-shape checks)
   - create/update GitHub release + asset upload/verification
+
+Push-failure recovery behavior:
+
+- If push fails after local release commit/tag creation, ship now prints explicit recovery commands:
+  - push branch
+  - push tag
+  - finalize existing tag with `--finalize-existing-tag ... --notes-file ...`
 
 Packaging resiliency behavior:
 
