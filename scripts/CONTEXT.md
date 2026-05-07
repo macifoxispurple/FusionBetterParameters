@@ -2618,3 +2618,66 @@ Legend:
   - Hash verification: `VERIFY OK palette.html`.
 - Remaining risk / next check:
   - In-Fusion smoke: verify full-width group headers across regular narrow and ultralight modes with long group names and mixed collapsed/expanded states.
+
+## 2026-05-07 - Text Tuner hover influence highlighting
+- What changed:
+  - `BetterParameters/palette.html`
+    - Added visual highlight style for tuner rows currently inferred as influencing hovered UI content:
+      - `.tuner-kv.is-hover-influencing`
+      - `.tuner-color-row.is-hover-influencing`
+    - Implemented live hover inspector (Text Tuner on only):
+      - throttled with `requestAnimationFrame`
+      - compares hovered element computed styles to current Text Tuner CSS variable values
+      - maps matching bindings to sidebar rows and highlights those rows
+      - supported style matches include font family/size/weight/line-height/letter-spacing/text-transform and color/background/border/outline/caret/text-decoration colors
+    - Added lifecycle handling:
+      - clears highlights when Text Tuner sidebar hides
+      - refreshes highlights when sidebar shows
+      - clears RAF + highlights on `beforeunload`
+- Why:
+  - User requested discoverability for which Text Tuner values currently affect content under mouse cursor.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 413 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed file only: `BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: verify highlight quality/precision across toolbar, table rows, group headers, buttons, and modals; tune match strictness if too broad on shared colors.
+
+## 2026-05-07 - Text Tuner hover highlight precision tightening (reduce over-highlighting)
+- What changed:
+  - `BetterParameters/palette.html`
+    - Replaced broad computed-style/value matching logic (which could light up most rows) with stricter selector-context mapping.
+    - Hover highlight now keys off hovered UI region/element type (toolbar, parameter rows, group headers, headers, controls, fields, status, modal/overlay) and maps to a focused subset of relevant Text Tuner bindings for that region.
+    - Keeps same live RAF scheduling + row highlight classes, but with intentionally narrower candidate sets.
+    - Removed no-longer-needed color normalization probe variable.
+- Why:
+  - User reported all/most Text Tuner rows highlighted regardless of hover target; needed more literal, user-visible influence hints.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 413 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed file only: `BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: verify highlighted rows now feel scoped by region and do not light up most/all tuner rows on generic hover. Fine-tune selector maps if any region still feels too broad or misses expected bindings.
+
+## 2026-05-07 - Text Tuner performance guard + typing-focus stability
+- What changed:
+  - `BetterParameters/palette.html`
+    - Added mousemove fast-path guard for hover inspector:
+      - skips recompute when `event.target` has not changed since last move.
+      - resets tracked target on mouseleave.
+    - Reduced live typing disruption in Text Tuner:
+      - live apply path now updates CSS vars without full main-table rerender (`rerender: false`).
+    - Hardened Text Tuner persist response handling while editing tuner inputs:
+      - if a tuner input/select/textarea is focused, persist success updates tuner state/debug snapshot only and defers full `applyStateFromFusion` refresh path.
+      - avoids focus-loss/blur during active typing.
+- Why:
+  - User requested additional performance guard and reported focused Text Tuner fields blurring while typing.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 413 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed file only: `BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: verify tuner input focus remains stable across rapid typing/deleting and that hover inspector still updates appropriately while moving across distinct UI targets.

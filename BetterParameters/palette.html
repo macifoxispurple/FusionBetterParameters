@@ -562,6 +562,12 @@
         border-color: var(--accent);
       }
 
+      .tuner-kv.is-hover-influencing,
+      .tuner-color-row.is-hover-influencing {
+        background: color-mix(in srgb, var(--accent) 16%, transparent);
+        box-shadow: inset 2px 0 0 var(--accent);
+      }
+
       .tuner-debug-pre {
         margin: 0;
         padding: 6px 8px;
@@ -4635,6 +4641,10 @@
       };
       let textTunerLiveApplyTimer = null;
       let textTunerPersistTimer = null;
+      let textTunerHoverInspectRaf = null;
+      let textTunerHoverInspectTarget = null;
+      let textTunerHoverLastTarget = null;
+      let textTunerHoverHighlightedBindingIds = new Set();
       let selectedActionInFlight = false;
       let rowExpressionValidationTimersByInput = new Map();
       let rowNameValidationTimersByInput = new Map();
@@ -6943,6 +6953,11 @@
         }
         if (card) {
           card.hidden = !showSidebar;
+        }
+        if (!showSidebar) {
+          clearTextTunerHoverInfluenceHighlight();
+        } else {
+          refreshTextTunerHoverInfluenceHighlightNow();
         }
       }
 
@@ -10576,6 +10591,133 @@
         }));
       }
 
+      function getTextTunerColorBindingIdForCurrentMode(keyBase) {
+        const modeSuffix = getActiveThemeMode() === "dark" ? "Dark" : "Light";
+        const key = `${String(keyBase || "").trim()}${modeSuffix}`;
+        const binding = getTextTunerColorModeBindings().find((item) => item.key === key);
+        return binding ? binding.id : "";
+      }
+
+      function addTextTunerColorIdsForCurrentMode(targetSet, keyBases) {
+        if (!(targetSet instanceof Set) || !Array.isArray(keyBases)) {
+          return;
+        }
+        keyBases.forEach((keyBase) => {
+          const id = getTextTunerColorBindingIdForCurrentMode(keyBase);
+          if (id) {
+            targetSet.add(id);
+          }
+        });
+      }
+
+      function clearTextTunerHoverInfluenceHighlight() {
+        textTunerHoverHighlightedBindingIds.forEach((bindingId) => {
+          const input = document.getElementById(bindingId);
+          const row = input?.closest(".tuner-kv, .tuner-color-row");
+          if (row) {
+            row.classList.remove("is-hover-influencing");
+          }
+        });
+        textTunerHoverHighlightedBindingIds.clear();
+      }
+
+      function applyTextTunerHoverInfluenceHighlight(bindingIds) {
+        clearTextTunerHoverInfluenceHighlight();
+        bindingIds.forEach((bindingId) => {
+          const input = document.getElementById(bindingId);
+          const row = input?.closest(".tuner-kv, .tuner-color-row");
+          if (row) {
+            row.classList.add("is-hover-influencing");
+            textTunerHoverHighlightedBindingIds.add(bindingId);
+          }
+        });
+      }
+
+      function detectTextTunerInfluencingBindingIdsForElement(target) {
+        if (!(target instanceof Element)) {
+          return [];
+        }
+        const tunerSidebar = document.getElementById("tunerSidebar");
+        if (tunerSidebar && tunerSidebar.contains(target)) {
+          return [];
+        }
+        const candidates = new Set();
+        const addTypography = () => {
+          [
+            "textTunerFontFamily",
+            "textTunerFontSize",
+            "textTunerFontWeight",
+            "textTunerLineHeight",
+            "textTunerLetterSpacing",
+            "textTunerTextTransform",
+            getActiveThemeMode() === "dark" ? "textTunerTextColorDark" : "textTunerTextColorLight"
+          ].forEach((id) => id && candidates.add(id));
+        };
+
+        if (target.closest(".toolbar, .toolbar-doc, .toolbar .search")) {
+          addTypography();
+          addTextTunerColorIdsForCurrentMode(candidates, ["panel", "line", "muted", "ink", "searchFieldBg", "btnBg", "btnHover"]);
+          candidates.add("textTunerGlyphSearch");
+          candidates.add("textTunerGlyphClear");
+          candidates.add("textTunerGlyphIconBtn");
+        }
+        if (target.closest("tr.group-header-row, .group-header")) {
+          addTypography();
+          addTextTunerColorIdsForCurrentMode(candidates, ["groupRowBg", "lineSubtle", "ink", "muted", "btnBg", "btnHover"]);
+          candidates.add("textTunerGlyphChevron");
+        }
+        if (target.closest("tr.parameter-row")) {
+          addTypography();
+          addTextTunerColorIdsForCurrentMode(candidates, ["panel", "panelRaised", "panelHover", "line", "lineSubtle", "ink", "muted", "inputBg", "selectedRowBg", "selectedRowHover"]);
+          candidates.add("textTunerGlyphStar");
+          candidates.add("textTunerGlyphDrag");
+        }
+        if (target.closest(".table-wrap thead, .table-wrap th")) {
+          addTypography();
+          addTextTunerColorIdsForCurrentMode(candidates, ["tableHeaderBg", "line", "muted", "ink"]);
+          candidates.add("textTunerGlyphChevron");
+        }
+        if (target.closest("button, .toggle, .icon-btn")) {
+          addTypography();
+          addTextTunerColorIdsForCurrentMode(candidates, ["btnBg", "btnHover", "line", "ink", "accent", "accentHover", "accentText"]);
+          candidates.add("textTunerGlyphIconBtn");
+          candidates.add("textTunerGlyphTheme");
+        }
+        if (target.closest("input, textarea, select")) {
+          addTypography();
+          addTextTunerColorIdsForCurrentMode(candidates, ["inputBg", "line", "ink", "muted"]);
+        }
+        if (target.closest(".status")) {
+          addTypography();
+          addTextTunerColorIdsForCurrentMode(candidates, ["muted", "error", "success", "accent"]);
+        }
+        if (target.closest(".create-modal, .busy-overlay, .overlay-root")) {
+          addTypography();
+          addTextTunerColorIdsForCurrentMode(candidates, ["panel", "panelRaised", "line", "overlay", "ink", "muted", "inputBg", "accent", "accentText"]);
+        }
+        return Array.from(candidates);
+      }
+
+      function refreshTextTunerHoverInfluenceHighlightNow() {
+        if (!TEMP_TEXT_TUNER_ENABLED || !shouldShowTextTunerSidebar() || !state.textTunerUiInitialized) {
+          clearTextTunerHoverInfluenceHighlight();
+          return;
+        }
+        const ids = detectTextTunerInfluencingBindingIdsForElement(textTunerHoverInspectTarget);
+        applyTextTunerHoverInfluenceHighlight(ids);
+      }
+
+      function scheduleTextTunerHoverInfluenceRefresh(target) {
+        textTunerHoverInspectTarget = target instanceof Element ? target : null;
+        if (textTunerHoverInspectRaf) {
+          return;
+        }
+        textTunerHoverInspectRaf = window.requestAnimationFrame(() => {
+          textTunerHoverInspectRaf = null;
+          refreshTextTunerHoverInfluenceHighlightNow();
+        });
+      }
+
       function buildTextTunerColorInputs() {
         const root = document.getElementById("textTunerColorGrid");
         if (!root) {
@@ -10817,11 +10959,17 @@
         try {
           const response = await sendToFusion(ACTION.SAVE_TEXT_TUNER_STATE, { values });
           if (response && response.ok) {
-            applyStateFromFusion(response, { source: "response", action: ACTION.SAVE_TEXT_TUNER_STATE });
             const persisted = (response.state && response.state.textTunerState && typeof response.state.textTunerState === "object")
               ? response.state.textTunerState
               : (values || {});
-            applyPersistedTextTunerValues(persisted);
+            if (isEditingTextTunerField()) {
+              state.textTunerState = { ...(persisted || {}) };
+              state.textTunerStateLoaded = true;
+              renderTextTunerDebug(collectTextTunerValuesFromCss());
+            } else {
+              applyStateFromFusion(response, { source: "response", action: ACTION.SAVE_TEXT_TUNER_STATE });
+              applyPersistedTextTunerValues(persisted);
+            }
           }
         } catch (error) {
           appendStatusHistory(`Text tuner state persist failed: ${String(error?.message || error)}`, "warning");
@@ -10848,9 +10996,21 @@
         textTunerLiveApplyTimer = window.setTimeout(() => {
           textTunerLiveApplyTimer = null;
           const values = collectTextTunerValuesFromUi();
-          applyTextTunerValues(values, { rerender: true });
+          applyTextTunerValues(values, { rerender: false });
           schedulePersistTextTunerValues(values);
         }, TEXT_TUNER_LIVE_DEBOUNCE_MS);
+      }
+
+      function isEditingTextTunerField() {
+        const active = document.activeElement;
+        if (!(active instanceof Element)) {
+          return false;
+        }
+        const card = document.getElementById("textTunerCard");
+        if (!card || !card.contains(active)) {
+          return false;
+        }
+        return active.matches("input, textarea, select");
       }
 
       function normalizeHexColor(value) {
@@ -16681,6 +16841,19 @@
         }, 120);
       });
 
+      document.addEventListener("mousemove", (event) => {
+        if (event.target === textTunerHoverLastTarget) {
+          return;
+        }
+        textTunerHoverLastTarget = event.target;
+        scheduleTextTunerHoverInfluenceRefresh(event.target);
+      }, { passive: true });
+
+      document.addEventListener("mouseleave", () => {
+        textTunerHoverLastTarget = null;
+        scheduleTextTunerHoverInfluenceRefresh(null);
+      });
+
       window.addEventListener("beforeunload", () => {
         if (nameValidationTimer) {
           window.clearTimeout(nameValidationTimer);
@@ -16715,6 +16888,11 @@
           window.clearTimeout(textTunerLiveApplyTimer);
           textTunerLiveApplyTimer = null;
         }
+        if (textTunerHoverInspectRaf) {
+          window.cancelAnimationFrame(textTunerHoverInspectRaf);
+          textTunerHoverInspectRaf = null;
+        }
+        clearTextTunerHoverInfluenceHighlight();
       });
     </script>
   </body>
