@@ -2681,3 +2681,22 @@ Legend:
   - Hash verification: `VERIFY OK palette.html`.
 - Remaining risk / next check:
   - In-Fusion smoke: verify tuner input focus remains stable across rapid typing/deleting and that hover inspector still updates appropriately while moving across distinct UI targets.
+
+## 2026-05-07 - Palette resize stiction mitigation (single-drag narrowing)
+- What changed:
+  - `BetterParameters/palette.html`
+    - Reduced heavy state churn during window resize:
+      - `savePaletteSize()` no longer applies full returned state envelope after `savePaletteGeometry`; it now persists geometry without triggering immediate full FE state re-apply.
+    - Removed resize-time backend persistence loop for column widths:
+      - on resize settle, still computes local auto-fit widths and applies them, but no longer calls `saveSettingsPartial({ parameterTableColumns })` during resize handling.
+    - Increased resize debounce for geometry/autofit settle from `160ms` to `320ms`.
+- Why:
+  - User reported stepwise narrowing requiring repeated release/re-grab cycles; this pattern is consistent with resize-time state re-apply/persistence churn interrupting drag smoothness.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 413 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed file only: `BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: verify palette can be narrowed continuously to minimum in one drag gesture.
+  - If any residual step/stiction remains, next candidate is decoupling auto-fit recompute from resize entirely (apply on drag-end only / explicit trigger).

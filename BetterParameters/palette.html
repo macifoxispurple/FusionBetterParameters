@@ -11831,7 +11831,6 @@
           if (!response.ok) {
             throw new Error(response.message || "Palette geometry save failed.");
           }
-          applyStateFromFusion(response, { source: "response", action: ACTION.SAVE_PALETTE_GEOMETRY });
         } catch (error) {
           setGlobalStatus(error.message, "error");
         }
@@ -15233,9 +15232,8 @@
             const nextColumns = buildAutoFitColumnWidths();
             state.settings.parameterTableColumns = nextColumns;
             applyColumnWidths();
-            runBackgroundTask(saveSettingsPartial({ parameterTableColumns: nextColumns }), "Resize column width save");
           }
-        }, 160);
+        }, 320);
       });
 
       window.addEventListener("scroll", () => {
