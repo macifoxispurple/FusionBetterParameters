@@ -14198,14 +14198,37 @@
             event.preventDefault();
             const row = nameInput.closest("tr.parameter-row[data-parameter-key]");
             if (row) {
-              discardRowDraft(row, { showStatus: false });
+              discardRowFieldDraft(row, "name", { showStatus: false });
             }
+            nameInput.blur();
             return;
           }
         }
 
+        const commentInput = event.target.closest(".comment-input");
+        if (commentInput && event.key === "Escape") {
+          event.preventDefault();
+          const row = commentInput.closest("tr.parameter-row[data-parameter-key]");
+          if (row) {
+            discardRowFieldDraft(row, "comment", { showStatus: false });
+          }
+          commentInput.blur();
+          return;
+        }
+
         const input = event.target.closest(".expression-input");
         if (!input) {
+          return;
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closeExpressionSuggestions();
+          closeFunctionHelper();
+          const row = input.closest("tr.parameter-row[data-parameter-key]");
+          if (row) {
+            discardRowFieldDraft(row, "expression", { showStatus: false });
+          }
+          input.blur();
           return;
         }
         if (
@@ -14263,9 +14286,6 @@
           return;
         }
 
-        if (event.key === "Escape") {
-          closeExpressionSuggestions();
-        }
         window.requestAnimationFrame(() => updateFunctionHelper(input));
       });
 

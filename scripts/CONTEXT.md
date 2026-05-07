@@ -2564,3 +2564,40 @@ Legend:
   - Not run (docs-only update).
 - Remaining risk / next check:
   - Apply this format consistently on all future `ship.py` releases and release edits.
+
+## 2026-05-07 - Esc key field-only discard behavior in main UI
+- What changed:
+  - `BetterParameters/palette.html`
+    - Updated main-table keydown handling for `Esc` so it discards only the focused field draft, not whole-row drafts.
+    - Field-specific mapping now:
+      - name input: `discardRowFieldDraft(row, "name")`
+      - expression input: `discardRowFieldDraft(row, "expression")`
+      - comment input: `discardRowFieldDraft(row, "comment")`
+    - Expression Esc path still closes helper/suggestions before field discard.
+- Why:
+  - User clarified Esc should not discard all pending row changes; only the pending change in the field currently in focus.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 413 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed file only: `BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: with a row having multiple unsaved fields, press Esc in one field and confirm only that field reverts while others remain dirty.
+
+## 2026-05-07 - Esc field-discard now blurs active field
+- What changed:
+  - `BetterParameters/palette.html`
+    - Refined main table `Esc` handlers so each field now both discards its own pending draft and blurs focus.
+    - Applied to:
+      - `.param-name-input` -> discard `name`, then `nameInput.blur()`
+      - `.expression-input` -> discard `expression`, then `input.blur()`
+      - `.comment-input` -> discard `comment`, then `commentInput.blur()`
+- Why:
+  - User requested Esc behavior to discard focused-field changes and also blur the active field.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 413 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed file only: `BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: verify Esc from each editable field clears only that field’s draft and moves focus out of field without unexpected auto-apply.
