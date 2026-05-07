@@ -11898,10 +11898,37 @@
           const folded = tokenText.toLowerCase();
 
           function buildItems(pool, exclude) {
-            const matches = pool.filter((item) => item.toLowerCase().startsWith(folded) && item !== exclude);
-            const exact = matches.filter((item) => item === tokenText);
-            const rest = matches.filter((item) => item !== tokenText);
-            return [...exact, ...rest].slice(0, 12);
+            const normalizedExclude = String(exclude || "");
+            const seen = new Set();
+            const exact = [];
+            const prefix = [];
+            const substring = [];
+            for (const item of pool) {
+              const value = String(item || "");
+              if (!value) {
+                continue;
+              }
+              if (normalizedExclude && value === normalizedExclude) {
+                continue;
+              }
+              const lower = value.toLowerCase();
+              if (!lower.includes(folded)) {
+                continue;
+              }
+              const key = lower;
+              if (seen.has(key)) {
+                continue;
+              }
+              seen.add(key);
+              if (value === tokenText) {
+                exact.push(value);
+              } else if (lower.startsWith(folded)) {
+                prefix.push(value);
+              } else {
+                substring.push(value);
+              }
+            }
+            return [...exact, ...prefix, ...substring].slice(0, 12);
           }
 
           const paramItems = buildItems(state.parameterNames, parameterName);

@@ -2381,3 +2381,23 @@ Legend:
   - Hash verification: `VERIFY OK palette.html`.
 - Remaining risk / next check:
   - In-Fusion smoke: verify newline/Enter interaction in create-expression textarea still aligns with expected create workflow and expression helper behavior.
+
+## 2026-05-07 - expression autocomplete substring matching
+- What changed:
+  - `BetterParameters/palette.html`
+    - Updated expression autocomplete item matcher (`buildItems(...)`) for identifier tokens to include substring matches, not only prefix matches.
+    - Ranking now:
+      - exact token match first
+      - prefix matches next
+      - substring matches after
+    - Added case-insensitive de-duplication in suggestion pool pass.
+    - Existing token-range replacement behavior is unchanged, so accepting a suggestion still replaces the full typed token span (e.g., `thi` -> `HoopThickness`).
+- Why:
+  - User requested broader autocomplete discoverability when typed token appears anywhere in parameter/function names, while keeping full-token replacement on selection.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 411 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed file only: `BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: verify substring suggestions appear for parameter names like `HoopThickness` when typing `thi`, and confirm suggestion replacement behavior in standard + row + rapid expression contexts.
