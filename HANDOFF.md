@@ -295,11 +295,12 @@ If bump type is not stated, ask user to choose major/feature/patch.
 Canonical: use one command from workspace root:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\ship.ps1 -BumpType <major|feature|patch> -FusionTested
+python .\scripts\ship.py --bump-type <major|feature|patch> --fusion-tested
 
 Do not bypass this flow with manual `gh release create` for production ships.
 Manual release creation skips packaging/upload verification and can publish empty-asset releases.
 ```
+
 
 Release notes responsibility (required at ship start):
 
@@ -308,7 +309,7 @@ Release notes responsibility (required at ship start):
 - Recommended command when curated notes are prepared:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\ship.ps1 -BumpType <major|feature|patch> -FusionTested -NotesFile <path-to-notes.md>
+python .\scripts\ship.py --bump-type <major|feature|patch> --fusion-tested --notes-file <path-to-notes.md>
 ```
 
 What script does:
@@ -326,21 +327,21 @@ What script does:
 
 Release notes behavior:
 
-- If `-NotesFile` is omitted, `scripts\ship.ps1` now auto-generates non-placeholder highlights from git history/diff between the previous version tag and `HEAD`.
-- If generated highlights are low-signal (only diff-stat/file-list style bullets), ship now fails in **preflight** and requires `-NotesFile` with curated notes.
-- If `-NotesFile` is omitted and `scripts\release_notes_pending.md` exists, ship uses that file automatically.
+- If `--notes-file` is omitted, `scripts\ship.py` auto-generates non-placeholder highlights from git history/diff between the previous version tag and `HEAD`.
+- If generated highlights are low-signal (only diff-stat/file-list style bullets), ship now fails in **preflight** and requires `--notes-file` with curated notes.
+- If `--notes-file` is omitted and `scripts\release_notes_pending.md` exists, ship uses that file automatically.
 - `scripts\release_notes_template.md` should use `{{AUTO_HIGHLIGHTS}}` where generated bullets should be inserted.
 - If a template with legacy placeholder text (`<feature 1>`, etc.) is detected, ship script replaces it with generated highlights automatically.
 
 Release existence behavior:
 
-- `scripts\ship.ps1` now treats `gh release view <tag>` "release not found" as a normal non-error probe result.
+- `scripts\ship.py` treats `gh release view <tag>` "release not found" as a normal non-error probe result.
 - If release does not exist, script continues and creates it automatically (no manual recovery step needed).
 
 Finalize/recovery mode:
 
-- `scripts\ship.ps1` supports release-finalization mode for post-tag recovery:
-  - `powershell -ExecutionPolicy Bypass -File .\scripts\ship.ps1 -FinalizeExistingTag vX.Y.Z -FusionTested -NotesFile <path-to-notes.md>`
+- `scripts\ship.py` supports release-finalization mode for post-tag recovery:
+  - `python .\scripts\ship.py --finalize-existing-tag vX.Y.Z --fusion-tested --notes-file <path-to-notes.md>`
 - Finalize mode does not bump version, commit, tag, or push.
 - Finalize mode performs:
   - release-notes preflight preparation
@@ -372,7 +373,7 @@ Do not leave stale stage content. Recreate stage folder fresh per release.
 
 Canonical script paths:
 
-- Ship script: `%USERPROFILE%\Documents\Codex\OpenParameters\scripts\ship.ps1`
+- Canonical ship script: `%USERPROFILE%\Documents\Codex\OpenParameters\scripts\ship.py`
 - Release notes template: `%USERPROFILE%\Documents\Codex\OpenParameters\scripts\release_notes_template.md`
 
 ## GitHub Release Notes Formatting (Required)
