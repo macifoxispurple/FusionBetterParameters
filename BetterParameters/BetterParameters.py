@@ -149,6 +149,7 @@ DEFAULT_SETTINGS = {
     "customUnits": [],
     "showRevertButtons": True,
     "showCommentColumn": False,
+    "ultralightNarrowUi": False,
     "showTextTunerSidebar": False,
     "autoFitColumns": True,
     "pinnedUnits": [],
@@ -1617,6 +1618,7 @@ def _load_settings():
     settings["customUnits"] = []
     settings["showRevertButtons"] = bool(DEFAULT_SETTINGS["showRevertButtons"])
     settings["showCommentColumn"] = bool(DEFAULT_SETTINGS["showCommentColumn"])
+    settings["ultralightNarrowUi"] = bool(DEFAULT_SETTINGS["ultralightNarrowUi"])
     settings["showTextTunerSidebar"] = bool(DEFAULT_SETTINGS["showTextTunerSidebar"])
     settings["updateCheck"] = {}
     settings_path = _settings_path()
@@ -1694,6 +1696,9 @@ def _load_settings():
 
         if isinstance(loaded.get("showCommentColumn"), bool):
             settings["showCommentColumn"] = loaded["showCommentColumn"]
+
+        if isinstance(loaded.get("ultralightNarrowUi"), bool):
+            settings["ultralightNarrowUi"] = loaded["ultralightNarrowUi"]
 
         if isinstance(loaded.get("showTextTunerSidebar"), bool):
             settings["showTextTunerSidebar"] = loaded["showTextTunerSidebar"]
@@ -1851,6 +1856,12 @@ def _save_settings(data):
         if not isinstance(show_comment_column, bool):
             raise ValueError('"showCommentColumn" must be a boolean.')
         settings["showCommentColumn"] = show_comment_column
+
+    if "ultralightNarrowUi" in data:
+        ultralight_narrow_ui = data.get("ultralightNarrowUi")
+        if not isinstance(ultralight_narrow_ui, bool):
+            raise ValueError('"ultralightNarrowUi" must be a boolean.')
+        settings["ultralightNarrowUi"] = ultralight_narrow_ui
 
     if "showTextTunerSidebar" in data:
         show_text_tuner_sidebar = data.get("showTextTunerSidebar")

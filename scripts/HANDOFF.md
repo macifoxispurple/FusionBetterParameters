@@ -394,6 +394,11 @@ Release notes responsibility (required at ship start):
 
 - Agent drafts release notes first using actual diff/context before final ship.
 - If commit history is low-signal or changes are substantial, use curated notes via `-NotesFile`.
+- Release notes style is mandatory for every release:
+  - dense, high-level, end-user readable summary of actual fixes/features
+  - avoid internal implementation detail, test logs, or tool/process narration
+  - maximum 3 non-empty lines total (typically: 1 header + up to 2 bullets)
+  - prefer plain language outcomes (what changed for users and why it matters)
 - Recommended command when curated notes are prepared:
 
 ```powershell

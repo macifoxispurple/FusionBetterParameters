@@ -1601,6 +1601,71 @@
         display: none !important;
       }
 
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row {
+        display: grid;
+        grid-template-columns: minmax(110px, 0.9fr) minmax(0, 1.6fr);
+        align-items: center;
+        gap: 8px;
+        padding: 3px 8px;
+      }
+
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.name-cell,
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td:nth-child(4) {
+        display: block;
+        margin-top: 0;
+      }
+
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.name-cell {
+        min-width: 0;
+        order: 0;
+      }
+
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td:nth-child(4) {
+        order: 1;
+      }
+
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row .narrow-summary {
+        display: block;
+      }
+
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row .narrow-summary-head {
+        display: block;
+      }
+
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row .narrow-summary-name {
+        display: block;
+        font-size: 0.86rem;
+        font-weight: 600;
+      }
+
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row .favorite-button {
+        display: none !important;
+      }
+
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row .narrow-summary-state,
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row .narrow-summary-icon-btn,
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.value-cell,
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.comments-cell {
+        display: none !important;
+      }
+
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td:nth-child(4) .field-shell {
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        padding: 0;
+      }
+
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td:nth-child(4) .expression-input {
+        min-height: 22px;
+        height: 22px;
+        padding: 1px 6px;
+      }
+
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td:nth-child(4) .expression-field-error {
+        display: none;
+      }
+
       #parameterRows tr {
         transition: background 80ms ease;
       }
@@ -3654,6 +3719,7 @@
               <button id="commentColumnButton" class="ghost" type="button">Comment: Off</button>
               <button id="textTunerSidebarButton" class="ghost" type="button">Text Tuner: On</button>
               <button id="toggleRevertButtonsButton" class="ghost" type="button">Show Revert: On</button>
+              <button id="ultralightNarrowUiButton" class="ghost" type="button">Ultralight Narrow UI: Off</button>
               <button id="computeModeButton" class="ghost" type="button">Compute: Auto</button>
               <button id="autoFitColumnsButton" class="ghost" type="button">Auto Fit</button>
             </div>
@@ -4372,6 +4438,7 @@
           showRevertButtons: DEFAULT_SHOW_REVERT_BUTTONS,
           alwaysShowRowDragHandle: false,
           showCommentColumn: DEFAULT_SHOW_COMMENT_COLUMN,
+          ultralightNarrowUi: false,
           showTextTunerSidebar: DEFAULT_SHOW_TEXT_TUNER_SIDEBAR,
           autoFitColumns: true,
           pinnedUnits: [],
@@ -6159,6 +6226,15 @@
         const button = document.getElementById("commentColumnButton");
         const isOn = state.settings.showCommentColumn === true;
         button.textContent = `Comment: ${isOn ? "On" : "Off"}`;
+      }
+
+      function renderUltralightNarrowUiToggle() {
+        const button = document.getElementById("ultralightNarrowUiButton");
+        const isOn = state.settings.ultralightNarrowUi === true;
+        if (button) {
+          button.textContent = `Ultralight Narrow UI: ${isOn ? "On" : "Off"}`;
+        }
+        document.body.classList.toggle("ultralight-narrow-ui", isOn);
       }
 
       function renderTextTunerSidebarToggle() {
@@ -10416,6 +10492,9 @@
           showCommentColumn: typeof settings.showCommentColumn === "boolean"
             ? settings.showCommentColumn
             : (state.settings.showCommentColumn === true),
+          ultralightNarrowUi: typeof settings.ultralightNarrowUi === "boolean"
+            ? settings.ultralightNarrowUi
+            : (state.settings.ultralightNarrowUi === true),
           showTextTunerSidebar: typeof settings.showTextTunerSidebar === "boolean"
             ? settings.showTextTunerSidebar
             : (state.settings.showTextTunerSidebar !== false),
@@ -10449,6 +10528,7 @@
         renderAlwaysShowRowDragHandleToggle();
         renderAutoOpenToggle();
         renderCommentColumnToggle();
+        renderUltralightNarrowUiToggle();
         renderTextTunerSidebarToggle();
         renderComputeModeButton();
         applyComputeModeClasses();
@@ -15179,6 +15259,20 @@
           renderCommentColumnToggle();
           document.body.classList.toggle("hide-comment", !previousValue);
           applyColumnWidths();
+          setGlobalStatus(error.message, "error");
+        }
+      });
+
+      document.getElementById("ultralightNarrowUiButton").addEventListener("click", async () => {
+        const previousValue = state.settings.ultralightNarrowUi === true;
+        const nextValue = !previousValue;
+        state.settings.ultralightNarrowUi = nextValue;
+        renderUltralightNarrowUiToggle();
+        try {
+          await saveSettingsPartial({ ultralightNarrowUi: nextValue });
+        } catch (error) {
+          state.settings.ultralightNarrowUi = previousValue;
+          renderUltralightNarrowUiToggle();
           setGlobalStatus(error.message, "error");
         }
       });

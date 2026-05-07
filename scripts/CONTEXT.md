@@ -2476,3 +2476,91 @@ Legend:
   - `.venv/bin/python -m pytest` => 411 passed, 6 skipped, 0 failed.
 - Remaining risk / next check:
   - Optional: run `python3 ./scripts/ship.py --check-auth-only --fusion-tested` on release day before bump/tag.
+
+## 2026-05-07 - Ultralight Narrow UI setting for max-density row cards
+- What changed:
+  - `BetterParameters/palette.html`
+    - Added new Appearance settings action button:
+      - `#ultralightNarrowUiButton` (`Ultralight Narrow UI: On/Off`).
+    - Added new persisted UI setting key:
+      - `settings.ultralightNarrowUi` (default `false`).
+    - Added settings normalization + render integration:
+      - `applySettings(...)` now reads/writes normalized `ultralightNarrowUi` state.
+      - Added `renderUltralightNarrowUiToggle()` to update button label and body class.
+      - Added click handler that toggles setting, persists via `saveSettingsPartial`, and reverts on save failure.
+    - Added narrow-mode CSS variant gate:
+      - `body.narrow-stack.ultralight-narrow-ui ...`
+      - Keeps row/card content to minimum viable layout for density:
+        - left: parameter name only
+        - right: expression field only
+      - Hides narrow-state/value/comments/action controls in this mode.
+      - Compacts row padding + expression field height for one-row-tall presentation.
+- Why:
+  - User requested a toggleable "Ultralight Narrow UI" mode that keeps current behavior when Off, and switches narrow row/cards to a name+expression-only high-density layout when On.
+- Validation run + pass/fail counts:
+  - Repo venv gate:
+    - `.venv/bin/python -m pytest` => 411 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync:
+  - Not performed in this pass (implementation update only; no Fusion runtime sync requested in this step).
+- Remaining risk / next check:
+  - In-Fusion UI smoke recommended:
+    - verify narrow layout + toggle On produces single-row-tall name/expression cards.
+    - verify toggle Off returns to existing narrow behavior.
+    - verify expression error discoverability remains acceptable when ultralight mode hides inline error text.
+
+## 2026-05-07 - Ultralight Narrow UI order/star correction
+- What changed:
+  - `BetterParameters/palette.html`
+    - Fixed ultralight narrow row ordering so parameter `name` renders on the left and `expression` field renders on the right.
+    - Explicitly set ultralight row cell order overrides:
+      - `td.name-cell { order: 0; }`
+      - `td:nth-child(4) { order: 1; }`
+    - Hid favorites star glyph in ultralight mode:
+      - `.favorite-button { display: none !important; }` under ultralight narrow selector.
+- Why:
+  - User reported current ultralight render showed expression first and requested no favorites star in ultralight mode.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 411 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed file only: `BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: verify all groups/rows in ultralight mode consistently keep `name | expression` order across favorites/non-favorites rows.
+
+## 2026-05-07 - Persist ultralight narrow setting through backend settings store
+- What changed:
+  - `BetterParameters/BetterParameters.py`
+    - Added `ultralightNarrowUi` to `DEFAULT_SETTINGS` (default `False`).
+    - `_load_settings()` now initializes and loads persisted `ultralightNarrowUi` when present.
+    - `_save_settings()` now validates and persists `ultralightNarrowUi` as boolean, mirroring existing toggle settings behavior.
+  - `tests/test_settings_persistence.py` (new)
+    - Added regression test verifying `_save_settings({"ultralightNarrowUi": True})` persists and `_load_settings()` returns `True`.
+    - Added validation test verifying non-boolean values raise `ValueError`.
+- Why:
+  - FE toggle already called `saveSettingsPartial`, but backend settings load/save whitelist did not include `ultralightNarrowUi`, so value was not persisted across state reloads.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 413 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed runtime files only:
+    - `BetterParameters/palette.html`
+    - `BetterParameters/BetterParameters.py`
+  - Hash verification:
+    - `VERIFY OK palette.html`
+    - `VERIFY OK BetterParameters.py`
+- Remaining risk / next check:
+  - In-Fusion smoke: toggle ultralight setting, close/reopen add-in, confirm setting state and row layout persist.
+
+## 2026-05-07 - HANDOFF release-notes style policy added
+- What changed:
+  - `scripts/HANDOFF.md`
+    - Added explicit release-notes writing policy for every release:
+      - dense, high-level, end-user readable summary
+      - no internal implementation/process/test-log detail
+      - max 3 non-empty lines total
+      - focus on user-facing outcomes.
+- Why:
+  - User requested canonical guidance to keep all release notes concise and human end-user oriented.
+- Validation run + pass/fail counts:
+  - Not run (docs-only update).
+- Remaining risk / next check:
+  - Apply this format consistently on all future `ship.py` releases and release edits.
