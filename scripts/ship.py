@@ -61,6 +61,19 @@ def _require_tool(name: str) -> None:
         raise ShipError(f"Required tool not found on PATH: {name}")
 
 
+def _python_tool() -> str:
+    """Return a usable Python executable name for subprocess calls.
+
+    Prefers `python`, then `python3`, then current interpreter path.
+    """
+    for candidate in ("python", "python3"):
+        if _tool_exists(candidate):
+            return candidate
+    if Path(sys.executable).exists():
+        return sys.executable
+    raise ShipError("Required Python executable not found (checked: python, python3, sys.executable).")
+
+
 def _repo_root_from_script() -> Path:
     return Path(__file__).resolve().parents[1]
 
@@ -221,12 +234,12 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def _sync_source_to_live(workspace_root: Path, source_root: Path, live_addin_root: Path) -> None:
+def _sync_source_to_live(workspace_root: Path, source_root: Path, live_addin_root: Path, python_exe: str) -> None:
     update_helper = source_root / "update_helper.py"
     if not update_helper.exists():
         raise ShipError(f"update_helper.py missing: {update_helper}")
     cmd = [
-        sys.executable,
+        python_exe,
         str(update_helper),
         str(source_root),
         str(live_addin_root),
@@ -268,10 +281,21 @@ def _remote_tag_exists(repo_root: Path, tag: str) -> bool:
     return bool(proc.stdout.strip())
 
 
+def _dirty_worktree_lines(repo_root: Path) -> list[str]:
+    out = _run(["git", "-C", str(repo_root), "status", "--porcelain"]).stdout
+    return [line for line in out.splitlines() if line.strip()]
+
+
 def _assert_clean_worktree(repo_root: Path) -> None:
-    out = _run(["git", "-C", str(repo_root), "status", "--porcelain"]).stdout.strip()
-    if out:
-        raise ShipError("Working tree must be clean before shipping.")
+    dirty = _dirty_worktree_lines(repo_root)
+    if dirty:
+        preview = "\n".join(dirty[:20])
+        extra = "" if len(dirty) <= 20 else f"\n... and {len(dirty) - 20} more"
+        raise ShipError(
+            "Working tree must be clean before shipping.\n"
+            "Dirty entries:\n"
+            f"{preview}{extra}"
+        )
 
 
 def _previous_version_tag(repo_root: Path, current_tag: str) -> str:
@@ -375,9 +399,22 @@ def _write_report(workspace_root: Path, report: dict) -> Path:
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Cross-platform BetterParameters ship script.")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Cross-platform BetterParameters ship script.\n\n"
+            "Modes:\n"
+            "  - normal ship: --bump-type <major|feature|patch>\n"
+            "  - finalize existing tag: --finalize-existing-tag vX.Y.Z\n"
+            "  - commit only (no bump/tag/release): --commit-only [--commit-message ...]\n"
+            "  - plan only (print resolved actions/paths, no mutation): --plan"
+        ),
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
     parser.add_argument("--bump-type", choices=("major", "feature", "patch"), default="")
     parser.add_argument("--finalize-existing-tag", default="")
+    parser.add_argument("--commit-only", action="store_true")
+    parser.add_argument("--commit-message", default="")
+    parser.add_argument("--plan", action="store_true")
     parser.add_argument("--workspace-root", default="")
     parser.add_argument("--source-root", default="")
     parser.add_argument("--live-addin-root", default="")
@@ -391,17 +428,16 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
-    if not args.fusion_tested:
+    if not args.commit_only and not args.fusion_tested:
         raise ShipError("Missing --fusion-tested.")
     finalize_mode = bool(args.finalize_existing_tag)
-    if finalize_mode and args.bump_type:
-        raise ShipError("Use either --bump-type or --finalize-existing-tag, not both.")
-    if not finalize_mode and not args.bump_type:
-        raise ShipError("Provide --bump-type or --finalize-existing-tag.")
+    mode_count = int(bool(args.bump_type)) + int(finalize_mode) + int(args.commit_only)
+    if mode_count != 1:
+        raise ShipError("Choose exactly one mode: --bump-type, --finalize-existing-tag, or --commit-only.")
 
     _require_tool("git")
-    _require_tool("python")
-    if not args.skip_release:
+    python_exe = _python_tool()
+    if not args.skip_release and not args.commit_only:
         _require_tool("gh")
 
     workspace_root = Path(args.workspace_root).resolve() if args.workspace_root else _repo_root_from_script()
@@ -415,6 +451,59 @@ def main() -> int:
         raise ShipError(f"Source root missing: {source_root}")
     if not manifest_path.exists():
         raise ShipError(f"Manifest missing: {manifest_path}")
+
+    if args.plan:
+        current_version_plan = _parse_manifest_version(manifest_path)
+        mode_label = "commit-only" if args.commit_only else ("finalize" if finalize_mode else "normal-ship")
+        next_version_plan = (
+            current_version_plan
+            if args.commit_only or finalize_mode
+            else _bumped_version(current_version_plan, args.bump_type)
+        )
+        next_tag_plan = (
+            "(none)"
+            if args.commit_only
+            else (args.finalize_existing_tag.strip() if finalize_mode else f"v{next_version_plan}")
+        )
+        print("Ship plan:")
+        print(f"- mode: {mode_label}")
+        print(f"- branch: {_git_branch(workspace_root)}")
+        print(f"- workspace_root: {workspace_root}")
+        print(f"- source_root: {source_root}")
+        print(f"- live_addin_root: {live_addin_root if live_addin_root else '(not provided)'}")
+        print(f"- python_executable: {python_exe}")
+        print(f"- current_version: {current_version_plan}")
+        print(f"- target_version: {next_version_plan}")
+        print(f"- target_tag: {next_tag_plan}")
+        print(f"- push_enabled: {not args.skip_push}")
+        print(f"- release_enabled: {not args.skip_release and not args.commit_only}")
+        return 0
+
+    if args.commit_only:
+        dirty = _dirty_worktree_lines(workspace_root)
+        if not dirty:
+            raise ShipError("No local changes to commit in --commit-only mode.")
+        branch = _git_branch(workspace_root)
+        commit_message = (args.commit_message or "Maintenance updates").strip()
+        _run(["git", "-C", str(workspace_root), "add", "-A"])
+        diff = _run(["git", "-C", str(workspace_root), "diff", "--cached", "--quiet"], check=False)
+        if diff.returncode == 0:
+            raise ShipError("No staged changes to commit in --commit-only mode.")
+        _run(["git", "-C", str(workspace_root), "commit", "-m", commit_message])
+        if not args.skip_push:
+            _run(["git", "-C", str(workspace_root), "push", "origin", branch])
+        report = {
+            "mode": "commit-only",
+            "branch": branch,
+            "steps": [
+                "commit:ok",
+                "push:ok" if not args.skip_push else "push:skipped",
+            ],
+        }
+        report_path = _write_report(workspace_root, report)
+        print("Commit-only workflow completed successfully.")
+        print(f"Report: {report_path}")
+        return 0
 
     _assert_clean_worktree(workspace_root)
     if not args.skip_release:
@@ -451,7 +540,7 @@ def main() -> int:
             if live_addin_root:
                 if not live_addin_root.exists():
                     raise ShipError(f"Live add-in root missing: {live_addin_root}")
-                _sync_source_to_live(workspace_root, source_root, live_addin_root)
+                _sync_source_to_live(workspace_root, source_root, live_addin_root, python_exe)
                 report["steps"].append("sync_source_to_live:ok")
             else:
                 report["steps"].append("sync_source_to_live:skipped")

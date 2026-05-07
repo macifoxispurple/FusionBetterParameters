@@ -325,6 +325,52 @@ Do not bypass this flow with manual `gh release create` for production ships.
 Manual release creation skips packaging/upload verification and can publish empty-asset releases.
 ```
 
+### Ship script usage (all modes)
+
+Run from workspace root.
+
+- Windows executable form:
+  - `python .\scripts\ship.py ...`
+- macOS executable form:
+  - `python3 ./scripts/ship.py ...`
+
+Modes:
+
+1. Normal ship (bump + package + commit/tag + push + optional release):
+- Patch:
+  - `python3 ./scripts/ship.py --bump-type patch --fusion-tested`
+- Feature:
+  - `python3 ./scripts/ship.py --bump-type feature --fusion-tested`
+- Major:
+  - `python3 ./scripts/ship.py --bump-type major --fusion-tested`
+
+2. Normal ship without publishing GitHub release:
+- `python3 ./scripts/ship.py --bump-type patch --fusion-tested --skip-release`
+
+3. Normal ship without push (local only):
+- `python3 ./scripts/ship.py --bump-type patch --fusion-tested --skip-push --skip-release`
+
+4. Finalize existing tag (post-tag recovery path):
+- `python3 ./scripts/ship.py --finalize-existing-tag vX.Y.Z --fusion-tested --notes-file <path-to-notes.md>`
+
+5. Commit-only workflow (no bump/tag/release):
+- Use for docs/tests/tooling updates when no release/version bump is desired.
+- `python3 ./scripts/ship.py --commit-only --commit-message "Your commit message"`
+- Optional no-push local commit:
+  - `python3 ./scripts/ship.py --commit-only --commit-message "Your commit message" --skip-push`
+
+6. Plan mode (no mutations; prints resolved paths/actions):
+- `python3 ./scripts/ship.py --bump-type patch --fusion-tested --plan`
+- `python3 ./scripts/ship.py --commit-only --plan`
+
+Important preflight behavior:
+
+- `--bump-type` and `--finalize-existing-tag` require `--fusion-tested`.
+- `--commit-only` does not require `--fusion-tested`.
+- Exactly one mode selector is required:
+  - `--bump-type` OR `--finalize-existing-tag` OR `--commit-only`.
+- `--skip-release` skips GitHub release publish, but normal ship mode still performs bump/tag/package steps.
+
 
 Release notes responsibility (required at ship start):
 
