@@ -4645,6 +4645,7 @@
       let textTunerHoverInspectTarget = null;
       let textTunerHoverLastTarget = null;
       let textTunerHoverHighlightedBindingIds = new Set();
+      let liveResizeLayoutRaf = null;
       let selectedActionInFlight = false;
       let rowExpressionValidationTimersByInput = new Map();
       let rowNameValidationTimersByInput = new Map();
@@ -15215,6 +15216,12 @@
             positionFunctionHelper(activeInput);
           }
         }
+        if (state.initialLayoutDone && !liveResizeLayoutRaf) {
+          liveResizeLayoutRaf = window.requestAnimationFrame(() => {
+            liveResizeLayoutRaf = null;
+            applyColumnWidths();
+          });
+        }
         scheduleLayoutDebugPanelUpdate();
       });
 
@@ -16889,6 +16896,10 @@
         if (textTunerHoverInspectRaf) {
           window.cancelAnimationFrame(textTunerHoverInspectRaf);
           textTunerHoverInspectRaf = null;
+        }
+        if (liveResizeLayoutRaf) {
+          window.cancelAnimationFrame(liveResizeLayoutRaf);
+          liveResizeLayoutRaf = null;
         }
         clearTextTunerHoverInfluenceHighlight();
       });

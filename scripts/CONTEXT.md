@@ -2700,3 +2700,20 @@ Legend:
 - Remaining risk / next check:
   - In-Fusion smoke: verify palette can be narrowed continuously to minimum in one drag gesture.
   - If any residual step/stiction remains, next candidate is decoupling auto-fit recompute from resize entirely (apply on drag-end only / explicit trigger).
+
+## 2026-05-07 - Resize stepping follow-up: live breakpoint recompute during drag
+- What changed:
+  - `BetterParameters/palette.html`
+    - Added RAF-throttled live layout recompute during active window resize:
+      - on `window.resize`, when initial layout is ready, schedule `applyColumnWidths()` in `requestAnimationFrame` (`liveResizeLayoutRaf`).
+    - This lets `narrow-stack`/auto-hide breakpoint logic update continuously while dragging, instead of waiting only for debounce settle.
+    - Added cleanup for `liveResizeLayoutRaf` in `beforeunload`.
+- Why:
+  - Prior improvement made resizing smoother but residual minimum-size stepping remained; likely due to layout mode transitions applying only after debounce.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 413 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed file only: `BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: verify remaining minimum-width stepping is reduced/eliminated during continuous narrowing drag.
