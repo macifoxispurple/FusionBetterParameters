@@ -2601,3 +2601,20 @@ Legend:
   - Hash verification: `VERIFY OK palette.html`.
 - Remaining risk / next check:
   - In-Fusion smoke: verify Esc from each editable field clears only that field’s draft and moves focus out of field without unexpected auto-apply.
+
+## 2026-05-07 - Narrow/Ultralight group header rows full-width
+- What changed:
+  - `BetterParameters/palette.html`
+    - Added narrow-stack layout overrides so group header rows span full available width like parameter rows:
+      - `body.narrow-stack #parameterRows tr.group-header-row { display: block; }`
+      - `body.narrow-stack #parameterRows tr.group-header-row td { display: block; width: 100%; }`
+      - `body.narrow-stack #parameterRows tr.group-header-row .group-header { width: 100%; box-sizing: border-box; }`
+- Why:
+  - User reported group name rows in narrow + ultralight modes did not stretch edge-to-edge like parameter rows.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 413 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed file only: `BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: verify full-width group headers across regular narrow and ultralight modes with long group names and mixed collapsed/expanded states.
