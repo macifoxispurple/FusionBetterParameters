@@ -5,6 +5,7 @@
 **Current API version:** 1
 
 This document is the complete specification of the message-passing API between the HTML/JS palette UI and the Python Fusion 360 add-in backend. A developer with only this document should be able to build a fully functional replacement palette UI from scratch.
+Canonical location: `scripts/BACKEND_API.md` (repo root copy removed).
 
 ---
 
@@ -2822,4 +2823,3 @@ All `ok: false` responses now include an `errorCode` field with a stable string 
 - `seedTestParameters` / `resetTestState` / `runSelfTestSuite`: only call from dev/test tooling. Do not expose in production palette UI.
 - `dryRun: true` on `importParameters` / `importParametersPackage`: response includes `dryRun: true` field. `state` is always `null` when `dryRun: true`. Use counts from dry-run response to build a confirmation UI before committing.
 - `runSelfTestSuite` `ok` field: always `true` even if individual tests fail. Test failures appear in `results[].failures`. `ok: false` means a runtime error in the suite itself.
-

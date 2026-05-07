@@ -17,7 +17,7 @@ You are taking responsibility for Fusion 360 Python add-in called BetterParamete
   - Frontend: `palette.html`
   - Backend: `BetterParameters.py`
   - Manifest: `BetterParameters.manifest`
-- Session continuity log: `%USERPROFILE%\Documents\Codex\OpenParameters\CONTEXT.md`
+- Session continuity log: `%USERPROFILE%\Documents\Codex\OpenParameters\scripts\CONTEXT.md`
 
 ## Maintainer Quick Start
 
@@ -72,16 +72,16 @@ python -m pytest tests/test_fe_browser_current.py -q
 
 ## Documentation Discipline
 
-- Update `HANDOFF.md` immediately any time canonical conditions or operational procedures change.
-- Keep internal ship/release process documentation in `HANDOFF.md` only.
+- Update `scripts/HANDOFF.md` immediately any time canonical conditions or operational procedures change.
+- Keep internal ship/release process documentation in `scripts/HANDOFF.md` only.
 - Commit messages must not include extra attribution trailers (for example `Co-Authored-By`, AI/vendor attribution, or tool-brand signatures) unless the user explicitly requests them.
-- Use `%USERPROFILE%\Documents\Codex\OpenParameters\CONTEXT.md` for volatile execution state (current task, in-progress, blockers, recent done).
-- At startup, read `CONTEXT.md` after `HANDOFF.md` before beginning work.
-- Update `CONTEXT.md` at minimum:
+- Use `%USERPROFILE%\Documents\Codex\OpenParameters\scripts\CONTEXT.md` for volatile execution state (current task, in-progress, blockers, recent done).
+- At startup, read `scripts/CONTEXT.md` after `scripts/HANDOFF.md` before beginning work.
+- Update `scripts/CONTEXT.md` at minimum:
   - When starting a new task
   - After meaningful milestones
   - Before pausing, handing off, or ending with incomplete work
-- Keep maintainer procedure docs centralized in `HANDOFF.md`.
+- Keep maintainer procedure docs centralized in `scripts/HANDOFF.md`.
 - Keep manual-only test checklist in `tests\MANUAL_TESTS.md`.
 
 ## BE Test Suite

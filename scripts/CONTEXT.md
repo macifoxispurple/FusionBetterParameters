@@ -1,0 +1,2238 @@
+﻿# BetterParameters - Active Context Log
+
+Purpose: fast resume after interruption/context reset. Keep this file current during active work.
+Canonical location: `scripts/CONTEXT.md` (repo root copies are deprecated/removed).
+
+## Current Task
+
+- FE ownership active. Baseline captured and verified; ready for FE feature work, maintenance, and troubleshooting.
+
+## Session Updates (2026-04-18)
+
+- FE live add-in sync checkpoint (post group-reorder stall mitigation):
+  - Ran canonical source->live sync + verify:
+    - `python %USERPROFILE%\Documents\Codex\OpenParameters\BetterParameters\update_helper.py %USERPROFILE%\Documents\Codex\OpenParameters\BetterParameters "%USERPROFILE%\AppData\Roaming\Autodesk\Autodesk Fusion 360\API\AddIns\BetterParameters" settings.json update_state.json _pending_update .gitignore __pycache__ BetterParameters.manifest --verify`
+  - Result: `Done: 12 copied, 5 skipped, 0 error(s).`
+  - Verify: `VERIFY OK` for `BetterParameters.py` and `palette.html` (`palette.html` hash `8671b3a13fd9256c`).
+
+- FE group-reorder long-stall mitigation (drag header reorder path):
+  - User repro from fresh launch: first drag collapse/expand oddity, then repeated reorder attempts each stall long before success (no fast subsequent applies).
+  - Raw trace correlation:
+    - `saveParameterOrder` request->response consumed ~10s per group reorder attempt.
+    - `saveGroupUiState` completed quickly after that.
+    - stall source therefore on FE choosing row-order persistence for group-header drag.
+  - Fix in `BetterParameters/palette.html` (`finishGroupDrag()`):
+    - removed `persistParameterRowOrder(..., { applyState:false })` from group drag finalize.
+    - group reorder now persists via `saveGroupUiState("Group order updated.")` only.
+    - reduced `suppressModelPageInvalidationCount` increment from `+2` to `+1` (single mutating call now).
+  - Intent:
+    - keep row-order save for row-drag only.
+    - avoid unnecessary heavy backend row-order rewrite during group-header reorder.
+  - Strict ops validation:
+    - offline suite => `python -m pytest` => `360 passed, 0 failed`
+  - Next required validation:
+    - run in-Fusion reorder repro again and confirm per-attempt latency drop + no collapse-state regression.
+
+- FE spinner overlay timing hardening (group reorder, race/no-op flash fix):
+  - Reported symptom: overlay timing still inconsistent; sometimes appears after operation appears complete.
+  - Root causes addressed:
+    - re-entrant `finishGroupDrag()` invocation path (mouseup/blur overlap) could schedule stale overlay behavior
+    - overlay shown even for no-op reorder (order unchanged), causing delayed/brief flash perception
+  - Fixes in `BetterParameters/palette.html`:
+    - added `state.activeGroupDragFinishing` single-flight guard
+    - consume `state.activeGroupDrag` at start of `finishGroupDrag()` to prevent duplicate async paths
+    - show busy overlay only when `orderChanged` is true (actual save path)
+    - keep paint-yield before persistence call
+  - Strict ops validation:
+    - canonical source->live sync with `--verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`
+    - offline suite => `python -m pytest` => `360 passed, 0 failed`
+
+- FE implementation: robust unified component-group reordering (id-based order/collapse, legacy-safe migration)
+  - Implemented in `BetterParameters/palette.html` with FE-only scope:
+    - Group identity model added in FE render pipeline:
+      - `groupId`, `groupType` (`user`/`component`/`system`), `label`
+      - user groups derive id as `u:<canonical-lower>`
+      - component groups use stable id when available (`c:<componentId|componentToken|componentKey>`)
+      - fallback component groups without stable id use non-persistent runtime ids (`x:<label-lower>`)
+    - `groupUi.order` and collapse keys now id-keyed; legacy label-based persisted order is migrated at render time:
+      - user labels map to user ids
+      - component labels map only when uniquely resolvable to one stable component id
+      - unresolved legacy entries are safely ignored
+    - Group reordering is now unified for user + component groups:
+      - removed FE drag guard that blocked component groups
+      - system groups remain pinned/non-draggable (`Favorites`, `Ungrouped`)
+      - persisted order saves only stable/persistable ids (`u:` + stable `c:`), preserving non-persistent fallback behavior when no stable component id exists.
+    - Model component preload now stores descriptor objects (id + label + type) instead of label-only strings.
+    - Group header rendering now carries `data-group-id`; group collapse toggle uses id-aware keys.
+  - Drift behavior implemented in FE order reconciliation:
+    - preserve known relative order
+    - append unseen groups
+    - drop removed/non-resolvable entries
+  - Strict ops validation:
+    - canonical source->live sync with `--verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`
+    - offline suite => `python -m pytest` => `355 passed, 0 failed`
+
+- FE busy-overlay timing refinement for group reorder:
+  - Follow-up symptom: spinner still appeared late and disappeared quickly.
+  - Adjustment in `finishGroupDrag()`:
+    - moved busy overlay show + paint-yield to the very start of handler (immediately after drag-state check), before drag cleanup/order diff/status work.
+    - wrapped full handler in outer `try/finally` so overlay always clears regardless of early return/error.
+  - Intent: cover pre-API release-path work plus API wait window with visible busy state.
+  - Strict ops validation:
+    - canonical source->live sync with `--verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`
+    - offline suite => `python -m pytest` => `355 passed, 0 failed`
+
+- FE busy-overlay paint starvation fix (group reorder):
+  - Symptom after initial spinner rollout: overlay often appeared only near completion; spinner animation did not visibly start during long API wait.
+  - Root cause: overlay show call was immediately followed by long bridge await, starving a render frame.
+  - Fix in `palette.html`:
+    - added `yieldForBusyOverlayPaint()` (layout flush + double-`requestAnimationFrame`) and awaited it right after `setBusyOverlay(true, "Applying group reorder...")` in `finishGroupDrag()`.
+    - ensures overlay and spinner paint before backend apply wait starts.
+  - Strict ops validation:
+    - canonical source->live sync with `--verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`
+    - offline suite => `python -m pytest` => `355 passed, 0 failed`
+
+- FE UX improvement for group-reorder release latency:
+  - Added full-screen busy overlay + spinner in `BetterParameters/palette.html` for the group reorder apply window (mouse release -> backend reorder/apply completion).
+  - Overlay message: `Applying group reorder...`; shown at start of `finishGroupDrag()` save path and cleared in `finally` to avoid stuck state on errors.
+  - Goal: eliminate frozen-feel ambiguity by making in-progress backend apply explicit.
+  - Strict ops validation:
+    - canonical source->live sync with `--verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`
+    - offline suite => `python -m pytest` => `355 passed, 0 failed`
+
+- FE multi-selection group assignment fix (reorder menu):
+  - Symptom: right-click drag-handle group assignment (`Groups` pills / `Create + Assign`) only moved a single parameter even when multiple rows were selected.
+  - Fix in `BetterParameters/palette.html`:
+    - reorder-menu group assignment now targets all selected parameters when the context-menu anchor row is part of current multi-selection.
+    - single-row behavior preserved when anchor row is not in multi-selection.
+    - added dynamic reorder-menu labeling to show multi-target scope (`assign N selected`) and button text (`Create + Assign N Selected`).
+  - Strict ops validation:
+    - canonical source->live sync with `--verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`
+    - offline suite => `python -m pytest` => `355 passed, 0 failed`
+
+- FE group-row action flicker fix:
+  - Symptom: `Rename` / `Delete` buttons flickered during group expand/collapse.
+  - Root cause: hover-only opacity transition on `.group-header-actions` combined with full table re-render during toggle.
+  - Fix: removed hover opacity gating; group action buttons now remain visible (`opacity: 1`) for stable rendering during toggle.
+  - Strict ops validation:
+    - canonical source->live sync with `--verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`
+    - offline suite => `python -m pytest` => `355 passed, 0 failed`
+
+- FE group header count display added:
+  - Group rows now show current rendered count in header label (example: `BaseInterface (14)`).
+  - Count source is current group row set (`groupBlock.parameters.length`), so it reflects active filters/search state.
+  - Strict ops validation:
+    - canonical source->live sync with `--verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`
+    - offline suite => `python -m pytest` => `355 passed, 0 failed`
+
+- FE glyph encoding regression fix (group chevron broken/mojibake):
+  - Symptom: group expand/collapse chevron rendered as mojibake (`â...`) in group rows.
+  - Fix in `BetterParameters/palette.html`:
+    - group-toggle glyph literals switched to unicode escapes (`\u25b8` / `\u25be`)
+    - unit picker/category chevron CSS content switched to unicode escape (`\25BE`)
+    - corrected model kind separator from mojibake to proper bullet (`•`)
+  - Strict ops validation:
+    - canonical source->live sync with `--verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`
+    - offline suite => `python -m pytest` => `355 passed, 0 failed`
+
+- FE stale-live payload remediation (Model Parameters card removal):
+  - Reported issue: Fusion UI still showed legacy `Model Parameters` card/section despite source rewrite.
+  - Root cause: live add-in `palette.html` in Fusion AddIns path was stale and still contained old model-card markup/CSS/handlers.
+  - Action: ran canonical sync from source -> live add-in with `--verify`.
+    - Result: `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+    - Post-sync check on live `palette.html`: no matches for legacy model-card ids/classes (`modelParametersSection`, `modelParametersFilter`, `modelParameterRows`, etc.).
+  - Strict gate rerun:
+    - `python -m pytest` -> `355 passed, 0 failed`.
+
+- In-Fusion harness validation (pre-ship):
+  - result reported by user: `57 passed, 0 failed`
+
+- Ship completed: `v0.6.3` (patch)
+  - Command: `scripts/ship.ps1 -BumpType patch -FusionTested`
+  - Result: success (commit/tag/push/release/asset verification complete)
+  - Release URL: `https://github.com/macifoxispurple/FusionBetterParameters/releases/tag/v0.6.3`
+  - Artifact: `%USERPROFILE%\Documents\Codex\OpenParameters\_releases_packages\BetterParameters-0.6.3.zip`
+  - Ship report: `%USERPROFILE%\Documents\Codex\OpenParameters\scripts\_ship_reports\ship_20260418_111642.json`
+
+- FE migration to breaking model-parameter contract (2026-04-18) in `palette.html`:
+  - Removed FE dependency on pushed `state.modelParameters`; FE now consumes pushed `state.modelParameterCount`.
+  - Added on-demand model-parameter loading via new read-only action `getModelParameters`:
+    - section-level expand/load
+    - paged fetch (`offset`/`limit`)
+    - filter search (`filter`, reset `offset=0`)
+  - Added dedicated Model Parameters UI section (count badge, expand/collapse, filter, paging, status).
+  - Added model-row edit flow using existing `updateModelParameter`; on success FE re-fetches current model page.
+  - Enforced FE constraints for model rows in UI behavior:
+    - no selection/copy/delete/reorder/group/favorite/revert affordances
+    - name/unit read-only display
+    - expression/comment editable inline only.
+  - Validation:
+    - offline suite rerun from workspace root -> `python -m pytest` => `349 passed`
+    - synced to live add-in via canonical `update_helper.py ... --verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+  - Next strict gate: run in-Fusion harness (`scripts/fusion_bp_test_harness.py`) and confirm summary is zero-failure.
+
+- FE hotfix for `getModelParameters` envelope compatibility:
+  - Symptom in Fusion: `Backend contract error (getModelParameters): Envelope missing required field "message".`
+  - Fix in `sendToFusion(...)`: for action `getModelParameters`, FE now normalizes missing envelope fields before contract validation:
+    - injects `message: ""` when missing
+    - injects `state: null` when missing
+  - Validation:
+    - offline suite rerun from workspace root -> `python -m pytest` => `349 passed`
+    - synced to live add-in via canonical `update_helper.py ... --verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
+- FE follow-up fix for model section false-empty state:
+  - Symptom: model section could show `No model parameters in this design.` despite existing model params when pushed `modelParameterCount` was missing/stale.
+  - Fix:
+    - section no longer hard-hides when pushed count is `0`
+    - model section can expand/load regardless of pushed count
+    - empty message now depends on fetched page state (`loaded` + `filter`) instead of pushed count
+    - on successful unfiltered fetch, FE updates `state.modelParameterCount` from response `totalCount`
+  - Validation:
+    - offline suite rerun from workspace root -> `python -m pytest` => `349 passed`
+    - synced to live add-in via canonical `update_helper.py ... --verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
+- FE model-parameter UX enhancement (option 2): grouped by component
+  - Model parameter rows now render with in-list component headers derived from `componentName` (fallback label: `Root Component` when empty).
+  - Group header styling added for scanability in model-parameters table.
+  - Existing per-row edit behavior remains unchanged (`expression`/`comment` inline).
+  - Validation:
+    - offline suite rerun from workspace root -> `python -m pytest` => `355 passed`
+    - synced to live add-in via canonical `update_helper.py ... --verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
+- FE model table presentation alignment pass (user-table parity):
+  - Model parameter row markup now mirrors user-parameter row structure/classes in the model section table:
+    - same name stack + narrow summary scaffolding
+    - same field-shell / dirty-field-shell / preview / comments row-actions structure
+    - same narrow toggle behavior for expanded details
+  - Structural constraints preserved (model rows remain non-structural: no reorder/group/favorite toggle/delete/revert actions).
+  - Validation:
+    - offline suite rerun from workspace root -> `python -m pytest` => `355 passed`
+    - synced to live add-in via canonical `update_helper.py ... --verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
+- FE enhancement: persist column sort state across launches
+  - Added localStorage-backed sort persistence (`bp_table_sort_state_v1`) for table sort fields:
+    - `tableSort.column`
+    - `tableSort.direction`
+  - Sort state now restores at startup and is saved whenever header sort changes or timeline-sort flow clears/restores header sort.
+  - Validation:
+    - offline suite rerun from workspace root -> `python -m pytest` => `355 passed`
+    - synced to live add-in via canonical `update_helper.py ... --verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
+- FE reimplementation: model parameters integrated into main table pipeline (from-scratch direction)
+  - Model rows are now merged into the primary `#parameterRows` render flow (no separate model-table path required for core viewing/editing).
+  - Model row grouping uses `componentName` mapped into row `group` (fallback: `Root Component`), so component names behave as group names in the main table.
+  - Main table grouping logic now marks model groups and suppresses user-group structural controls there (no group rename/delete/drag for model groups).
+  - Main-table row template now conditionally renders model rows with user-table presentation structure while preserving model constraints:
+    - `data-parameter-scope="model"`, non-selectable, non-structural
+    - name read-only
+    - no reorder/favorite-toggle actions
+    - no revert action
+    - expression/comment still editable via `updateModelParameter` path.
+  - Added model parameter background loader for current query (`getModelParameters` paged fetch loop) and merged render refresh on load completion.
+  - Validation:
+    - offline suite rerun from workspace root -> `python -m pytest` => `355 passed`
+    - synced to live add-in via canonical `update_helper.py ... --verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
+- FE post-change validation run (strict ops):
+  - Synced source -> live add-in via canonical `update_helper.py ... --verify`.
+  - Sync result: `Done: 12 copied, 5 skipped, 0 error(s)` with `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+  - Offline suite rerun from workspace root -> `python -m pytest` => `349 passed`.
+  - In-Fusion harness result reported by user: `57 passed, 0 failed`.
+  - FE post-change validation gate: complete.
+
+- FE baseline re-validation + ownership handoff complete:
+  - Startup procedure followed: read `HANDOFF.md` then `CONTEXT.md`; scope locked FE-only (`palette.html` + FE docs).
+  - Offline suite rerun from workspace root -> `python -m pytest` => `325 passed`.
+  - In-Fusion harness baseline reported by user => `57 passed, 0 failed`.
+  - Status: FE side is clear to take ownership for next implementation/maintenance/troubleshooting requests.
+
+- FE clipboard integration updated for new BE action:
+  - `copyTextToClipboard` now uses backend `copyToClipboard` as primary path when native Fusion bridge is available.
+  - Existing browser fallback chain (`execCommand` textarea, then `navigator.clipboard`) is retained for mock mode / bridge-unavailable contexts.
+  - Added FE action contract wiring for `copyToClipboard` (normative + read-only/validation sets).
+  - Validation: offline suite rerun from workspace root -> `python -m pytest` => `325 passed`.
+
+- In-Fusion harness validation (post clipboard FE integration):
+  - timestamp: `2026-04-18 09:06:04 AM`
+  - result: `57 passed, 0 failed`
+  - baseline status: green.
+
+- Ship completed: `v0.6.2` (patch)
+  - Command: `scripts/ship.ps1 -BumpType patch -FusionTested`
+  - Result: success (commit/tag/push/release/asset verification complete)
+  - Release URL: `https://github.com/macifoxispurple/FusionBetterParameters/releases/tag/v0.6.2`
+  - Artifact: `%USERPROFILE%\Documents\Codex\OpenParameters\_releases_packages\BetterParameters-0.6.2.zip`
+  - Ship report: `%USERPROFILE%\Documents\Codex\OpenParameters\scripts\_ship_reports\ship_20260418_090650.json`
+
+- BE `copyToClipboard` action implemented:
+  - Bypasses Fusion's QtWebEngine WebView clipboard restrictions by writing directly to OS clipboard via Python native APIs.
+  - Windows: Win32 `SetClipboardData(CF_UNICODETEXT)` via `ctypes` — UTF-16-LE, full Unicode, correct ownership/free semantics.
+  - macOS: `pbcopy` subprocess — UTF-8, 3s timeout.
+  - Unsupported platforms: `IO_ERROR` with FE fallback hint.
+  - Added to `_READ_ONLY_ACTIONS`; response always `state: null`.
+  - `tests/test_clipboard.py` (18 tests): validation guards, Win32 happy/fail paths, memory ownership, pbcopy happy/fail/timeout, unsupported platform, action classification.
+  - `BACKEND_API.md` updated: TOC + full section with platform table, error responses, integration note.
+  - 325 passed, VERIFY OK.
+
+- FE UI tweak in `palette.html` (main update pill colors swapped):
+  - `update available` (`.update-pill.has-update`) now uses success styling.
+  - `restart to apply` (`.update-pill.is-staged`) now uses accent styling.
+  - Validation:
+    - offline suite rerun from workspace root -> `python -m pytest -q` => `307 passed`
+    - synced to live add-in via canonical `update_helper.py ... --verify` (`VERIFY OK` for `palette.html` and `BetterParameters.py`).
+
+- Ship completed: `v0.6.0` (feature)
+  - Command: `scripts/ship.ps1 -BumpType feature -FusionTested`
+  - Result: success (commit/tag/push/release/asset verification complete)
+  - Release URL: `https://github.com/macifoxispurple/FusionBetterParameters/releases/tag/v0.6.0`
+  - Artifact: `%USERPROFILE%\Documents\Codex\OpenParameters\_releases_packages\BetterParameters-0.6.0.zip`
+  - Ship report: `%USERPROFILE%\Documents\Codex\OpenParameters\scripts\_ship_reports\ship_20260418_084415.json`
+
+- FE closure pass (post-ship hygiene):
+  - Removed stale CSV dry-run warning in `palette.html` now that BE guarantees `filePath` echo on dry-run/commit import responses.
+  - Expanded FE DOM regression automation in `BetterParameters/dev_harness.html`:
+    - auto blur applies valid edits
+    - invalid auto edit remains dirty with error
+    - auto discard click clears draft without unintended apply
+    - manual Apply All invalid-row disable/error-state
+    - manual Discard All resets dirty rows
+  - Updated `scripts/FE_M3_M4_VERIFICATION.md`:
+    - moved newly automated compute-mode checks out of manual-only checklist.
+  - Manual checklist closure status (explicit):
+    - compute manual->auto apply behavior: PASS
+    - invalid-row mode switch block: PASS
+    - reorder blocked while dirty: PASS
+    - package preflight count rendering: PASS
+    - comments-hidden Apply visibility/layout: PASS
+    - comments-hidden row/value expansion sync: PASS
+    - import/export end-to-end contract flow: PASS
+
+- Ship completed: `v0.5.11`
+  - Command: `scripts/ship.ps1 -BumpType patch -FusionTested`
+  - Result: success (commit/tag/push/release/asset verification complete)
+  - Release URL: `https://github.com/macifoxispurple/FusionBetterParameters/releases/tag/v0.5.11`
+  - Artifact: `%USERPROFILE%\Documents\Codex\OpenParameters\_releases_packages\BetterParameters-0.5.11.zip`
+  - Ship report: `%USERPROFILE%\Documents\Codex\OpenParameters\scripts\_ship_reports\ship_20260418_083557.json`
+
+- BE import `filePath` echo fix:
+  - `importParameters` (CSV) and `importParametersPackage` now always echo `filePath` in response — both dry-run and commit.
+  - FE can pass `filePath` from dry-run response directly into commit call; eliminates double file-picker UX.
+  - `_import_parameters` and `_import_parameters_package` return dicts updated; both dispatch handlers updated.
+  - `BACKEND_API.md` updated: both import sections now show `filePath` + `dryRun` in all response examples and field tables; `state` semantics clarified as `null` when `dryRun: true`.
+  - 307 passed, VERIFY OK.
+
+- FE UI fix: Apply visibility when comments column hidden
+  - Root cause: row Apply button lived only inside `td.comments-cell`; when comments hidden (`hide-comment` / `auto-hide-comments`), that cell is `display:none`, so Apply disappeared.
+  - Fix in `palette.html`:
+    - Added inline save button in value cell (`.save-button-inline`) shown only in manual mode when comments are hidden.
+    - Updated save-button plumbing to support multiple row save buttons (`getRowSaveButtons`, `getRowPrimarySaveButton`) so Enter/click behaviors and dirty-state classes stay consistent.
+    - Updated narrow summary save-state lookup to use primary visible save button.
+  - Validation:
+    - offline suite rerun from workspace root -> `python -m pytest -q` => `307 passed`
+    - synced to live add-in via canonical `update_helper.py ... --verify` (`VERIFY OK` for `palette.html` and `BetterParameters.py`).
+
+- FE follow-up patch implemented in `palette.html`:
+  - Compute mode switch now auto-applies pending manual edits before switching Manual -> Auto (same intent as Apply All); if unresolved invalid rows remain, mode switch is blocked with warning.
+  - Reorder protections added while pending row edits exist:
+    - blocks group drag start
+    - blocks row drag start
+    - blocks reorder menu entry points (handle context-menu + narrow reorder button)
+  - Package preflight parsing fixed to current contract shape:
+    - reads `validateParametersPackageImport` counts from `response.preview.{addCount,updateCount,skipCount,potentialFailCount,warnings,failedRows}`
+    - resolves prior false `0/0/0` confirmation summary bug.
+  - CSV import UX note added when dry-run response omits `filePath` (current BE behavior), explaining why a second file picker may appear on commit.
+  - Validation:
+    - offline suite rerun from workspace root -> `python -m pytest -q` => `307 passed`
+    - synced to live add-in via canonical `update_helper.py ... --verify` (`VERIFY OK` for `palette.html` and `BetterParameters.py`).
+
+- FE review-fix bundle implemented in `palette.html`:
+  - Added row-apply in-flight latch (`data-row-applying`) to prevent double-apply races (Enter spam/click re-entry), and guarded compute-mode toggle while applies are active.
+  - Hardened `focusout` async flow with detached-row guards before/after awaits to avoid stale-row auto-apply after rerender/delete.
+  - Hardened `applyRowDraft` post-rename row/input refresh with strict null checks for name/expression/comment inputs.
+  - `handleFusionPush` now queues background pushes during active row/group drag and during row-apply in-flight operations.
+  - Added rename-phase key-existence check in `applyAllDirtyRows` before dispatching rename action.
+  - Added async timer safety (`.catch`) for delayed validation/preview calls to avoid unhandled promise rejections.
+  - Replaced silent background settings/group-save catches with warning-visible logging via `appendStatusHistory`.
+  - Added response-field guards for CSV/package import counts/arrays and explicit warning if commit calls unexpectedly return `dryRun: true`.
+  - Validation: offline suite rerun from workspace root -> `python -m pytest -q` => `307 passed`.
+
+- BE `batchUpdateParameters` action implemented:
+  - New function `_batch_update_parameters(data)` in `BetterParameters.py` using `design.modifyParameters()` (Fusion API Sept 2022+) — applies all expression changes in one Fusion call, triggering a single design recomputation instead of one per parameter.
+  - Sequential `.expression =` fallback for Fusion builds without `modifyParameters`.
+  - Comments applied per-param after expressions (comment writes do not trigger recompute).
+  - Added `"batchUpdateParameters"` to `_MUTATING_ACTIONS`.
+  - Dispatch branch added in `_handle_palette_action` after `updateParameter`.
+  - `BACKEND_API.md` updated: TOC entry + full `batchUpdateParameters` action section with request/response shapes, error table, and all-or-nothing semantics note.
+  - `tests/test_batch_update.py` (15 tests) — offline coverage for happy path, empty list, non-list guard, param-not-found fail-fast, `modifyParameters` False/raises, sequential fallback, comment semantics, no-design guard.
+  - `scripts/fusion_bp_test_harness.py` updated with `batch/*` in-Fusion tests (5 assertions: ok, state dict, count==2, width expr, height expr).
+  - Offline suite: 307 passed (+15).
+  - End-to-end verified: Apply All batching confirmed working in Fusion.
+
+- FE deterministic DOM regression runner added in `BetterParameters/dev_harness.html`:
+  - Added `Run FE Regression Tests` control with pass/fail summary output.
+  - New automated FE checks:
+    - single-row Apply preserves other dirty rows
+    - resize preserves dirty drafts
+    - timeline sort blocked while dirty (disabled + guidance tooltip)
+    - CSV import cancel is silent (no error/cancel status entry)
+    - package import partial-failure details render in summary
+  - Updated verification doc: `scripts/FE_M3_M4_VERIFICATION.md` with runner coverage.
+
+- FE prep for incoming BE `batchUpdateParameters` contract in `palette.html`:
+  - Added FE action constant + contract set membership:
+    - `ACTION.BATCH_UPDATE_PARAMETERS = "batchUpdateParameters"`
+    - included in normative and mutating FE action sets.
+  - Refactored `applyAllDirtyRows()` to two-phase flow:
+    - Phase 1: sequential rename-only calls (`renameParameter`) per dirty row with name changes.
+    - Phase 2: single batch call (`batchUpdateParameters`) for remaining expression/comment changes.
+  - Added row-op dirty flags in `collectDirtyRowOps()` (`nameDirty`, `expressionDirty`, `commentDirty`) to drive phase split.
+  - Added batch failure mapping back to per-row pending/error UI with fallback fatal handling and summary accounting.
+  - Added mock fixture coverage in `dev/mock_bridge_fixtures.js` for `batchUpdateParameters` (`ok` + `m4_batch_all_fail`).
+  - Validation:
+    - Offline tests: `python -m pytest` -> `292 passed`
+    - Synced to live with canonical quoted command + `--verify` (`VERIFY OK` for `palette.html`).
+
+- FE regression follow-up (M4 manual checks 9/10/12) in `palette.html`:
+  - Fix attempt for row-apply preserving other pending edits (`#9`): draft capture now merges rendered draft snapshots with existing non-rendered drafts and only clears keys proven clean in current render pass.
+  - Contract-compat handling for import actions (`#12`):
+    - Added FE compat allow-list for mutating actions currently observed to return `ok=true, state=null` (`importParameters`, `importParametersPackage`).
+    - On successful import responses without object `state`, FE now logs compatibility warning and triggers explicit `refresh` to reconcile UI state.
+    - `sendToFusion` envelope validation now includes request payload context for dry-run diagnostics.
+  - Validation:
+    - Offline suite: `python -m pytest` -> `292 passed`.
+    - Synced to live add-in with canonical quoted command and `--verify`; `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
+- BE bug fix: `_find_user_parameter_by_token` and `_find_model_parameter_by_token` now work correctly.
+  - Root cause: `design.findEntityByToken()` returns a Fusion `ObjectCollection`, not a Python `list` or `tuple`. Old `isinstance(found, (list, tuple))` guard was always `False`, so iteration never ran and both functions returned `None` on every call.
+  - Effect: every action accepting `key` silently fell back to `name` lookup. Actions with only `keys` (e.g. `deleteParameters` with key-only entries) failed with "Parameter not found."
+  - Fix: replaced `isinstance` guard with `try/except` iteration in both functions.
+  - Added `adsk.fusion.ObjectCollection` stub to `tests/stubs/adsk/fusion.py`.
+  - Added `tests/test_find_by_token.py` (15 tests) covering both functions with ObjectCollection, empty collection, wrong type, None/empty token, exception paths, and regression assertions.
+  - All 292 offline tests pass.
+  - Synced to live add-in.
+
+- `update_helper.py` reliability hardening:
+  - Root cause of silent sync failures: `shutil.copy2` raising `PermissionError` (Windows file lock during Fusion add-in load) was unhandled; exception printed only to stderr, invisible if caller didn't inspect exit code. No stdout output meant partial syncs were indistinguishable from complete ones.
+  - Changes: per-file `COPY`/`SKIP`/`ERROR` reporting; per-file `try/except` so one error doesn't abort the run; non-zero exit on any error; `--verify` flag SHA-256 checking `BetterParameters.py` and `palette.html` post-sync.
+  - `__pycache__` added to canonical skip list in `HANDOFF.md` sync command.
+  - `HANDOFF.md` Dev/Test Loop updated with new canonical sync+verify command and `update_helper.py` behavior notes.
+
+- FE mock-bridge cleanup completed (keep + freeze scope):
+  - Externalized fixture matrix from `palette.html` into:
+    - `%USERPROFILE%\Documents\Codex\OpenParameters\BetterParameters\dev\mock_bridge_fixtures.js`
+  - Added pinned fixture contract annotation in fixture file:
+    - `CONTRACT_VERSION = "2026-04-17"`
+  - `palette.html` now delegates fixture responses to `window.__BP_MOCK_FIXTURE_HELPER.resolve(...)`.
+  - Added dev-only fixture loader under explicit `?mock=1` opt-in and retained runtime guard so mock bridge stays unreachable when `adsk.fusionSendData` exists.
+  - Removed stale FE review drift note related to blocked unit-edit policy.
+- No-fixture-ship enforcement:
+  - `update_helper.py` now always skips `dev/` (in addition to `.gitignore`) so fixture files never sync into live add-in payload.
+  - `scripts\ship.ps1` package staging excludes `dev/` so fixtures cannot be included in release zips.
+  - Validation: `update_helper.py ... --verify` reports `SKIP dev` and `VERIFY OK` for both core files.
+
+- Ship-procedure hardening implemented in `scripts/ship.ps1` (post-v0.5.7 retrospective):
+  - Deterministic package build + zip verification moved before manifest bump/commit/tag/push in normal ship mode.
+  - Added lock-resilient package archiving:
+    - retry loop with staged-file lock checks
+    - fallback from `Compress-Archive` to `.NET ZipFile.CreateFromDirectory(...)`
+    - lock-aware failure messaging.
+  - Added machine-readable run reports:
+    - output path: `scripts\_ship_reports\ship_<timestamp>.json`
+    - includes step timeline/status, mode, tag, zip path, release URL (when available), and fatal error text.
+  - Added failure recovery hint output for tagged failures:
+    - prints finalize command using `-FinalizeExistingTag vX.Y.Z ...` when applicable.
+  - Existing improvements retained:
+    - preflight release-notes gate
+    - default notes fallback (`scripts\release_notes_pending.md`)
+    - finalize/recovery mode.
+  - Validation smoke:
+    - script parse: OK
+    - fail-fast mode validation (`-FusionTested` with no mode): expected clear error
+    - finalize smoke (`-FinalizeExistingTag v0.5.7 -FusionTested -SkipRelease -NotesFile <tmp>`): pass, report file written.
+- Documentation updated in `HANDOFF.md` to reflect new ship order, resiliency behavior, and run-report artifact.
+- Patch ship completed: `v0.5.7` released.
+  - Canonical ship script executed with patch bump and Fusion-tested flag; flow completed through notes preflight, sync, version bump, commit/tag, and push.
+  - Packaging encountered a transient lock during zip creation (`BetterParameters.py` in `_release_stage`).
+  - Recovery used canonical finalize mode:
+    - rebuilt deterministic zip in canonical package path
+    - executed `scripts\ship.ps1 -FinalizeExistingTag v0.5.7 -FusionTested -NotesFile .\scripts\release_notes_pending.md`
+    - release created and asset verification passed
+  - Release URL: `https://github.com/macifoxispurple/FusionBetterParameters/releases/tag/v0.5.7`
+  - Artifact: `%USERPROFILE%\Documents\Codex\OpenParameters\_releases_packages\BetterParameters-0.5.7.zip`
+- FE multi-select range fix (favorites duplicate-row anchor bug) in `palette.html`:
+  - Root cause: Shift-range used unique-key first-occurrence ordering (`getSelectableRowsUniqueByKey`), so duplicated favorites rows hijacked anchor/target indices.
+  - Symptom: Shift-select from a grouped row to another grouped row could select a range from favorites rows instead of visible clicked-row span.
+  - Fix:
+    - Added `selectionAnchorRowIndex` to FE state.
+    - Shift-range now computes from actual rendered row indices (`getSelectableRowsInRenderOrder`) using clicked-row position + stored anchor row index.
+    - Range result still dedupes to key-based selection set (no duplicate key selection).
+    - Added fallback to nearest matching anchor key instance when only key is available.
+    - Anchor row index is reset when anchor key is pruned or selection clears.
+  - Follow-up fix:
+    - Added explicit Shift-gesture seeding (`shiftRangeGestureActive` + `rangeGestureStart`) so the first Shift-click in a new gesture sets anchor at the clicked row and clears stale prior anchor influence.
+    - Shift gesture anchor now resets on Shift key release / blur / visibility change and on non-range selection actions.
+  - Follow-up tweak:
+    - If Shift range starts while multiple rows are already selected, FE now force-seeds anchor at the clicked row on that first Shift click (prevents stale prior-range anchor reuse from old selections).
+  - Follow-up fix:
+    - Added one-shot focus-selection suppression (`suppressNextFocusSelectionKey`) so modifier-based mousedown row selection is not immediately overwritten by subsequent `focusin` single-row selection.
+    - This addresses observed behavior where Shift-click collapsed selection to the most-recent clicked row.
+  - Live sync note:
+    - `update_helper.py` run did not update live `palette.html` (hash mismatch observed).
+    - Applied direct `Copy-Item` for `palette.html` to live add-in path and verified hash match `True`.
+  - Validation:
+    - Offline test suite rerun from workspace root: `python -m pytest`
+    - Result: `292 passed, 0 failed`.
+- Ship-process optimization implemented in `scripts/ship.ps1`:
+  - Added preflight release-notes gate (runs before sync/version bump/commit/tag/push) to prevent late-stage ship aborts.
+  - Added default curated notes fallback: when `-NotesFile` is omitted and `scripts\release_notes_pending.md` exists, ship uses it automatically.
+  - Added recovery mode: `-FinalizeExistingTag vX.Y.Z` for post-tag release finalization (zip verify + release create/update + asset verification only; no bump/commit/tag/push).
+  - Added explicit low-signal preflight rerun hint command including `-NotesFile .\scripts\release_notes_pending.md`.
+  - Validation smoke:
+    - script parse: OK
+    - mode validation (`-FusionTested` without mode): expected fail-fast
+    - finalize smoke (`-FinalizeExistingTag v0.5.6 -FusionTested -SkipRelease -NotesFile <tmp>`): pass
+- `HANDOFF.md` updated to reflect new canonical ship behavior and finalize/recovery command.
+- Patch ship completed: `v0.5.6` released.
+  - Canonical ship script executed with patch bump and Fusion-tested flag; flow completed through sync, version bump, commit/tag, push, and deterministic package build.
+  - Release-notes low-signal gate triggered after push/tag; recovered by creating release with curated notes and the expected deterministic ZIP asset.
+  - Release URL: `https://github.com/macifoxispurple/FusionBetterParameters/releases/tag/v0.5.6`
+  - Artifact: `%USERPROFILE%\Documents\Codex\OpenParameters\_releases_packages\BetterParameters-0.5.6.zip`
+- FE key-resolution compliance audit completed against `BACKEND_API.md` for parameter actions:
+  - verified FE payloads are key-first where contract supports key fallback:
+    - `updateParameter`, `deleteParameters`, `revertParameter`, `setParameterGroup`, `renameParameter`, `copyParameter`
+  - `deleteParameter` remains available in FE contract list but current delete UI path uses batch `deleteParameters`.
+  - added missing FE contract constant/set coverage for `updateModelParameter` in `palette.html` (`ACTION`, normative set, mutating set) for parity with backend contract.
+- FE fix applied for favorite toggle payload:
+  - `setParameterFavorite` dispatch now sends both `key` and `name` (key-first compatibility) instead of `name` only.
+  - File: `BetterParameters/palette.html`
+- FE delete fallback hardening:
+  - `deleteParameters` dispatch now sends both `keys` and `names` (fallback coverage) instead of `keys` only.
+  - File: `BetterParameters/palette.html`
+- Validation:
+  - Offline test suite rerun from workspace root: `python -m pytest`
+  - Result: `292 passed, 0 failed`.
+
+## Session Updates (2026-04-17)
+
+- Release repair incident fixed (v0.5.3/v0.5.4/v0.5.5):
+  - Root cause: releases were created via manual `gh release create` path, bypassing canonical `scripts/ship.ps1` packaging/upload checks.
+  - Symptoms:
+    - missing ZIP assets on GitHub releases
+    - low-signal release notes
+    - `v0.5.4` tag drift (pointed at `v0.5.3` commit)
+  - Repairs applied:
+    - corrected tag `v0.5.4` to commit `680b89a` and force-pushed tag ref
+    - rebuilt deterministic release ZIPs from tags:
+      - `BetterParameters-0.5.3.zip`
+      - `BetterParameters-0.5.4.zip`
+      - `BetterParameters-0.5.5.zip`
+    - validated each ZIP manifest version matches tag version
+    - updated release notes for all three releases with meaningful content
+    - uploaded ZIP assets to each release (`--clobber`)
+  - Prevention update:
+    - `HANDOFF.md` now explicitly forbids manual production `gh release create` bypass and requires ZIP-asset presence in final ship checklist.
+
+- M3 FE copy/delete UI flows implemented in `palette.html`:
+  - Added rail action buttons for selection-based copy/delete (`copySelectedButton`, `deleteSelectedButton`).
+  - Added multi-select action handlers:
+    - `copySelectedParameters()` executes sequential `copyParameter` calls over current selected keys with per-item failure accounting.
+    - `deleteSelectedParameters()` executes batch `deleteParameters` call with explicit selection-count confirmation prompt.
+  - Added selection-action enable/disable gating (`renderSelectedActionButtons()`):
+    - disabled when no selection, while selection action is in-flight, or when local dirty edits exist.
+  - Added post-delete local state cleanup for deleted keys (`rowDraftsByKey`, `localPreviousExpressions`, selected-row state).
+  - Synced source -> live add-in via canonical `update_helper.py`.
+  - Fusion manual validation pending for end-to-end UX confirmation.
+
+- Debug Hub message visibility hardening in `palette.html`:
+  - Added dedicated `Message Log (Session)` section in Debug Hub with plain-text timestamped entries.
+  - All `setGlobalStatus(...)` messages now feed both existing status history and the new message log.
+  - Added `Clear Log` control for message log.
+  - Message log section defaults open for immediate visibility.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- Opt-in persistent debug capture implemented in `palette.html` (recommendation follow-through):
+  - Default remains OFF (no always-on disk persistence).
+  - Added Debug Hub controls in Message Log section:
+    - `Capture: On/Off` toggle (`debugCaptureToggleButton`)
+    - `Export Capture` (`exportPersistentLogButton`)
+    - `Clear Capture` (`clearPersistentLogButton`)
+  - Persistent storage model:
+    - LocalStorage-backed capture under `bp_debug_capture_log_v1`
+    - Enable flag under `bp_debug_capture_enabled`
+  - Hardening:
+    - obvious path/email redaction on captured messages
+    - bounded ring buffer (`500` entries, ~`200k` char cap)
+    - auto-expire entries older than `14` days
+  - Added capture status line (`persistentLogInfo`) with enabled state + count + latest entry.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- Debug log ordering tweak in `palette.html`:
+  - Debug UI `Message Log (Session)` now renders newest entries first.
+  - Exported capture text file remains oldest->newest so newest entries land at file bottom.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- Raw literal trace logging added in `palette.html` (opt-in):
+  - New Debug Hub section: `Raw Event Trace (Session)`.
+  - Captures literal FE/BE bridge traffic and key status events:
+    - `bridge.request`
+    - `bridge.response.raw`
+    - `bridge.response.parsed`
+    - push events (`push.raw`, `push.parsed`, `push.applied`, `push.queued`, `push.error`)
+    - `ui.status`
+  - Designed for non-human/raw diagnostics with truncation safeguards:
+    - max entries: `1200`
+    - max serialized payload chars per entry: `8000`
+  - Toggle persisted in localStorage (`bp_raw_trace_enabled`), default OFF.
+  - Added `Clear Trace` action; trace is session-only (not persisted to disk by default).
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- Debug Hub section-state persistence in `palette.html`:
+  - Added persisted expand/collapse state for Debug Hub sections (`<details>` blocks):
+    - Layout, Metadata, Message Log, Raw Event Trace, Status History
+  - State stored in localStorage key `bp_debug_hub_sections_v1`.
+  - Restored on launch via `initializeDebugHubSectionPersistence()`.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- UI polish pass in `palette.html`:
+  - Update pill color semantics tightened:
+    - update available (`has-update`) now clearly accent-colored
+    - restart pending (`is-staged`) now clearly success-colored
+  - Added `Ctrl+Shift+T` as additional Text Tuner toggle shortcut (alongside existing `Ctrl+Alt+T`).
+  - Raw Event Trace now has `Copy Trace` action (`copyRawTraceButton`) to copy trace output directly.
+  - Selection rail action clarity improved:
+    - copy/delete selected buttons now use explicit ready-state color styling (accent for copy, error tint for delete)
+    - disabled state now more visibly muted.
+  - Timeline sort visual parity improved:
+    - timeline button switched to native-icon toggle styling
+    - shows active (`is-on`) and blocked/disabled states similar to existing rail filter toggles.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- Clipboard reliability hardening in `palette.html`:
+  - Added shared `copyTextToClipboard(...)` helper with host fallback path:
+    - primary: `navigator.clipboard.writeText(...)`
+    - fallback: hidden textarea + `document.execCommand("copy")`
+  - Wired helper into:
+    - Text Tuner debug copy
+    - Raw Trace `Copy Trace`
+    - Persistent capture export clipboard fallback
+  - Purpose: improve copy behavior in Fusion webview hosts where Clipboard API may be unavailable.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- Raw Trace copy reliability + observability follow-up in `palette.html`:
+  - Added second-stage copy fallback for trace content:
+    - `copyNodeTextWithSelection(...)` using Range/Selection + `document.execCommand("copy")`
+  - `Copy Trace` now emits explicit raw trace events when tracing is enabled:
+    - `ui.raw-trace-copy.click`
+    - `ui.raw-trace-copy.success`
+    - `ui.raw-trace-copy.failure`
+  - Improved failure UX message to direct user to Export Capture/manual select-copy when host clipboard is blocked.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- Raw Trace copy host-compat follow-up in `palette.html`:
+  - Reordered clipboard strategy for Fusion-host reliability:
+    - first: textarea + `execCommand("copy")`
+    - second: `navigator.clipboard.writeText(...)` with timeout guard (350ms)
+    - third (in caller): node selection copy fallback
+  - `ui.raw-trace-copy.success` now records actual copy method used.
+  - Purpose: avoid hanging Clipboard API calls and improve copy success in embedded webview hosts.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- Harness validation milestone:
+  - In-Fusion harness latest run: `52 passed, 0 failed`.
+  - M3/M4 action-level automation gate is now green.
+  - Remaining gaps are UI-level/manual verification items only (see checklist status below).
+
+- M3/M4 verification framework implemented:
+  - Extended `scripts/fusion_bp_test_harness.py` with explicit action-level checks for remaining roadmap items:
+    - M3: `copyParameter` (auto-name + explicit target), `deleteParameters` partial-success path, `sortByTimelineOrder` + seeded relative-order assertion.
+    - M4 CSV: `exportParameters` file/header verification, `importParameters` conflict-policy checks (`skip` no-overwrite + create-new, `overwrite` updates existing), existing dry-run/commit mutation checks retained.
+    - M4 compute/action invariant: sequential `updateParameter` calls each return full state and preserve dependent expression updates.
+  - Local syntax validation run: `python -m py_compile scripts/fusion_bp_test_harness.py`.
+  - Added durable verification matrix doc: `scripts/FE_M3_M4_VERIFICATION.md`:
+    - Defines automated coverage scope, manual-only DOM checklist, pass criteria, and execution order.
+    - Explicitly marks limits of action-level harness vs full palette UI interaction testing.
+
+- Harness reporting ergonomics update in `scripts/fusion_bp_test_harness.py`:
+  - Added verified Windows clipboard copy of full test summary at run completion:
+    - primary `Set-Clipboard` + `Get-Clipboard` verify
+    - fallback `clip.exe` + `Get-Clipboard` verify
+  - Added timestamp line to summary body (`timestamp: ...`) for pasted-result clarity.
+  - Added timestamped report-file output under script-relative `_harness_reports`:
+    - live run path currently resolves to `%USERPROFILE%\AppData\Roaming\Autodesk\Autodesk Fusion 360\API\_harness_reports\`.
+  - Message box now includes clipboard/report status header so long results are reliably retrievable even if popup is not resizable.
+  - Re-synced harness to live Fusion Scripts path and verified hash match (`True`).
+
+- Harness cross-platform hardening in `scripts/fusion_bp_test_harness.py`:
+  - Added platform-aware BetterParameters module candidate path resolution:
+    - Windows live add-in path via `%APPDATA%`
+    - macOS live add-in path via `~/Library/Application Support/.../API/AddIns/...`
+  - Added env override `BP_HARNESS_BP_PATH` for explicit module target path.
+  - Added macOS clipboard path with verification (`pbcopy` write + `pbpaste` compare).
+  - Added env override `BP_HARNESS_REPORT_DIR` for explicit report output location.
+  - Existing Windows clipboard verification path retained.
+
+- Documentation parity update in `HANDOFF.md`:
+  - Added macOS harness sync + hash-verify commands.
+  - Added cross-platform report path notes.
+  - Added harness env override documentation.
+
+- Harness runtime bootstrap fix in `scripts/fusion_bp_test_harness.py`:
+  - Root-cause from latest run: BE `_design()` depends on BetterParameters module globals (`app`, `ui`) initialized by add-in `run(...)`; in script-only context those remained null.
+  - Added `_bootstrap_bp_runtime_globals(bp)` and call before design checks/actions to bind `bp.app = adsk.core.Application.get()` and `bp.ui = app.userInterface`.
+  - Re-synced harness to live Fusion Scripts path and verified hash match (`True`).
+
+- Harness robustness fix in `scripts/fusion_bp_test_harness.py`:
+  - Root-cause from live run: harness checked `activeProduct` presence, but BE actions require a true Fusion Design (`_design()`), so actions failed with "Open a Fusion design..." even when another product/workspace was active.
+  - Updated harness design gate to use BE-compatible design resolution and auto-open a Fusion Design document when needed.
+  - Updated parameter lookup helper to use resolved Design object (`design.userParameters`) instead of raw `activeProduct`.
+  - Re-synced harness to live Fusion Scripts path and verified hash match (`True`).
+
+- Canonical ownership clarification in `HANDOFF.md`:
+  - Replaced FE-only wording with explicit shared FE+BE ownership model for `scripts/fusion_bp_test_harness.py`.
+  - Defined FE responsibility (workflow/UX alignment), BE responsibility (action semantics/contracts), and same-change update requirement when behavior affects harness assertions.
+
+- Documentation process update in `HANDOFF.md`:
+  - Added required harness-sync procedure for `scripts/fusion_bp_test_harness.py` -> live Fusion Scripts path (`API\Scripts\fusion_bp_test_harness.py`) whenever harness changes.
+  - Added canonical copy command + required hash verification command.
+  - Added completion-gate requirement: harness changes are not complete until live copy + hash verification succeed.
+
+- Operational documentation update in `HANDOFF.md`:
+  - Added FE maintenance ownership and explicit responsibility to maintain `scripts/fusion_bp_test_harness.py` as contracts/features evolve.
+  - Added FE validation procedure requiring both offline pytest and in-Fusion harness execution for FE-affecting work.
+  - Added global completion gate: all applicable tests/harness checks must pass before any change is considered complete or shipped.
+
+- Added Fusion-runnable backend harness script: `scripts/fusion_bp_test_harness.py`.
+  - Runs directly inside Fusion Script environment and calls BetterParameters action dispatcher (`_handle_palette_action`) for production-path action checks.
+  - Coverage includes:
+    - `getBackendContractInfo`
+    - `seedTestParameters` / `resetTestState`
+    - `getParameterDependencyGraph`
+    - `importParameters` dry-run + commit (CSV temp file)
+    - `exportParametersPackage` + `importParametersPackage` dry-run (temp `.bpmeta.json`)
+    - `runSelfTestSuite` (smoke filter)
+  - Includes strict setup/cleanup, pass/fail aggregation, Fusion log output, and summary message box.
+  - Local syntax check completed: `python -m py_compile scripts/fusion_bp_test_harness.py`.
+
+- FE M7 contract/test infra wiring in `palette.html`:
+  - Added new BE actions to FE contract map/sets:
+    - Read-only: `getBackendContractInfo`, `getParameterDependencyGraph`, `runSelfTestSuite`
+    - Mutating (dev/test only, no production UI exposure): `seedTestParameters`, `resetTestState`
+  - Added startup feature-detection probe via `getBackendContractInfo` (`loadBackendContractInfo()`), cached in FE state for future gating.
+  - Added `errorCode`-aware cancel handling helper (`isDialogCancelledResponse`) and suppressed UI error status for `DIALOG_CANCELLED` in central `applyStateFromFusion(...)` and import/export flows.
+  - CSV import now uses `dryRun: true` preview first, confirmation prompt, then commit call with same `filePath` + `dryRun: false`.
+  - BP package import now uses `importParametersPackage` `dryRun: true` preview first, confirmation prompt, then commit with `dryRun: false`.
+  - Updated FE mock bridge to include new action fixtures, `dryRun` behavior, and `errorCode` values for cancellation/contract paths.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+  - Offline regression suite run: `277 passed`.
+
+- FE expression-field undo alignment fix in `palette.html`:
+  - Restructured expression cell markup so input+undo live in an inner `.dirty-field-shell.expression-input-shell`, with validation message in sibling `.expression-field-error`.
+  - Updated expression error-node lookup paths to resolve via nearest `.field-shell`, preserving validation/dirty-state behavior after markup split.
+  - Result: undo glyph stays aligned inside expression input even while validation message is visible.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- FE compute-mode behavior hardening (auto/manual parity) in `palette.html`:
+  - Auto mode: row save/apply button is now hidden (`body.compute-mode-auto`) while keeping field-level undo available.
+  - Added explicit body compute-mode classes (`compute-mode-auto` / `compute-mode-manual`) applied from both `setComputeMode(...)` and `applySettings(...)` for deterministic UI state.
+  - Auto mode blur guard: first outside click on a field undo button now skips blur-triggered auto-apply for that row, so discard intent wins.
+  - Added pending discard intent tracking (`pendingFieldDiscardRowKey`) with cleanup on mouseup/click to avoid stale suppression.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+  - Fusion stop/run validation required in-session (manual).
+
+- FE overflow hardening pass (medium-width, comments auto-hidden): implemented dynamic visible-column colspan sync in `palette.html`.
+  - Added `getVisibleTableColumnCount()` + `syncBodyColspansToVisibleColumns()`.
+  - `applyColumnWidths()` now re-syncs body `colspan` values after auto-hide class toggles.
+  - `renderParameters()` now uses dynamic `colspan` for empty/group rows and runs colspan sync after row render.
+  - Row drag indicator now uses dynamic `colspan` to match current visible columns.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+  - Fusion stop/run validation required in-session (manual).
+- FE live-debug + local harness setup (hybrid troubleshooting path #3):
+  - `palette.html`: added query bootstrap flags (`?mock=1`, `?layoutdebug=1`, optional `?fixture=...`) to enable mock bridge and startup debug mode.
+  - `palette.html`: added live Layout Debug overlay with `Ctrl+Alt+D` toggle; reports wrap/table widths, overflow deltas, visible headers, body colspans, and auto-hide flags.
+  - Added `dev_harness.html` in `BetterParameters/` to run palette in iframe with mock bridge, fixture selector, and adjustable width presets for fast repro.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+  - Fusion stop/run validation required in-session (manual).
+- FE medium-width overflow follow-up from live debug telemetry:
+  - Debug snapshot showed exact +6px overflow with equal column width sum (`wrap/table client=718`, `scroll=724`, visible headers=5, colspans=5), indicating non-content overhang.
+  - Root cause fixed in `palette.html`: rightmost visible header resizer overhang (`.column-resizer { right:-6px; }`) protruded beyond table width when comments column hidden.
+  - Added `is-last-visible-col` class assignment in `applyColumnWidths()` for the last visible resizable header and CSS override to pull resizer inside bounds (`right: 0`).
+  - Synced source -> live add-in via canonical `update_helper.py`.
+- FE debug UX refactor (hotkey-driven sidebar):
+  - Replaced floating Layout Debug popup with docked right-side Debug Hub sidebar (`layoutDebugSidebar`) so main table remains fully interactive.
+  - Hotkey toggle now supports `Ctrl+Alt+D` and fallback `Ctrl+Shift+D`; both enable/disable sidebar.
+  - Escape behavior updated: closes settings panel first, then debug sidebar when open.
+  - Moved `Metadata Debug` and `Status History` sections out of Settings into the Debug Hub sidebar (same action wiring, IDs preserved).
+  - Added persistent body class `hide-layout-debug-sidebar` and robust close binding for sidebar close button.
+  - Updated local harness note to reflect sidebar behavior.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+- FE debug sidebar placement update:
+  - Moved Debug Hub sidebar from right side to left rail flow (before main `.shell`) to match Text Tuner structural behavior.
+  - Updated debug sidebar styling to use left-rail constraints (`width: 280px`, `border-right`) so it no longer steals right-side space from table content.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+- FE hotkey + Esc sidebar controls:
+  - Added Text Tuner hotkey toggle: `Ctrl+Alt+T` (session visibility toggle).
+  - Expanded global Escape handling to dismiss Text Tuner and Debug sidebars when open (after modal/settings precedence handling).
+  - Added session-level Text Tuner visibility override (`textTunerSidebarSessionOverride`) so hotkey/Esc hide/show works without mutating persisted user preference.
+  - Refactored Text Tuner sidebar toggle flow into shared helpers for persistent preference toggle vs session-only toggle.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+- FE sidebar layout parity fix:
+  - `setLayoutDebugEnabled(...)` now triggers the same immediate table layout reflow behavior as Text Tuner toggles.
+  - On Debug sidebar show/hide, FE recomputes auto-fit columns (when enabled) and calls `applyColumnWidths()` so main table conforms immediately.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+- FE keyboard-toggle persistence update:
+  - Text Tuner keyboard-driven visibility changes now use the persisted settings path (`saveSettingsPartial`) rather than session-only override.
+  - `Ctrl+Alt+T` and Escape-based Text Tuner hide now persist visible/hidden state across reloads.
+  - Debug sidebar keyboard toggle already persists via `bp_layout_debug` local storage; retained.
+  - Removed now-unneeded Text Tuner session override state/helpers.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+- FE toolbar doc-name visibility fix:
+  - Removed artificial fixed clamp on top-left document label (`max-width: 160px`).
+  - Updated toolbar doc label to flexible fill (`flex: 1 1 auto; min-width: 0`) so it uses available toolbar space while preserving ellipsis when truly constrained.
+  - Neutralized spacer growth in top toolbar (`.toolbar-spacer` no longer consumes free width).
+  - Synced source -> live add-in via canonical `update_helper.py`.
+- FE discard UX refactor (row-level -> per-field undo):
+  - Removed literal row-level `Discard` button from parameter rows (UI removed; logical discard retained).
+  - Added inline per-field undo buttons (`↶`) inside dirty `name`, `expression`, and `comment` fields.
+  - Each field undo now discards only that field back to its saved value and leaves other dirty fields untouched.
+  - Added new helper `discardRowFieldDraft(row, fieldKey, options)` and click wiring via `data-discard-field`.
+  - Added async hardening for name/expression field undo (debounce clear + validation request nonce invalidation for name, preview/validation nonce invalidation for expression).
+  - Synced source -> live add-in via canonical `update_helper.py`.
+- M3 FE timeline-sort command implementation:
+  - Added rail action button `timelineSortButton` (icon button) in main parameter rail.
+  - Added FE handler `sortByTimelineOrder()` calling BE action `sortByTimelineOrder`.
+  - Added local-edit safety guard: command is blocked while unsaved row edits exist.
+  - Timeline-sort command now clears active header lexical sort state before apply so timeline ordering is visible immediately.
+  - On command failure, previous header sort state is restored.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+- M6 validation closure:
+  - User confirmed package export/import behavior functions as expected in Fusion.
+  - M6 considered resolved.
+
+## Milestone Checklist (Parity Plan)
+
+Legend:
+- Owner: `FE`, `BE`, or `FE+BE`
+- Status: `[ ]` not started, `[-]` in progress, `[x]` done
+
+### M1 - Quick UX Parity (P0)
+
+- [x] **Info (i) Help Button**
+  - Owner: `FE`
+  - Scope: Add header icon button that opens Fusion Parameters reference URL.
+  - Done when: button exists, tooltip present, URL opens reliably.
+
+- [x] **Column Header Sort (within group)**
+  - Owner: `FE`
+  - Scope: Click header toggles asc/desc lexical sort for `Name`, `Expression`, `Value`, `Comments`.
+  - Done when: sort is stable, reversible, and does not reorder across groups.
+
+- [x] **Favorites Filter Mode**
+  - Owner: `FE`
+  - Scope: Add explicit "Favorites only" filter mode (independent of Favorites synthetic group rendering).
+  - Done when: toggle isolates favorites and can be disabled without state loss.
+
+- [x] **User Parameters Filter Toggle**
+  - Owner: `FE`
+  - Scope: Add explicit user-params filter control for parity clarity.
+  - Done when: toggle exists and behavior is deterministic/documented.
+
+### M2 - Core Row Editing Parity (P1)
+
+- [!] **Inline Unit Edit** — BLOCKED
+  - Owner: `FE+BE`
+  - FE Scope: Click unit cell -> unit picker in-row; reuse picker UI.
+  - BE Scope: `validateUnitChange` + `updateParameterUnit` implemented but **removed from normative API** — not callable from palette.
+  - Blocked reason: Fusion native UI mutates unit in-place (token survives, BP attributes survive). Python API exposes no equivalent — `UserParameter.unit` is read-only. Our delete+recreate workaround changes the token, destroys metadata, and is not equivalent to native behavior.
+  - Unblock condition: Autodesk exposes in-place unit mutation in the Python API.
+  - FE unit cell: display-only until unblocked.
+
+- [x] **Inline Name Edit**
+  - Owner: `FE+BE`
+  - FE Scope: Editable Name cell with row-level dirty/save/revert/discard behavior.
+  - BE Scope: `renameParameter` action - **DONE**. Entity token stable across rename.
+  - Done when: case-sensitive uniqueness enforced, rename updates row state correctly.
+
+- [x] **Row Multi-Select Foundation**
+  - Owner: `FE`
+  - Scope: Ctrl/Shift select model, selected count state, visual row selection.
+  - Done when: selection model is stable and available to batch actions.
+
+### M3 - Action Parity (P2)
+
+- [x] **Copy Parameter (single + multi)**
+  - Owner: `FE+BE`
+  - FE Scope: Add copy command(s) using current selection model.
+  - BE Scope: `copyParameter` action - **DONE**. Auto-generates `{name}_copy` name if `targetName` omitted.
+  - Done when: copies created predictably for single and multi-select flows.
+  - Status note: FE UI wiring + Fusion UX validation complete.
+
+- [x] **Delete Parameter (single + multi parity)**
+  - Owner: `FE+BE`
+  - FE Scope: Batch delete UX + confirmation prompt with item count.
+  - BE Scope: `deleteParameters` (batch) action - **DONE**. Partial success supported.
+  - Done when: deletes complete without orphaned UI state.
+  - Status note: FE UI wiring + Fusion UX validation complete.
+
+- [x] **Sort in Timeline Order**
+  - Owner: `FE+BE`
+  - FE Scope: Add command toggle/button and render returned order.
+  - BE Scope: `sortByTimelineOrder` action - **DONE**. Uses `design.userParameters` creation order.
+  - Done when: order matches Fusion timeline expectation.
+  - Status note: FE command is implemented and action-level validation is green in harness.
+
+### M4 - File Flows + Compute Model (P3)
+
+- [x] **Export Parameters**
+  - Owner: `FE+BE`
+  - FE Scope: Export trigger + user feedback.
+  - BE Scope: `exportParameters` action — **DONE**. Serializes to CSV; native save dialog or explicit `filePath`.
+  - Done when: exported file re-imports cleanly.
+  - Decision: CSV only. Local filesystem via native OS dialog only. Cloud file management is out of scope.
+  - Status note: validated in Fusion + covered by harness export checks.
+
+- [x] **Import Parameters**
+  - Owner: `FE+BE`
+  - FE Scope: Import trigger + conflict presentation.
+  - BE Scope: `importParameters` action — **DONE**. Parse + validate + merge; `conflictPolicy: skip|overwrite`.
+  - Done when: import handles conflicts/invalid rows without data corruption.
+  - Decision: CSV only. Local filesystem via native OS dialog only. Cloud file management is out of scope.
+  - Finalized UX: show conflict policy picker on every import; labels `Skip existing` / `Overwrite existing`; if no explicit user selection, FE sends default `skip`.
+  - Status note: validated in Fusion + covered by harness dry-run/conflict-policy checks.
+
+- [-] **Automatic Compute / Apply Queue Mode**
+  - Owner: `FE+BE`
+  - FE Scope: Mode toggle, queued-change UI, row-level `Apply` (renamed from Save), global `Apply All`, global `Discard All`.
+  - BE Scope: No new actions required — **DONE**. All commits use existing `updateParameter`. Discard is FE-only. BE wiring spec documented in `BACKEND_API.md` under Usage Patterns.
+  - Done when: mode behavior is explicit, testable, and does not silently drop edits.
+  - Finalized behavior:
+    - Auto mode: apply on `Enter` and on blur when valid.
+    - Auto mode invalid edits: keep dirty and show error until fixed or discarded.
+    - Manual mode: keep row-level apply, plus global `Apply All` and `Discard All`.
+    - `Apply All` is FE-disabled while any dirty row is currently invalid.
+    - Runtime row failures during `Apply All` handled gracefully (see Finalized Runtime Partial-Failure Spec below).
+    - **BE critical note**: FE must call `applyState(response.state)` after each `updateParameter` in Apply All loop — parameters reference each other; state must stay current between rows.
+  - Status note: action-level checks green; final UI/manual behavior checklist still open.
+
+## Dependencies / Order
+
+1. `M1` before `M2` (safe UX improvements first).
+2. `M2 multi-select` before `M3 copy/delete` (batch actions depend on it).
+3. `M3` before `M4 import/export/compute` (reduce complexity before big behavior shifts).
+
+## Blocked / Questions
+
+- No open FE decision blockers at this time.
+- **M2 Inline Unit Edit** — blocked. `validateUnitChange` and `updateParameterUnit` are not callable from palette. See M2 entry above.
+- Startup render regression (theme flicker + first-paint column/overflow instability) is resolved and shipped.
+- `// REVIEW` follow-ups in FE:
+  - keep/retire mock bridge strategy (`window.__BP_USE_MOCK_BRIDGE`)
+  - ensure `BACKEND_API.md` stays aligned with blocked unit-edit policy
+
+## Next Session Start Point
+
+- Resume FE closure in this order:
+  1. Complete M4 compute-mode manual DOM verification:
+     - Auto/manual behavior checklist from `scripts/FE_M3_M4_VERIFICATION.md`.
+  2. Mark checklist done and ship once manual DOM checks pass.
+
+## Finalized Runtime Partial-Failure Spec (Apply All)
+
+- FE executes `Apply All` in two phases:
+  1. FE pre-validates all dirty rows.
+  2. FE applies rows sequentially in stable visible order.
+- FE tracks per-row result state: `pending | applied | failed | skipped`.
+- FE clears dirty state only for successfully applied rows.
+- FE keeps failed rows dirty with visible row-level error.
+- FE shows end-of-run summary:
+  - `Applied: X`
+  - `Failed: Y`
+  - `Skipped: Z`
+  - expandable failed details (row/name/reason when available)
+- FE writes summary + details to Status History.
+- FE offers follow-up actions: `Retry Failed`, `Discard Failed`, `Close`.
+- FE only hard-stops whole batch on transport/contract failure (bridge down, malformed envelope, `apiVersion` mismatch); normal row action errors do not stop remaining rows.
+
+## Recent Done
+
+- **M7 BE test infrastructure complete** (BetterParameters.py + BACKEND_API.md + new test files):
+  - `_import_parameters(data, dry_run=False)` and `_import_parameters_package(data, dry_run=False)`: full dry_run support. Validation/decision logic runs; mutations skipped when dry_run=True.
+  - `importParametersPackage` dispatch: `dryRun` field read, reflected in response, `state: null` when dry_run.
+  - `_get_parameter_dependency_graph()`: tokenizes user parameter expressions, returns nodes/edges for known parameter references.
+  - `_get_backend_contract_info()`: returns contractVersion, schema versions, full readOnly/mutating action lists.
+  - `_seed_test_parameters(data)`: create/update `_bptest_*` parameters in design (auto-prefix enforced).
+  - `_reset_test_state(data)`: delete all `_bptest_*` parameters; requires `confirm: "RESET"` guard.
+  - Self-test framework: `_BPTestContext`, `_bptest_smoke_*` functions (5 smoke tests), `_BP_TEST_REGISTRY`, `_run_self_test_suite(data)`.
+  - Dispatch branches added: `getParameterDependencyGraph`, `getBackendContractInfo`, `seedTestParameters`, `resetTestState`, `runSelfTestSuite`.
+  - Error taxonomy: `BPError` + 5 subclasses, all ERROR_* constants, `errorCode` in all `ok:false` responses.
+  - Offline test suite: 277 tests passing across 13 test files. New files: `test_error_codes.py`, `test_dependency_graph.py`, `test_dry_run.py`, `test_contract_info.py`, `test_seed_reset.py`.
+  - `BACKEND_API.md`: TOC updated, 5 new action sections (dependency graph, contract info, seed, reset, self-test), errorCode table in Error Handling section, M7 migration entry.
+  - Synced to live add-in.
+
+- FE medium-width overflow root-cause fix in `palette.html`:
+  - Auto-hide comments CSS previously hid only header `.comment-col` and left body `td.comments-cell` in layout.
+  - Added body-cell hiding for both manual and auto comment-hide modes:
+    - `.hide-comment td.comments-cell { display: none; }`
+    - `body.auto-hide-comments td.comments-cell { display: none; }`
+  - This removes residual comments-column width contribution that could still trigger horizontal scrollbar when comments were considered hidden.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- FE overflow hardening follow-up in `palette.html` (medium-width non-narrow mode):
+  - Hidden main columns now get explicit `0px` header widths in addition to `display:none` class toggles.
+  - Auto-hidden comments header now gets explicit `0px` width instead of style reset.
+  - Prevents ghost/stale width contribution from previously visible columns during mode transitions, reducing horizontal scrollbar reappearance at medium widths.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- FE medium-width overflow regression fix in `palette.html`:
+  - In non-narrow view, `applyColumnWidths()` now clamps `name + expression` widths to the current container before optional-column visibility calculation.
+  - Prevents explicit header widths from forcing horizontal overflow when comments auto-hide and persisted/autofit widths are oversized.
+  - Clamp trims expression first, then name, while honoring `COLUMN_MIN_PX` minimums.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- FE flow-order polish in `palette.html` for Parameter Files:
+  - Swapped CSV button order to `Export CSV` then `Import CSV`.
+  - Reordered BP package controls to export-first flow:
+    - `Package Export Includes` + `Export Package`
+    - then `Package Import` policy/options + `Import Package`
+  - Kept existing control IDs and listeners unchanged (behavior-only layout reorder).
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- FE default change in `palette.html`: all BP package import/export options now default enabled.
+  - Import defaults enabled: `applyExpressionsUnits`, `applyComments`, `applyGroups`, `applyFavorites`, `applyOrder`.
+  - Export defaults enabled: `includeComments`, `includeGroups`, `includeFavorites`, `includeOrder`.
+  - Updated both runtime defaults (`getDefaultPackageImportOptions` / `getDefaultPackageExportOptions`) and initial checkbox markup `checked` state.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- FE bugfix: package checkbox immediate-uncheck regression in `palette.html`:
+  - Root cause: package option normalizers forced non-default flags to `false` when BE settings payload omitted package fields.
+  - Affected flags: `applyExpressionsUnits`, `applyOrder`, `includeOrder` (and related fallback behavior).
+  - Fix: normalize package import/export options using property-presence checks and fallback values, so missing fields preserve current/default state instead of resetting.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- M6 package settings persistence hardening in `palette.html`:
+  - Moved package import/export preferences under `state.settings` for consistency with other settings flows.
+  - Added persistence attempts via `saveSettingsPartial(...)` on package-setting changes:
+    - `packageConflictPolicy`
+    - `packageImportOptions`
+    - `packageExportOptions`
+  - Added local fallback persistence (`localStorage`, key: `bp_package_ui_prefs`) so user-selected package settings are remembered even when backend does not yet persist these fields.
+  - Added status-history warning when backend settings save rejects/ignores package fields, explicitly noting local fallback is in use.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- M6 FE messaging hardening in `palette.html`:
+  - Improved package-import confirmation dialog with explicit context:
+    - skip reason (`skip` policy vs no-op rows under selected apply knobs)
+    - what "potential issues" means
+    - preview warning snippets
+    - definite failed-row snippet lines when present
+  - Added matching explanatory lines to package preflight summary panel for skip reason and potential-issue meaning.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- M6 FE wiring completed in `palette.html` for BP metadata package flows:
+  - Added new BE action wiring:
+    - `exportParametersPackage` (read-only)
+    - `validateParametersPackageImport` (read-only preflight)
+    - `importParametersPackage` (mutating + `applyState(...)`)
+  - Added Parameter Files settings UI for BP package:
+    - package conflict policy (`skip|overwrite|merge-safe`)
+    - import knobs (`applyExpressionsUnits`, `applyComments`, `applyGroups`, `applyFavorites`, `applyOrder`)
+    - export include knobs (`includeComments`, `includeGroups`, `includeFavorites`, `includeOrder`)
+    - new buttons: `Import Package`, `Export Package`
+  - Implemented recommended import flow:
+    1. preflight call to `validateParametersPackageImport`
+    2. preview summary shown (add/update/skip/potential issues + caution warnings + failed rows)
+    3. user confirm
+    4. execute `importParametersPackage` using resolved `filePath`
+    5. apply returned state
+  - Added cancel-silent handling for package import/export dialog cancellations.
+  - Added summary/detail messaging aligned to FE wording conventions:
+    - success: `Import complete. Added X, updated Y, skipped Z.`
+    - optional `Failed: W` and `Rows needing attention` row list.
+    - export success: `Export complete. Wrote X parameters.`
+  - Extended mock bridge fixtures for M6 action paths (cancel/success/warnings/partial/all-fail variants) to support FE fixture testing.
+  - Synced source -> live add-in via canonical `update_helper.py` after each FE edit batch.
+
+- **M6 metadata package export/import BE complete** (BetterParameters.py + BACKEND_API.md):
+  - New constant `BPMETA_SCHEMA_VERSION = 1`.
+  - New helpers: `_normalized_conflict_policy`, `_extract_apply_knobs`, `_parse_bpmeta_package`, `_open_package_save_dialog`, `_open_package_open_dialog`, `_apply_package_display_order`.
+  - `exportParametersPackage`: writes `.bpmeta.json` with opt-in metadata fields (comments/groups/favorites/order). Advisory `metadataRevision`/`metadataChangedAt` always included.
+  - `validateParametersPackageImport`: preflight only, no mutations. Opens OS dialog, returns `preview` (addCount/updateCount/skipCount/potentialFailCount/warnings/failedRows) + resolved `filePath`.
+  - `importParametersPackage`: applies package with per-field knobs. Separates `importedCount` (new) from `updatedCount` (updated). Conflict policies: `skip`/`overwrite`/`merge-safe`. Order application non-fatal.
+  - Dispatch branches added for all three actions.
+  - `BACKEND_API.md`: TOC, action sections, `BP Meta Package Format`, `Package Conflict Policies`, M6 migration guide entry.
+  - Synced to live add-in. Fusion validation pending.
+
+- FE settings layout fix in `palette.html`:
+  - Fixed Parameter Files `Import Conflict Policy` label/dropdown overlap by giving that row a dedicated inline-select grid layout (`.toggle-row-inline-select`).
+  - Dropdown now uses stable `minmax(0, 1fr)` sizing with `min-width: 0` to prevent clipping/overlap in narrow panel widths.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- M4 FE wording pass (option `Clean + Neutral`) in `palette.html`:
+  - Import status now: `Import complete. Added/updated X, skipped Y, failed Z.`
+  - Export status now: `Export complete. Wrote X parameters.`
+  - Apply All summary now uses the same clean pattern (`Applied X, failed Y, skipped Z`).
+  - Unified failure detail header to `Rows needing attention` (import details + Apply All status-history details).
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- FE shift-range selection text-highlight hardening in `palette.html`:
+  - Added transient `body.range-selecting` mode scoped to `#parameterRows` to suppress native text selection only during Shift range gestures.
+  - Shift range selection now claims gesture on `mousedown` (capture) and clears document text selection so row-range select no longer paints highlighted UI text.
+  - Added cleanup hooks to always exit range-selecting mode on `mouseup`, `window blur`, `keyup` (Shift release), and `visibilitychange`.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- Operational procedure update in `HANDOFF.md`:
+  - Added `Post-Ship User Notification` rule:
+    - default user message after successful ship is minimal: `shipped. release: <version link>`
+    - omit extra ship metadata unless user explicitly requests details.
+
+- Patch ship completed: `v0.4.36` released.
+  - Canonical ship script executed with patch bump and Fusion-tested flag; flow completed through version bump, commit/tag, push, deterministic package build, and GitHub release publish.
+  - Release URL: `https://github.com/macifoxispurple/FusionBetterParameters/releases/tag/v0.4.36`
+  - Artifact: `%USERPROFILE%\Documents\Codex\OpenParameters\_releases_packages\BetterParameters-0.4.36.zip`
+
+- FE modifier-wheel reliability follow-up in `palette.html`:
+  - Expanded modifier+wheel routing to all parameter-table row contexts (including group rows), not just editable-field targets.
+  - Normalized Shift+wheel handling so modifier-held scrolling remains vertically reliable in table viewport.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- FE modifier+wheel scroll routing in `palette.html`:
+  - Added non-passive capture `wheel` handler on parameter rows for editable-field targets with modifier keys held.
+  - Wheel delta is converted to pixels and applied to `.table-wrap` scroll, preserving window scroll interaction while modifier-selection mode is active.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- FE modifier-selection click de-dupe fix in `palette.html`:
+  - Added one-shot row-click suppression token (`suppressNextRowClickSelectionKey`) so modifier-in-field selection handled on `mousedown` is not immediately canceled/toggled by subsequent `click`.
+  - Ensures row selection state actually changes on modifier field-click gestures.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- FE multi-select gesture hardening in `palette.html`:
+  - Added modifier-aware editable-field interception (`mousedown`, capture phase) so Ctrl/Cmd/Shift selection does not enter field edit focus.
+  - Added one-shot focus suppression guard (`suppressNextFieldFocus`) in `focusin` to preserve multi-selection state during modifier selection gestures.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- FE favorites-origin scroll anchor fix in `palette.html`:
+  - Scroll-anchor restore no longer falls back from a missing Favorites row to the duplicate non-favorites row with the same key.
+  - Prevents jump-to-lower-group when un-favoriting directly from Favorites group.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- FE favorites-boundary stripe refinement in `palette.html`:
+  - Favorites-row stripe phase now adjusts so the last favorites row contrasts with the first non-favorites phase.
+  - Preserves non-favorites phase stability while removing same-color blend at Favorites -> next-group boundary.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- FE zebra striping refinement in `palette.html`:
+  - Implemented hybrid stripe phase:
+    - non-favorites groups stripe continuously across group boundaries
+    - Favorites synthetic group uses isolated phase so favorite add/remove does not re-phase rows below
+  - Fix addresses same-color adjacency around group boundaries while preserving favorites-toggle stability.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- FE zebra-striping correction in `palette.html`:
+  - Replaced key-hash stripe parity with per-group index alternation.
+  - Restores proper adjacent zebra pattern while keeping groups phase-stable when Favorites group is inserted/removed.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- FE zebra-stripe stability hardening in `palette.html`:
+  - Replaced render-order stripe parity with stable key-based parity (`getStableStripeClassForKey`).
+  - Prevents global stripe flipping when favorites group rows are inserted/removed at top.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- FE favorites scroll-stability hardening in `palette.html`:
+  - Added table scroll-anchor capture/restore for favorite toggle actions so viewport remains stable when favorites rows are inserted/removed.
+  - Anchor uses parameter key + row top offset; restores same-row alignment post-render (fallback to previous `scrollTop` if row not present).
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- Patch ship completed: `v0.4.35` released.
+  - Canonical ship script executed with patch bump and Fusion-tested flag; flow completed through version bump, commit/tag, push, deterministic package build, and GitHub release publish.
+  - Release URL: `https://github.com/macifoxispurple/FusionBetterParameters/releases/tag/v0.4.35`
+  - Artifact: `%USERPROFILE%\Documents\Codex\OpenParameters\_releases_packages\BetterParameters-0.4.35.zip`
+
+- FE UI polish patch in `palette.html`:
+  - Header sort glyph moved to right side of each sortable column title on the same line (`header-main` wrapper layout).
+  - Parameter-row name feedback line now collapses when empty; clean rows keep name editor vertically centered.
+  - Synced source -> live add-in via canonical `update_helper.py`.
+
+- Patch ship completed: `v0.4.34` released.
+  - Canonical ship script executed with patch bump and Fusion-tested flag; flow completed through version bump, commit/tag, push, deterministic package build, and GitHub release publish.
+  - Release URL: `https://github.com/macifoxispurple/FusionBetterParameters/releases/tag/v0.4.34`
+  - Artifact: `%USERPROFILE%\Documents\Codex\OpenParameters\_releases_packages\BetterParameters-0.4.34.zip`
+
+- FE M1 + M2 completion pass implemented in `palette.html` (synced source->live after each FE edit batch):
+  - M1 completed to `[x]`:
+    - Column-header sorting preserved (asc/desc/off) with within-group ordering.
+    - Favorites-only and User-only rail filter modes present and deterministic.
+  - M2 Inline Name Edit completed to `[x]`:
+    - Added inline name cell editor (`.param-name-input`) with row-level name validation and inline error messaging.
+    - Added name dirty-state into row draft capture/rehydration and row save/discard lifecycle.
+    - Row apply now supports rename+update flow: `renameParameter` (when name dirty) then `updateParameter` (expression/comment), both through standard `applyState(...)`.
+    - Expression preview/validation now prefers inline draft name context for self-reference correctness during rename.
+  - M2 Row Multi-Select Foundation completed to `[x]`:
+    - Added multi-select state (`selectedRowKeys`, `selectionAnchorKey`).
+    - Added Ctrl/Cmd toggle and Shift range-select behavior over visible unique parameter rows.
+    - Added explicit selected-count chip in the rail (`N selected`).
+  - Hardening while implementing:
+    - Apply All invalid gating now includes invalid name rows in addition to expression-invalid rows.
+    - Apply All fatal transport row now increments failed count for accurate summary totals.
+
+- **M5a+M5b model parameter support complete** (BetterParameters.py + BACKEND_API.md):
+  - Added `_created_by_label`, `_find_model_parameter_by_token`, `_collect_model_parameters` helpers.
+  - `_current_state_payload` now includes `"modelParameters": _collect_model_parameters()` — sorted case-insensitively by name, root component only, `isDeletable: false`.
+  - `_update_model_parameter` handler added; dispatched on `"updateModelParameter"`. Accepts `key` (preferred) or `name` fallback, `expression` (required), `comment` (optional). Returns full State Payload. Name/unit read-only, no revert history tracked.
+  - `setParameterFavorite` fixed to use `design.allParameters` (covers both user and model params).
+  - `BACKEND_API.md`: `modelParameters` field added to State Payload shape; `ModelParameter Object` section added; `updateModelParameter` action section added; M5 migration guide entry added.
+  - Assumption: `design.rootComponent.modelParameters` (root only) is the correct scope. Sub-component model params not surfaced.
+  - Assumption: `createdBy` uses `getattr(creator, "name", None)` with full exception guard — handles all Fusion creator object types without type-specific casting.
+  - Synced to live add-in. Fusion validation pending.
+
+- BE hardening and maintainability pass complete (BetterParameters.py + BACKEND_API.md):
+  - **Fixed (critical):** Removed `validateUnitChange` and `updateParameterUnit` dispatch branches from `_handle_palette_action`. Both were reachable/callable despite being supposed to be dormant. Implementations remain in file; not callable from palette.
+  - **Fixed:** `_save_settings` accepted `updateCheck` from FE request payload. Blocked — `updateCheck` is now only written by internal update-check code.
+  - **Fixed:** `setParameterFavorite` used `design.userParameters.itemByName` instead of `design.allParameters.itemByName`. Now searches all parameters for model-parameter support.
+  - **Fixed:** `_normalized_group_ui_state` allowed empty strings through into `groupUi.order`. Now filters them — `""` can no longer appear in the group order array.
+  - **Fixed:** Removed unused `urllib.error` import and redundant local `shutil` re-import inside `_download_release_asset`.
+  - **Flagged:** `_release_notes_html` defined but never called — marked `# REVIEW:`.
+  - **BACKEND_API.md:** Removed `validateUnitChange`/`updateParameterUnit` from TOC and normative sections; added removal + migration notice; fixed false `downloadAndStageUpdate` intermediate-push claim; updated `setParameterFavorite` constraint note.
+- FE maintainability refactor completed: centralized action names in `palette.html` via `ACTION` constant map.
+  - Replaced duplicated action string literals across:
+    - `NORMATIVE_ACTIONS`, `MUTATING_ACTIONS`, `READ_ONLY_OR_VALIDATION_ACTIONS`
+    - all `sendToFusion(...)` call sites
+    - mock-bridge action comparisons
+    - `applyStateFromFusion(..., { action })` context literals
+  - Result: reduced typo-drift risk and improved FE contract consistency without behavior change.
+- Patch ship completed: `v0.4.33` released.
+  - Canonical ship script executed with patch bump and Fusion-tested flag; flow completed through version bump, commit/tag, push, and deterministic package build.
+  - Release notes gate required curated notes; GitHub release then created for existing tag/artifact with authored highlights.
+  - Release URL: `https://github.com/macifoxispurple/FusionBetterParameters/releases/tag/v0.4.33`
+  - Artifact: `%USERPROFILE%\Documents\Codex\OpenParameters\_releases_packages\BetterParameters-0.4.33.zip`
+- Init regression hotfix after hardening pass:
+  - Restored bridge response compatibility for environments returning string envelopes from `fusionSendData`.
+  - `parseBridgePayload(...)` now accepts both object and JSON-string envelopes; invalid JSON still fails loudly.
+  - Added one-time status-history warning when string-envelope fallback is used (to preserve contract drift visibility without log spam).
+- FE self-review hardening pass completed in `palette.html` (bug/risk reduction, no feature additions):
+  - Removed dead no-op status-clear helpers and all call sites; cleaned dangling/empty listener bodies introduced by prior rollback.
+  - Bridge contract hardening:
+    - `fusionSendData` response handling now expects parsed object envelopes only (no response-side JSON.parse).
+    - Added unified push handler `handleFusionPush(...)` and registered both `window.fusionJavaScriptHandler.handle` and `window.fusionReceiveData` before startup `ready`.
+    - Push path always parses `dataString` payload before processing.
+  - State application hardening:
+    - `applyState(payload)` now guards invalid/non-object payloads and `apiVersion` mismatch (`API_VERSION_EXPECTED`) before applying.
+  - Apply All resilience:
+    - Added transport/contract failure classification in row apply path; Apply All now hard-stops on fatal transport/contract failures while continuing on row-level failures.
+  - Async/timer hardening:
+    - Added row async request invalidation helper; discard now clears row debounce timer and invalidates stale preview/validation responses.
+    - Added `beforeunload` timer cleanup for active UI timers to reduce late callbacks after palette close/unload.
+    - Replaced repeated debounce/close-delay magic values with named constants.
+  - Import/Export UX correctness:
+    - Removed implicit persisted import conflict policy state; default remains `skip` unless user changes in-session.
+    - Export cancel and import cancel now return silently (no cancel toast/error status).
+  - Maintainability:
+    - Replaced repeated comments-column width magic literal with `COMMENTS_MIN_WIDTH_PX`.
+    - Added explicit `// REVIEW` flags for larger deferred concerns (action literal centralization and BACKEND_API.md drift on blocked unit-change actions).
+- Patch ship completed: `v0.4.32` released.
+  - Canonical ship script executed with patch bump and Fusion-tested flag; flow completed through version bump, commit/tag, push, and deterministic package build.
+  - Release notes gate required curated notes; GitHub release then created for existing tag/artifact with authored highlights.
+  - Release URL: `https://github.com/macifoxispurple/FusionBetterParameters/releases/tag/v0.4.32`
+  - Artifact: `%USERPROFILE%\Documents\Codex\OpenParameters\_releases_packages\BetterParameters-0.4.32.zip`
+- M2 unit-edit FE revert completed in `palette.html` (blocked-path removal):
+  - Removed FE contract wiring for `validateUnitChange` and `updateParameterUnit` (normative/read-only/mutating action sets).
+  - Removed row-level unit edit trigger/click branch and deleted `editRowUnit(...)` implementation.
+  - Unit cell reverted to display-only text with explanatory tooltip:
+    - unit immutable after creation
+    - cross-unit expression literals (example `5 ft` on `mm`) are valid and auto-convert.
+  - Removed remaining mock-bridge unit-change validation reference for clean FE alignment.
+  - No cross-unit literal blocking added to expression flow; existing `validateExpression` path remains unchanged.
+- Patch ship completed: `v0.4.31` released.
+  - Canonical ship script executed with patch bump and Fusion-tested flag; flow completed through version bump, commit/tag, push, and deterministic package build.
+  - Release notes gate required curated notes; GitHub release then created for existing tag/artifact with authored highlights.
+  - Release URL: `https://github.com/macifoxispurple/FusionBetterParameters/releases/tag/v0.4.31`
+  - Artifact: `%USERPROFILE%\Documents\Codex\OpenParameters\_releases_packages\BetterParameters-0.4.31.zip`
+- FE overflow hardening follow-up implemented in `palette.html` after user validation:
+  - Root fix: switched table-width/container calculations from `offsetWidth` to `clientWidth` via `getTableWrapInnerWidth()` to avoid scrollbar-gutter induced horizontal overflow.
+  - Non-narrow table width now pinned to current wrap inner width (`table.style.width = containerWidth`) for deterministic no-overflow startup render.
+  - Propagated width-source fix across startup/init and resize/drag paths (`buildAutoFitColumnWidths`, `applyColumnWidths`, startup initial-layout pass, post-push narrow auto-fit guard, column-resize max clamp).
+  - Added missing re-layout path on comment-column toggle (apply + rollback) so column visibility changes cannot leave stale width math.
+  - Text tuner rerender now respects startup stabilization gate (`scheduleInitialLayoutPass` before initial completion).
+- FE startup-render stabilization implemented in `palette.html`:
+  - Added single-startup theme precedence resolution (`fusionTheme` preferred) before first settings apply to prevent light/dark re-toggle race.
+  - Added deferred one-shot `scheduleInitialLayoutPass()` (double-rAF) for first stable width measurement/render.
+  - Added startup width reconciliation path:
+    - `autoFitColumns=true`: recompute from live DOM in first stable pass.
+    - `autoFitColumns=false`: clamp persisted widths to container via `clampColumnsToContainer(...)`.
+  - Hardened width application:
+    - clear stale `table.style.width` before recompute.
+    - removed incorrect hidden-key mapping that treated comments-hidden as expression-hidden in resize math.
+  - Deferred early layout during `load` bootstrap + gated resize auto-fit until initial layout stabilization completes.
+  - Result intent: eliminate cold-start dark-theme flicker, first-paint column instability, and initial horizontal overflow.
+- Startup render regression diagnosis completed in `palette.html` (no code changes yet), with concrete root-cause chain and implementation plan:
+  - Theme flicker source: startup applies theme multiple times from competing sources/order (`localStorage` bootstrap -> `applySettings(payload.settings.theme)` -> one-time `fusionTheme` override), causing visible light/dark relayout on cold start.
+  - Initial layout instability source: first `applyColumnWidths()` runs before parameter rows exist and before final startup state settles; later startup passes reuse differing container snapshots and conditional auto-fit triggers.
+  - Initial overflow source: persisted/stale column widths can exceed first-paint container; startup path does not run the same deterministic fit pass as manual refresh, so expression/comments proportions and horizontal overflow begin unstable.
+  - Planned durable fix direction: single startup theme authority + gated initial layout pass + width reconciliation using one measured container snapshot.
+- Documentation update: recorded new startup render regression (dark-mode flicker + initial column/overflow instability) and prioritized stabilization plan before feature continuation.
+- Wide/narrow stability regression fix implemented in `palette.html` (pending Fusion validation):
+  - Wide view comments no longer show narrow-only `Type: User Parameter` content.
+  - Added local row draft preservation/rehydration across backend-driven full table re-renders.
+  - Added push-state queue while local edits are dirty; queued push applies after save/discard.
+  - Removed timer-driven expression status clearing and hardened async validation/preview against stale value responses.
+  - Follow-up hardening: manual `refresh` responses are now queued while local edits are dirty, and draft preservation remaps by parameter name when row keys shift across refresh.
+- Unit change behavior research complete (`tests/unit_change_step1_capture.py` + `step2_compare.py`):
+  - Native Fusion Parameters UI changes unit in-place: entity token survives, BP metadata attributes survive.
+  - Python API has no equivalent — `UserParameter.unit` is read-only.
+  - `updateParameterUnit` and `validateUnitChange` removed from normative API (implementations kept in file, not callable from palette).
+  - M2 Inline Unit Edit blocked pending Autodesk exposing in-place mutation in Python API.
+  - FE unit cell must be reverted to display-only; any wiring to `validateUnitChange`/`updateParameterUnit` must be removed.
+- M2 FE slice started (inline unit edit):
+  - Unit cell is now clickable in parameter rows.
+  - FE now calls `validateUnitChange` before commit and `updateParameterUnit` for apply, then applies returned full state.
+  - Current FE UX is prompt-based entry for unit token (functional baseline) pending picker-style refinement.
+  - NOTE: This FE work must be reverted — unit edit is now blocked (see above).
+- M1 parity slice state (code complete, Fusion validation pending in this session):
+  - Header sort click cycle (`asc -> desc -> off`) implemented for sortable headers.
+  - Explicit rail filters implemented: user-only toggle and favorites-only toggle.
+  - Group-preserving sort behavior implemented (sort within each group, not across groups).
+- Source->live sync completed via `update_helper.py`; live `palette.html` timestamp now matches source for Fusion validation run.
+
+- M1 FE slice implemented in `palette.html` (pending Fusion validation):
+  - Added explicit rail toggles for user-only filter and favorites-only filter.
+  - Added header click sorting with asc/desc/off cycle and visual sort indicators.
+  - Sorting is applied within each rendered group (including Favorites synthetic group), preserving group boundaries.
+- Startup actions completed for this context: read `HANDOFF.md` then `CONTEXT.md`, verified canonical paths/procedures, and prepared to continue implementation.
+- Session checkpoint created for safe interruption/resume at low remaining token budget.
+- FE help integration completed for BE `openHelpUrl`: Info button now calls `sendToFusion("openHelpUrl", { url })`; action is listed in FE normative + read-only sets; `ok:false` shows non-blocking status.
+- BE implementation: `openHelpUrl` action added to `BetterParameters.py` — validates `http/https` scheme, opens via `webbrowser.open()`, read-only (`state: null`). `BACKEND_API.md` updated (TOC, action section, migration entry). FE must add to normative + read-only action sets and wire to Info (i) button.
+- Slice A completed (UI-only): added header `Info (i)` button in `palette.html` to open Fusion Parameters Reference URL.
+- FE implementation update in `palette.html`:
+  - Contract action sets updated for new BE actions (`renameParameter`, `validateUnitChange`, `updateParameterUnit`, `copyParameter`, `deleteParameters`, `sortByTimelineOrder`, `importParameters`, `exportParameters`).
+  - Added settings UI for CSV file flow (`Import CSV`, `Export CSV`, conflict picker visible each import).
+  - Added compute mode toggle (`Auto`/`Manual`) with local persistence.
+  - Added manual-mode batch action bar (`Apply All`, `Discard All`) with dirty-count and invalid gating.
+  - Added shared row apply/discard helpers and rewired row buttons to shared flow.
+  - Added auto apply on Enter/blur for valid rows in auto mode.
+  - Added Apply All sequential loop with per-row tracking and summary logging.
+- FE implementation started: validated BE action availability and identified FE contract/action-list updates required before new calls (`importParameters`, `exportParameters`, `renameParameter`, `validateUnitChange`, `updateParameterUnit`, `copyParameter`, `deleteParameters`, `sortByTimelineOrder`).
+- M4 Auto-compute BE scope confirmed complete — no new actions needed; wiring spec added to `BACKEND_API.md` Usage Patterns section.
+- BE M4 implementation: `exportParameters`, `importParameters` — CSV only, native dialogs, `conflictPolicy: skip|overwrite`, partial-success envelope.
+- BE M2/M3 implementation: `renameParameter`, `validateUnitChange`, `updateParameterUnit`, `copyParameter`, `deleteParameters`, `sortByTimelineOrder` - all added to `BetterParameters.py`.
+- `BACKEND_API.md` updated atomically: TOC, action sections, migration entry with FE fixture update requirements.
+- M4 product decisions recorded: CSV-only import/export; local filesystem only via native OS dialog; cloud file management explicitly out of scope.
+- M4 UX decisions finalized: import conflict picker always visible (`Skip existing` / `Overwrite existing`, default send `skip`), auto-compute/manual behaviors, and Apply All partial-failure handling model.
+- FE main-table model-parameter reintegration rewrite completed in `BetterParameters/palette.html`:
+  - Removed legacy standalone Model Parameters card/section path (CSS, renderers, handlers, listeners) and all stale references.
+  - Model parameters now remain integrated exclusively in main table flow; component names continue to drive group headers.
+  - Initial load behavior preserved for user-only default: preload component-group names and render group headers even with zero model rows.
+  - `userOnly` toggle-off path now auto-loads model rows into existing groups with no extra UI action.
+  - Main search/filter continues to match model rows (`name`, `expression`, `comment`, `unit`, `valuePreview`, `componentName`, `createdBy`).
+  - Removed preload race where component-group fetch could overwrite active model row cache/filter results.
+- Strict post-change ops run:
+  - `python -m pytest` -> `355 passed, 0 failed`.
+  - `python BetterParameters/update_helper.py BetterParameters BetterParameters.py --verify` -> `VERIFY OK` for live `BetterParameters.py` and `palette.html`.
+
+## Last Updated
+
+- Timestamp: 2026-04-18 (America/Chicago)
+- Updated by: FE session (Codex)
+- Notes: Main-table model parameter integration reimplemented; legacy model section removed; strict offline + sync verify passing.
+
+- Release notes remediation complete: backfilled v0.4.26..v0.4.30 GitHub release notes with curated high-signal summaries; updated ship procedure + script to require -NotesFile when auto notes are low-signal.
+- FE drag/reorder stabilization patch completed in `BetterParameters/palette.html`:
+  - Added drag-aware state deferral: `applyStateFromFusion()` now queues any incoming state envelope while row/group drag is active (or group-drag finalize is in-flight), preventing temporary drag-collapse state from being overwritten mid-drag.
+  - Hardened queued-push flush gate: `flushQueuedRenderPushIfReady()` now also blocks while any drag interaction is active.
+  - Fixed group-reorder persistence snapshot: `finishGroupDrag()` now restores pre-drag collapse state before persistence calls so saved `groupUi` never captures temporary "collapsed-for-drag" state.
+  - Added raw trace marker `state.queued.drag` for diagnostics when drag-time state deferral triggers.
+- FE busy overlay deterministic-lifecycle patch completed in `BetterParameters/palette.html`:
+  - Added tokenized overlay ownership (`beginBusyOverlay` / `endBusyOverlay`) with stale-hide guard.
+  - Added minimum visible duration on hide to avoid "flash-after-complete" behavior (`450ms` on group-reorder flow).
+  - Added overlay trace events for diagnostics: `overlay.show`, `overlay.hide`.
+  - Updated group reorder finalize path (`finishGroupDrag`) to use tokenized overlay lifecycle.
+- FE reorder regression hotfix completed in `BetterParameters/palette.html`:
+  - Drag-state queueing no longer defers mutating response envelopes (`saveParameterOrder`, `saveGroupUiState`), restoring correct reorder persistence/apply.
+  - `normalizeGroupIdToken` now treats `legacy:` tokens idempotently (collapses repeated `legacy:legacy:...` chains) and accepts runtime `x:` ids; prevents collapse-key explosion and large `groupUi.collapsed` payload growth.
+  - Drag-queued state notices are suppressed (no false "queued while editing" warning during drag lifecycle).
+  - `finishGroupDrag()` now flushes queued push state immediately after drag finalize lock releases.
+- FE reorder repeatability/stall stabilization follow-up completed in `BetterParameters/palette.html`:
+  - `persistParameterRowOrder()` now accepts options and applies state with explicit action context (`saveParameterOrder`) when enabled.
+  - Group-drag flow now calls `persistParameterRowOrder(..., { applyState: false })` and relies on subsequent `saveGroupUiState` state application; avoids intermediate state rebase during reorder.
+  - Added reorder-scoped model page invalidation suppression counter to prevent immediate heavy `getModelParameters` refetch churn on the paired reorder saves.
+  - `modelParameterCount` state handler now only invalidates model page/component preload when count changes (or suppression is not active).
+  - Model-page/component async loaders now skip `renderParameters()` while drag interaction is active, preventing mid-drag collapse/expand repaint jitter.
+- Strict post-change ops run:
+  - Canonical source->live sync + verify:
+    - `python %USERPROFILE%\Documents\Codex\OpenParameters\BetterParameters\update_helper.py %USERPROFILE%\Documents\Codex\OpenParameters\BetterParameters "%USERPROFILE%\AppData\Roaming\Autodesk\Autodesk Fusion 360\API\AddIns\BetterParameters" settings.json update_state.json _pending_update .gitignore __pycache__ BetterParameters.manifest --verify`
+    - Result: `Done: 12 copied, 5 skipped, 0 error(s).`
+    - Verify: `VERIFY OK` for `BetterParameters.py` and `palette.html` (`palette.html` hash `c68b03177a9b3b28`).
+  - Offline suite:
+    - `python -m pytest`
+    - Result: `360 passed, 0 failed`.
+
+
+## Session Updates (2026-05-03)
+
+
+- FE milestone (2026-05-03): Rapid Create validation UX hardening implemented in `BetterParameters/palette.html`.
+  - What changed:
+    - Reworked Rapid Create into two-phase validation model:
+      - live typing pass (gentle): `draft` / `warning` / `ready` states without noisy hard parse errors on fresh line.
+      - commit pass (`Create All`, strict): promotes incomplete/malformed rows to hard errors and only creates strict-valid rows.
+    - Added structured Rapid row diagnostics: `parseErrors[]`, `nameErrors[]`, `expressionErrors[]`, `unitErrors[]` with prioritized message rendering (name > parse > unit > expression).
+    - Added row lifecycle/severity model in FE state: `draft`, `ready`, `warning`, `error`, plus create outcomes (`created`, `failed`, `skipped`).
+    - Parser/live UX update:
+      - blank lines ignored.
+      - active incomplete line with no delimiter now shows draft guidance (no hard invalid).
+      - non-active incomplete line surfaces warning.
+      - strict commit copy for delimiter issues: `Missing delimiter. Use tab between name and expression.`
+    - Name validation ordering updated:
+      - shared local validator `validateParameterNameLocallyForRow(...)` applied before parse-format noise.
+      - for delimiter-missing rows, tentative name token is validated so real errors (e.g. starts with number) surface immediately.
+    - Create-all gating and summary counters updated:
+      - button disabled by strict hard errors / no commit-eligible rows / in-flight create.
+      - summary counters now: `ready`, `warnings`, `errors`, `created`, `failed`.
+  - Why:
+    - Prevent disruptive false-negative feedback during rapid keyboard entry while preserving strict correctness on submit.
+  - Validation run:
+    - `python -m pytest -q` => `360 passed, 0 failed`.
+    - Canonical sync verify => `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+    - Harness from this shell => failed (`ModuleNotFoundError: adsk`) since this runtime is not Fusion in-process.
+  - Remaining risk / next check:
+    - Run `scripts\fusion_bp_test_harness.py` inside Fusion Scripts environment and verify zero failures.
+    - Manual UX checks in Fusion: fresh-line typing, `1abc` immediate name error, mixed warning+ready rows, strict create pass behavior.
+
+
+- FE milestone (2026-05-03): Rapid Create (keyboard-only) v1 implemented in `BetterParameters/palette.html`.
+  - What changed:
+    - Added new `Rapid Create` modal (create-modal style) with multiline DSL editor, per-row preview table, and counters (`valid`, `invalid`, `created`, `failed`).
+    - Added keyboard shortcut `Ctrl+Shift+N` to open modal globally.
+    - Added keyboard behavior in rapid editor: `Tab` inserts separator, `Enter` inserts newline, `Esc` closes modal.
+    - Implemented parser contract: `name<TAB>expression`, fallback `name,expression` if no tab; blank lines ignored.
+    - Added unit-tail detection + `validateUnit` check for deterministic unit suffix; ambiguous suffix rows marked invalid.
+    - Implemented sequential create pipeline per row using existing actions: local name check -> `validateParameterName` -> `validateExpression` -> `createParameter`.
+    - Per-row outcome states now recorded (`Created`, `Skipped (invalid)`, `Failed`) and modal summary updates accordingly.
+  - Why:
+    - Deliver keyboard-only rapid parameter entry without changing existing New Parameter modal flow.
+  - Validation run:
+    - `python -m pytest -q` via canonical runtime => `360 passed, 0 failed`.
+    - Canonical sync verify => `Done: 12 copied, 5 skipped, 0 error(s)` + `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+    - Fusion harness from this shell => failed (`ModuleNotFoundError: adsk`) because run was outside Fusion in-process context.
+  - Remaining risk / next check:
+    - Run `scriptsusion_bp_test_harness.py` in Fusion Scripts environment and confirm zero failures.
+    - Manual in-Fusion keyboard flow smoke test for `Ctrl+Shift+N`, `Tab/Enter/Esc`, mixed valid/invalid rows, and post-create table refresh behavior.
+
+
+- FE task start (2026-05-03): Rapid Create keyboard-only modal implementation requested (Ctrl+Shift+N, DSL rows, preview/validation/create pipeline).
+  - Scope lock: FE-only (`BetterParameters\palette.html`) confirmed; no backend/settings/update-state edits planned.
+  - Plan: implement additive modal + parser/unit detection + sequential create orchestration, then run required validation gates (pytest, sync verify, Fusion harness).
+
+- Baseline-health task started (FE handoff gate run request).
+  - Scope lock confirmed: FE-only, no backend/data file edits.
+  - Planned validation sequence: `python -m pytest`, canonical `update_helper.py ... --verify`, then Fusion harness.
+  - Status: in progress.
+- Baseline validation milestone (2026-05-03):
+  - Ran required gates in order intent; results blocked by environment/runtime issues.
+  - `python -m pytest`: failed (`python` not found in shell).
+  - `py -m pytest`: failed (`py` not found in shell).
+  - Bundled runtime `...dependencies\\python\\python.exe -m pytest`: failed (`No module named pytest`).
+  - Canonical sync verify command: failed with target-dir error and verify misses:
+    - `ERROR cannot create target dir ...AddIns\\BetterParameters: [WinError 183] Cannot create a file when that file already exists`
+    - `VERIFY MISS BetterParameters.py`, `VERIFY MISS palette.html`.
+  - Fusion harness from this shell: failed (`ModuleNotFoundError: No module named 'adsk'`) indicating non-Fusion interpreter context.
+  - Validation summary: 0 gates passed, 3 gates failed (tooling/context blockers), baseline health not yet established.
+  - Remaining risk/next check:
+    - Use the intended local Python environment that has `pytest` + project deps.
+    - Run harness via Fusion in-process context (where `adsk` is available).
+    - Re-run canonical sync verify after resolving AddIns target path condition.
+- Env path setup milestone (2026-05-03):
+  - Canonical interpreter pinned: `%USERPROFILE%\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe`
+  - Installed `pytest` into bundled runtime.
+  - Verification run (escalated due sandbox temp/cache permissions): `360 passed in 0.63s`.
+  - Notes: sandboxed pytest still hits temp/cache ACL errors; reliable gate command in this environment is the same interpreter path with escalated execution when needed.
+- FE bugfix (2026-05-03): close new-parameter modal threw `closeUnitPicker is not defined`.
+  - Change: replaced legacy modal-close call `closeUnitPicker()` with current unit menu API `setUnitMenuOpen(false)` in `BetterParameters/palette.html`.
+  - Why: unit picker implementation was migrated to `setUnitMenuOpen(...)`; stale function reference caused runtime error on modal close.
+  - Validation: `%USERPROFILE%\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest -q` => `360 passed, 0 failed`.
+  - Remaining risk/next check: verify in Fusion UI that closing modal (X, backdrop click, Esc path if used) no longer throws and unit menu state resets correctly.
+- FE sync milestone (2026-05-03):
+  - Ran canonical source->live sync verify after modal close fix.
+  - Result: `Done: 12 copied, 5 skipped, 0 error(s)`.
+  - Verify: `VERIFY OK BetterParameters.py` and `VERIFY OK palette.html`.
+  - Status: live add-in payload updated; ready for in-Fusion repro test of new-parameter modal close path.
+- FE bugfix (2026-05-03): modal close threw `hideExpressionSuggestions is not defined`.
+  - Change: replaced stale call `hideExpressionSuggestions()` with `closeExpressionSuggestions()` in `setCreateModalOpen(false)` (`palette.html`).
+  - Additional stale-ref sweep: ran file-wide unresolved helper-call scan for close/open/hide/show/set/render/update/apply/validate/persist/flush/toggle prefixes; no additional missing helper references found (only false-positive token `apply`).
+  - Validation:
+    - Offline tests: `...python.exe -m pytest -q` => `360 passed, 0 failed`.
+    - Live sync verify: `update_helper.py ... --verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+  - Remaining risk/next check: in-Fusion smoke test modal close paths (X button, backdrop click, Esc while suggestion menu open).
+- FE bugfix (2026-05-03): selecting `No Units` in new-parameter modal snapped back to doc unit (`mm`).
+  - Root cause: empty-string unit (`""` = No Units) was treated as missing/falsy in create-unit defaulting logic.
+  - Changes in `BetterParameters/palette.html`:
+    - `getDefaultCreateUnit()` now treats `lastUnit` as valid when it is any string (including `""` for No Units) while remember-unit is enabled.
+    - `syncDefaultUnit()` now compares current vs desired unit (`state.createUnit !== nextUnit`) instead of falsy-checking hidden input value; this preserves explicit `""` selection.
+  - Similar-path safety sweep:
+    - Ran file-wide unresolved helper-call scan focused on close/open/hide/show/set/render/update/apply/validate/persist/flush/toggle/sync/reset/clear prefixes.
+    - No additional missing-helper/runtime-call candidates found (only benign parser false-positive token: `apply`).
+  - Validation:
+    - Offline tests: `...python.exe -m pytest -q` => `360 passed, 0 failed`.
+    - Live sync verify: `update_helper.py ... --verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+  - Remaining risk/next check:
+    - In Fusion, verify selecting `No Units` persists through modal interactions (close/reopen, remember-unit on/off) and create action uses unit `""` as expected.
+- FE behavior update (2026-05-03): first-launch create-unit default + remembered No Units compatibility.
+  - Requested behavior: on add-in session launch, default create unit should start at document length unit; user can still choose `No Units` and have that remembered when remember-unit is enabled.
+  - Implementation in `BetterParameters/palette.html`:
+    - Added session flag `state.hasRememberedUnitSelection`.
+    - `getDefaultCreateUnit()` now uses remembered `lastUnit` only when `rememberUnit` is on **and** remembered-unit flag is set.
+    - `applySelectedUnit(...)` now supports `markRememberedSelection` to mark explicit user unit selections (including `""` No Units).
+    - `applySettings(...)` now accepts `fromBackend`; only backend-applied settings with explicit `lastUnit` mark remembered flag true.
+    - Remember-unit toggle-on now marks remembered flag true (captures current choice); rollback on save failure restores prior flag.
+    - Explicit unit selection paths (custom unit and picker choice) now mark remembered selection.
+  - Validation:
+    - Offline tests: `...python.exe -m pytest -q` => `360 passed, 0 failed`.
+    - Live sync verify: `update_helper.py ... --verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+  - Remaining risk/next check:
+    - In Fusion, confirm sequence: fresh run defaults to doc unit; choose `No Units`; close/reopen modal and relaunch add-in with remember on -> `No Units` persists.
+- FE init-default patch (2026-05-03): seed remembered unit from doc default when backend `lastUnit` is empty.
+  - User direction: set `lastUnit` to document unit on initial add-in load.
+  - Implementation in `BetterParameters/palette.html`:
+    - Added `maybeSeedRememberedUnitFromDocumentDefaults()` and one-shot guard `rememberedUnitSeededFromDocumentThisSession`.
+    - Called immediately after backend settings apply in `applyState(...)`.
+    - Seed criteria: `rememberUnit=true`, no explicit remembered No Units marker, backend `lastUnit==""`, and document default unit available.
+    - Action: set `state.settings.lastUnit` to doc unit, mark remembered selection, and persist via background `saveSettingsPartial({ lastUnit: docUnit })`.
+  - Validation:
+    - Offline tests: `...python.exe -m pytest -q` => `360 passed, 0 failed`.
+    - Live sync verify: `update_helper.py ... --verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+  - Remaining risk/next check:
+    - Fresh add-in launch in Fusion should show doc unit first open; after explicit `No Units` selection, remember-unit should retain `No Units` on later opens/relaunches.
+- FE feature update (2026-05-03): row context-menu scope + drag-handle visibility setting.
+  - Changed row reorder context-menu trigger from drag-handle-only to right-click anywhere on `tr.parameter-row[data-parameter-key]` (still disabled in narrow-stack and blocked when local edits are pending).
+  - Added new Settings toggle: `Always Show Drag Handle` (default ON).
+    - Added persisted setting `alwaysShowRowDragHandle` (defaults true when missing).
+    - Added renderer `renderAlwaysShowRowDragHandleToggle()` to apply toggle state and `body.always-show-row-drag-handles` class.
+    - Added CSS rule so handle glyph is visibly present when toggle is ON.
+  - Validation:
+    - Offline tests: `...python.exe -m pytest -q` => `360 passed, 0 failed`.
+    - Live sync verify: `update_helper.py ... --verify` => `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+  - Remaining risk/next check:
+    - In Fusion verify right-click on non-handle row cells opens reorder menu.
+    - Confirm toggle OFF reverts handle to hover-style behavior and ON restores always-visible behavior.
+- FE milestone (2026-05-04): Rapid Create unit picker now wired to shared New Parameter unit menu system for cohesive styling/grouping.
+  - What changed:
+    - Rapid Create Detected Unit column now uses `.unit-picker-button` and shared `#unitPickerMenu` context menu flow.
+    - Added rapid row context routing (`state.unitMenuContext` / `rowKey`) so unit selection and custom-unit add apply to the active rapid row (manual override) without mutating New Parameter `lastUnit` behavior.
+    - Added rapid-row helpers for stable row lookup + manual unit override assignment.
+    - Removed obsolete rapid `<select>` event path and unused rapid unit option builder.
+  - Why:
+    - Match unit UX/visual language across dialogs and keep one canonical unit picker behavior surface.
+  - Validation run:
+    - `python -m pytest -q` => `360 passed, 0 failed`.
+    - `update_helper.py ... --verify` => `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+    - `scripts\fusion_bp_test_harness.py` from this shell => failed (`ModuleNotFoundError: adsk`) because this is not Fusion in-process runtime.
+  - Remaining risk / next check:
+    - Run Fusion in-process harness from Fusion Scripts environment and verify zero failures.
+    - In Fusion UI verify rapid-row unit button opens shared grouped menu, custom-unit add applies to row, and manual override status remains `(MANUAL) ...`.
+- FE milestone (2026-05-04): Rapid Create shared unit menu integration finalized and cleaned.
+  - What changed:
+    - Completed rapid-row click wiring to open shared grouped `unitPickerMenu` with row context.
+    - Unit select/custom-unit apply now route by context: rapid rows get manual per-row override; New Parameter keeps existing remembered-unit behavior.
+    - Removed obsolete rapid unit `<select>` listener and stale CSS for removed select control.
+  - Why:
+    - Ensure cohesive UX while preserving prior create-dialog contracts.
+  - Validation run:
+    - `python -m pytest -q` => `360 passed, 0 failed`.
+    - `update_helper.py ... --verify` => `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+  - Remaining risk / next check:
+    - Fusion in-process harness still must be run in Fusion runtime (`adsk` unavailable in this shell).
+- FE milestone (2026-05-04): Rapid Create unsaved-change protection (hybrid close guard) implemented.
+  - What changed:
+    - Added dirty-state baseline (`rapidCreate.lastCommittedText`) and close guard flow.
+    - Backdrop click now blocked when Rapid Create has unsaved entries; warning status shown instead of closing.
+    - Explicit close paths (`X`, footer Close, editor Esc, global Esc) now prompt confirmation: `Discard unsaved rapid entries?`.
+    - Added manual discard path that clears editor/rows/overrides only when discard is confirmed.
+    - Successful `Create All` with zero failed/skipped rows now marks current editor text as committed baseline (not dirty).
+  - Why:
+    - Prevent accidental data loss from outside-click while preserving fast intentional exit flow.
+  - Validation run:
+    - `python -m pytest -q` => `360 passed, 0 failed`.
+    - `update_helper.py ... --verify` => `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+  - Remaining risk / next check:
+    - In Fusion manual smoke: dirty backdrop click blocked, explicit close confirm works, clean modal closes immediately.
+- FE milestone (2026-05-04): Rapid Create v1 expression intelligence integrated into active-line editor flow.
+  - What changed:
+    - Added active-line expression context extraction for multiline rapid editor (name/expression cursor-aware segment parsing).
+    - Reused existing expression autocomplete + function helper pipelines for rapid active expression, including suggestion apply into the textarea at correct absolute offsets.
+    - Added rapid live expression validation against backend `validateExpression` for active-line expression with line-aware name + detected unit inputs.
+    - Rapid editor key handling now supports suggestion navigation/acceptance (`ArrowUp/ArrowDown/Enter`) and function empty-call backspace collapse in active expression context.
+    - Esc behavior in rapid editor now first dismisses expression helper/suggestions, then closes modal via existing guarded-close flow.
+  - Why:
+    - Provide cohesive New Parameter expression assistance in Rapid Create without backend/API changes.
+  - Validation run:
+    - `python -m pytest -q` => `360 passed, 0 failed`.
+    - `update_helper.py ... --verify` => `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+  - Remaining risk / next check:
+    - In Fusion manual verify: active-line suggestions/helper appear only while cursor is in expression segment; Enter accepts suggestion when menu is open and otherwise preserves rapid newline behavior.
+- FE rollback milestone (2026-05-04): Reverted Rapid Create v2 UI additions per user feedback.
+  - What changed:
+    - Removed rapid token-hint line and all associated parsing/rendering styles/logic.
+    - Restored rapid editor `Tab` behavior to delimiter insertion only (no suggestion-accept on Tab).
+    - Kept v1 expression intelligence paths (active-line autocomplete/helper/validation) intact.
+  - Why:
+    - v2 additions introduced visual clutter/layout regressions; user requested revert.
+  - Validation run:
+    - `python -m pytest -q` => `360 passed, 0 failed`.
+    - `update_helper.py ... --verify` => `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+  - Remaining risk / next check:
+    - Manual Fusion check to confirm Rapid Create UI baseline restored while v1 assist remains functional.
+
+## Session Updates (2026-05-05)
+
+- FE/Release handoff startup checkpoint (2026-05-05):
+  - What changed:
+    - Completed mandatory startup read sequence: `HANDOFF.md` then `CONTEXT.md`.
+    - Confirmed repo location for git ops: `%USERPROFILE%\Documents\Codex\OpenParameters\BetterParameters`.
+    - Captured git state: `## master...origin/master` (clean working tree; no unrelated local changes to preserve at this moment).
+  - Why:
+    - Establish canonical baseline before any implementation work.
+  - Validation run:
+    - Startup gates only (doc + git baseline): pass `3/3`.
+    - Code validation gates (`pytest`, sync `--verify`, Fusion harness): not run yet for this checkpoint.
+  - Remaining risk / next check:
+    - Lock task scope before edits (`FE-only` vs `FE+BE`) and then run required validation gates after changes.
+- FE+BE task start (2026-05-05): Import user parameters from Data Panel source design requested.
+  - Scope lock: FE (`palette.html`) + BE (`BetterParameters.py`).
+  - Required behavior:
+    - Entry in Settings near import/export features.
+    - Select source Fusion data-panel file.
+    - If source file already open: read user parameters only; do not close; no other changes.
+    - If source file not open: open, read params, close without saving.
+  - Plan:
+    - Inspect existing import/export UI/actions.
+    - Add BE actions for list/select + preview/apply import from data file.
+    - Add FE settings entry + flow, reusing existing import conflict handling where possible.
+    - Run required validation gates (`pytest`, sync verify).
+  - Validation run:
+    - Not run yet for this task start.
+  - Remaining risk / next check:
+    - Confirm available Fusion API surface for data-panel listing + safe open/close lifecycle.
+- FE+BE milestone (2026-05-05): Data Panel import feature implemented (first pass).
+  - What changed:
+    - BE: added `previewImportParametersFromDataPanel` + `importParametersFromDataPanel` actions.
+    - BE: source selection via Fusion `CloudFileDialog`; source-open detection by `Document.dataFile.id` match.
+    - BE: if source already open -> read only, do not close; if not open -> open temporarily, extract user params, close without saving, restore prior active doc.
+    - BE: refactored CSV import row apply into shared helper `_import_parameter_rows_into_design` and reused for Data Panel import.
+    - FE: added Settings > Parameter Files button `Import From Data Panel` near CSV import/export.
+    - FE: added preview/confirm/apply flow + status summary using existing import UX pattern.
+    - Tests: action-list coverage extended in `test_error_codes.py` and `test_contract_info.py`.
+  - Why:
+    - Deliver requested data-panel-source import path while preserving existing import contracts and minimal surface changes.
+  - Validation run:
+    - pending (next: `python -m pytest`, sync `--verify`).
+  - Remaining risk / next check:
+    - Fusion runtime-only APIs (`CloudFileDialog`, document open/close behavior) require in-Fusion harness/manual validation.
+- FE+BE milestone (2026-05-05): Data Panel import feature completed and validated locally.
+  - What changed:
+    - Added Settings action in Parameter Files section: `Import From Data Panel`.
+    - Added FE actions + flow:
+      - `previewImportParametersFromDataPanel` (select source via Fusion cloud dialog + dry-run preview)
+      - `importParametersFromDataPanel` (commit import using preview token)
+    - Added BE source handling rules:
+      - detect already-open source doc by `Document.dataFile.id`
+      - if already open: read parameters only, do not close
+      - if not open: open source, extract user params, close without saving
+      - restore prior active document after temporary open path
+    - Reused shared row-apply import logic by extracting `_import_parameter_rows_into_design(...)`.
+  - Why:
+    - Implement requested cross-document user-parameter import from Data Panel with explicit open/close safety semantics.
+  - Validation run:
+    - `python -m pytest` => `390 passed, 0 failed`.
+    - canonical sync verify => `Done: 12 copied, 5 skipped, 0 error(s)`.
+    - verify hashes => `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+    - Fusion harness in this shell: not run (requires Fusion in-process `adsk`).
+  - Remaining risk / next check:
+    - In-Fusion runtime validation required for `CloudFileDialog` + source-doc lifecycle behavior.
+    - Confirm no unintended UI focus/document-switch side effects during preview/apply.
+- FE+BE task milestone (2026-05-05): UX improvement request accepted for Fusion-file import.
+  - Scope: implement items 4/5/6 + rename UI button text.
+  - Planned changes:
+    - BE auto multi-pass import loop for Fusion-file source.
+    - BE retry action for remaining failed rows without reselecting source file.
+    - FE post-run summary update + retry/copy-failed affordances.
+    - FE button label rename to `Import From Fusion File`.
+  - Validation plan: pytest + canonical sync verify after edits.
+- FE+BE milestone (2026-05-05): Fusion-file import UX retry hardening completed.
+  - What changed:
+    - UI text: settings button renamed to `Import From Fusion File`.
+    - BE auto-retry loop added for Fusion-file import apply (`max 5` passes) to resolve order-dependent rows in one run.
+    - BE now returns retry telemetry: `passCount`, `importedOnRetryCount`.
+    - BE caches remaining failed rows per selection token and adds `retryImportParametersFromDataPanel` action (no reselect required).
+    - FE summary updated to truth-first outcome messaging:
+      - success path: `All rows imported after retries.`
+      - partial path: imported totals + still-failed count + passes used.
+    - FE follow-up actions under summary:
+      - `Retry Remaining`
+      - `Copy Failed Rows`
+  - Why:
+    - Reduce false-negative friction from precheck overestimation and avoid repeated full import cycles.
+  - Validation run:
+    - `python -m pytest` => `390 passed, 0 failed`.
+    - canonical sync verify => `Done: 12 copied, 5 skipped, 0 error(s)`.
+    - verify hashes => `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+  - Remaining risk / next check:
+    - In-Fusion behavior check needed for full UX confirmation (cloud dialog + retry button flow in live palette).
+- FE+BE hotfix (2026-05-05): Fusion-file import commit path regression fixed.
+  - What changed:
+    - Root cause fixed in BE cache handling: selection cache now stores metadata object, and commit/retry paths now correctly resolve `dataFile` from cached entry before extraction.
+    - Added backward compatibility for older cache shape where token mapped directly to DataFile.
+    - Added explicit commit-time message when source file has zero user parameters: `Selected Fusion file has no user parameters to import.`
+  - Why:
+    - Prevent no-op/empty import behavior caused by mis-typed cached selection object during commit phase.
+  - Validation run:
+    - `python -m pytest` => `390 passed, 0 failed`.
+    - canonical sync verify => `Done: 12 copied, 5 skipped, 0 error(s)`.
+    - verify hashes => `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+  - Remaining risk / next check:
+    - Re-run same Fusion file import scenario in live Fusion to confirm imported counts recover and summary reflects actual outcome.
+- FE+BE milestone (2026-05-05): explicit end-of-import messaging added.
+  - What changed:
+    - BE now always returns a non-empty final `message` for Fusion-file import and retry paths, including full success cases (counts + retries + passes).
+    - FE now prefers backend `response.message` for end-of-import global status display.
+  - Why:
+    - Ensure users always get a clear final outcome statement, even when all rows import successfully.
+  - Validation run:
+    - `python -m pytest` => `390 passed, 0 failed`.
+    - canonical sync verify => `Done: 12 copied, 5 skipped, 0 error(s)`.
+    - verify hashes => `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+  - Remaining risk / next check:
+    - Confirm in Fusion UI that success message wording is sufficiently concise and readable in your normal workflow.
+- Ship completed (2026-05-05): `v0.8.0` (feature)
+  - Command:
+    - `powershell -ExecutionPolicy Bypass -File .\scripts\ship.ps1 -BumpType feature -FusionTested -NotesFile %USERPROFILE%\Documents\Codex\OpenParameters\scripts\release_notes_pending.md`
+  - Result: success (preflight, sync, package, bump, commit, tag, push, release publish, verification).
+  - Release URL:
+    - `https://github.com/macifoxispurple/FusionBetterParameters/releases/tag/v0.8.0`
+  - Artifact:
+    - `%USERPROFILE%\Documents\Codex\OpenParameters\_releases_packages\BetterParameters-0.8.0.zip`
+  - Ship report:
+    - `%USERPROFILE%\Documents\Codex\OpenParameters\scripts\_ship_reports\ship_20260505_184025.json`
+  - Validation evidence during ship:
+    - source->live sync succeeded (0 errors)
+    - packaging and release asset verification passed.
+- FE+BE task start (2026-05-05): Text parameter create/update validation bug.
+  - Repro summary:
+    - Standard New Parameter modal: `Unknown parameter name ...` when creating/updating text parameter.
+    - Rapid Create: `(MANUAL) ERROR: Expression syntax is invalid...` for text rows.
+  - Hypothesis:
+    - text-unit expression path not bypassing numeric/operator/unit validation despite backtick literal usage.
+  - Plan:
+    - inspect FE expression validation requests and BE `validateExpression` logic for text unit.
+    - patch minimal FE/BE gates to treat backtick text literals as valid for `unit == text`.
+    - run pytest + sync verify.
+- FE+BE bugfix milestone (2026-05-05): text-parameter expression validation corrected for Create + Rapid Create.
+  - What changed:
+    - BE `_validate_expression_response(...)` now has explicit text-unit branch:
+      - accepts only backtick-wrapped literals for `units == text`.
+      - returns clear error when text literal is not wrapped in backticks.
+      - bypasses numeric/operator/token/unit-style checks for text mode.
+    - BE `_preview_expression_response(...)` now returns text preview directly for text-unit literals (no numeric evaluate path required).
+    - FE create modal now normalizes text expressions to backticks before validation/submit (`normalizeCreateExpressionForFusion`), and auto-wraps current create expression when unit changes to Text.
+  - Why:
+    - Prevent false unknown-token/syntax failures for valid text literals and align Text behavior with explicit backtick literal requirement.
+  - Validation run:
+    - `python -m pytest` => `393 passed, 0 failed` (added 3 text-literal tests).
+    - canonical sync verify => `Done: 12 copied, 5 skipped, 0 error(s)`.
+    - verify hashes => `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+  - Remaining risk / next check:
+    - In-Fusion manual check for create/update text flows and rapid active-line validation messaging.
+- FE task start (2026-05-05): New Parameter Units keyboard navigation.
+  - Scope: FE-only (`palette.html`).
+  - Goal: when tabbing into Units control in New Parameter modal, arrow keys and typing should navigate/select unit list without mouse.
+  - Plan: wire key handlers on unit picker trigger + menu focus behavior + typeahead.
+- FE+BE bugfix milestone (2026-05-05): text parameter submit path canonicalization.
+  - What changed:
+    - Backend create/import creation paths now normalize units through `_validate_unit_response(...)` before `userParameters.add(...)`.
+    - This canonicalizes text units (`text` -> `Text`) at submission time, aligning with Fusion create requirements.
+  - Why:
+    - Validation could pass while submit still failed with `Invalid expression` when unit token casing/format was not canonical for Fusion create API.
+  - Validation run:
+    - `python -m pytest` => `393 passed, 0 failed`.
+    - canonical sync verify => `Done: 12 copied, 5 skipped, 0 error(s)`.
+    - verify hashes => `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+  - Remaining risk / next check:
+    - In-Fusion retest for standard Create and Rapid Create text rows to confirm submit now succeeds end-to-end.
+- FE+BE troubleshooting milestone (2026-05-05): text submit invalid-expression follow-up with Autodesk API reference.
+  - What changed:
+    - Checked Autodesk API docs for `UserParameters.add` / text-parameter behavior.
+    - Backend now canonicalizes text expressions for Fusion submission in create/import paths:
+      - backtick-wrapped literals are converted to Fusion-safe single-quoted string literals before `ValueInput.createByString(...)` / `userParameters.add(...)`.
+    - Text-unit validation path now normalizes via same canonical expression before validator flow.
+  - Why:
+    - Submit-time `Invalid expression` can occur even when FE validation passes if Fusion rejects non-canonical text literal syntax at create API call.
+  - Validation run:
+    - `python -m pytest` => `393 passed, 0 failed`.
+    - canonical sync verify => `Done: 12 copied, 5 skipped, 0 error(s)`.
+    - verify hashes => `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+  - Remaining risk / next check:
+    - In-Fusion retest needed for standard + rapid text submissions against live runtime parser.
+
+## Session Updates (2026-05-06)
+
+- Task start (FE+BE text parameter submission bug):
+  - Scope: fix text-type create/update failures where UI backtick literals were being rejected with `Invalid expression` / unknown-name style errors.
+  - Why: text literal content was being token-scanned during validation after normalization, causing false identifier errors and Fusion-invalid expression paths.
+
+- Milestone (text translation + literal masking hardening):
+  - What changed in `BetterParameters/BetterParameters.py`:
+    - Added/kept write-side text normalization for text units: backtick UI literal -> Fusion single-quoted literal (`_normalize_text_expression_for_fusion`).
+    - Added read-side text normalization helper (`_normalize_text_expression_for_ui`) and used it for parameter collection/serialization so UI consistently sees backticks.
+    - Extended `_mask_expression_literals` to support Fusion single-quoted literals with escaped quote handling (`''`) so validator token scan ignores text payloads.
+  - What changed in tests (`tests/test_literal_masking.py`):
+    - Added single-quoted literal masking tests (basic/escaped/unclosed).
+    - Added single-quoted validation acceptance test.
+    - Added UI/Fusion translation roundtrip regression test.
+  - Why: align UX with Fusion dialog style (backticks), while satisfying Fusion API expression format and preventing false tokenization.
+
+- Validation status:
+  - Targeted: `python -m pytest tests/test_literal_masking.py -q` -> `38 passed`, `0 failed`.
+  - Full suite: `python -m pytest` -> `398 passed`, `0 failed`.
+  - Canonical sync verify: `update_helper.py ... --verify` -> `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+
+- Remaining risk / next check:
+  - Primary remaining risk is runtime Fusion parser behavior variance for edge text literals not represented in stubs.
+  - Next check: in-Fusion manual retest for Standard New Parameter + Rapid Create using text values with plain text, apostrophes, and backticks in content.
+- Milestone (text UX/translation correction after quote-wrapping regression):
+  - What changed:
+    - BE `BetterParameters.py`:
+      - `_validate_expression_response` no longer converts text-unit expressions to Fusion single-quote form before user-facing validation/token checks.
+      - text-unit validation now stays in UI space and normalizes whole-literal `'...'` / `"..."` into backtick form for validation semantics.
+      - `_normalize_text_expression_for_fusion` hardened to accept backtick, single-quoted, or double-quoted whole literals and canonicalize to Fusion single-quoted literal only at write boundary.
+    - FE `palette.html`:
+      - `normalizeCreateExpressionForFusion` and `normalizeRapidExpressionForFusion` now unwrap whole `'...'` or `"..."` inputs before applying backtick shell, preventing nested-literal forms like `` `'text'` ``.
+  - Why:
+    - Keep user-facing behavior centered on backticks and avoid early quote-form mutation that produced invalid nested text expressions.
+
+- Validation status:
+  - `python -m pytest` -> `398 passed`, `0 failed`.
+  - canonical sync verify -> `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+
+- Remaining risk / next check:
+  - Need in-Fusion interactive confirmation for text create/update from both Standard modal and Rapid Create with inputs:
+    - plain text (`test text stuff`)
+    - single-quoted (`'test text stuff'`)
+    - backtick (`\`test text stuff\``)
+  - Expected UI behavior: normalized user-visible backtick literal semantics, successful submit, no `Invalid expression` regression.
+- Milestone (trace-driven fix for text validateExpression false-invalid):
+  - Evidence from Fusion trace: `validateExpression` with `units:"Text"` and expression `` `test text` `` repeatedly returned syntax invalid from backend.
+  - Root cause:
+    - text-unit validation still depended on expression parser semantics that are numeric/formula-oriented in this path.
+  - What changed (`BetterParameters.py`):
+    - `_validate_expression_response` now has dedicated text-unit branch:
+      - normalize whole `'...'` and `"..."` into backtick form for user-space semantics.
+      - auto-wrap plain text as backtick literal for validation.
+      - validate only literal closure/shape via `_mask_expression_literals`.
+      - return success without invoking Fusion numeric expression parser for text units.
+    - write/read boundary translation behavior remains in normalization helpers used at submit/collect boundaries.
+  - Tests added/updated (`tests/test_literal_masking.py`):
+    - text-unit plain text accepted.
+    - text-unit single-quoted accepted.
+
+- Validation status:
+  - `python -m pytest tests/test_literal_masking.py -q` -> `39 passed`, `0 failed`.
+  - `python -m pytest` -> `399 passed`, `0 failed`.
+  - canonical sync verify -> `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+
+- Remaining risk / next check:
+  - Must verify in-Fusion end-to-end create/update submit still succeeds for text unit after frontend normalization + backend text branch changes.
+  - Retest cases:
+    - `test text stuff`
+    - `'test text stuff'`
+    - `` `test text stuff` ``
+  - Check both Standard New Parameter and Rapid Create apply paths.
+- Milestone (main table text focus/blur backtick compliance):
+  - What changed (`BetterParameters/palette.html`):
+    - text backtick helpers now resolve unit from row input (`data-parameter-unit`) first, then fallback to create-form unit.
+    - main table row edit path now applies text normalization on row expression focus/blur:
+      - `focusin` on `.expression-input` -> apply backtick shell behavior for text-unit rows.
+      - `focusout` row expression path -> normalize text-unit backticks before validation/apply.
+  - Why:
+    - Keep text UX consistent across create modal, rapid create, and existing-row edit paths.
+
+- Validation status:
+  - `python -m pytest` -> `399 passed`, `0 failed`.
+  - canonical sync verify -> `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+
+- Remaining risk / next check:
+  - In-Fusion interactive UX check for main table text rows:
+    - focus into text expression cell: empty value shells as expected.
+    - blur: normalization consistency + no invalid-expression noise.
+    - edit/re-edit cycle preserves expected displayed backtick semantics.
+- Ship milestone (patch):
+  - Version shipped: `v0.8.1`.
+  - Release notes updated before ship in `scripts/release_notes_pending.md` to match text-parameter validation/translation fixes.
+  - Canonical ship command used:
+    - `powershell -ExecutionPolicy Bypass -File .\scripts\ship.ps1 -BumpType patch -FusionTested -NotesFile %USERPROFILE%\Documents\Codex\OpenParameters\scripts\release_notes_pending.md`
+  - GitHub release URL:
+    - `https://github.com/macifoxispurple/FusionBetterParameters/releases/tag/v0.8.1`
+  - Packaged artifact:
+    - `%USERPROFILE%\Documents\Codex\OpenParameters\_releases_packages\BetterParameters-0.8.1.zip`
+  - Ship report:
+    - `%USERPROFILE%\Documents\Codex\OpenParameters\scripts\_ship_reports\ship_20260505_195112.json`
+
+- Validation status at ship:
+  - `python -m pytest` -> `399 passed`, `0 failed`.
+  - canonical sync verify -> `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+
+- Remaining risk / next check:
+  - Perform targeted in-Fusion sanity pass on text parameter create/edit/re-edit UX in all entry points after pulling latest tag.
+- Milestone (CSV export Fusion-native compatibility bugfix):
+  - Issue: CSV exported by BetterParameters failed native Fusion parameter-dialog import due to missing required 6-column schema/order.
+  - What changed:
+    - `BetterParameters.py` `_serialize_parameters_to_csv` now exports exactly these columns in order:
+      - `name, unit, expression, value, comment, favorite`
+    - Export row mapping:
+      - `value` sourced from `value` or `valuePreview`
+      - `favorite` sourced from `favorite` or `isFavorite` (bool serialized as `true`/`false`)
+    - Existing CSV import parser kept backward-compatible (still requires `name` + `expression`; ignores extra columns including `value`/`favorite`).
+  - Tests updated (`tests/test_csv.py`):
+    - assert exact header order for Fusion schema
+    - assert `value` + `favorite` export content
+    - align legacy group-roundtrip expectations with new 6-column export contract
+
+- Validation status:
+  - `python -m pytest` -> `401 passed`, `0 failed`.
+  - canonical sync verify -> `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+
+- Remaining risk / next check:
+  - Validate in Fusion native parameter dialog by importing newly exported CSV and confirming no schema error.
+- Milestone (CSV text-expression export compatibility refinement):
+  - Requirement: native Fusion CSV import accepts text expressions when exported with single quotes, not backticks.
+  - What changed:
+    - `BetterParameters.py` `_serialize_parameters_to_csv` now converts text-unit expression values to Fusion single-quoted form at export time using `_normalize_text_expression_for_fusion`.
+    - Non-text expressions remain unchanged.
+    - Import behavior remains tolerant: backend import/create/update paths continue accepting backtick or quoted forms and normalize at Fusion interaction boundary.
+  - Tests updated (`tests/test_csv.py`):
+    - added `test_export_text_expression_uses_single_quotes` to lock text export contract.
+
+- Validation status:
+  - `python -m pytest` -> `402 passed`, `0 failed`.
+  - canonical sync verify -> `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+
+- Remaining risk / next check:
+  - In Fusion native parameter dialog, import a BetterParameters-exported CSV containing text params with apostrophes and confirm successful parse/apply.
+- Milestone (CSV import feedback UX parity with Fusion-file import):
+  - Goal: mirror CSV import user-feedback section behavior to match Fusion-file import flow.
+  - What changed (`palette.html`):
+    - Added shared `parameterFileImportSession` for follow-up actions across import sources.
+    - CSV import now:
+      - persists failed-row session metadata
+      - shows follow-up action row (`Retry Remaining`, `Copy Failed Rows`) when failures remain
+      - shows end-of-import popup report (`CSV Import Report`) similar to Fusion-file import report behavior
+    - Retry button now supports both session types:
+      - CSV session retries via `importParameters` using stored `filePath`
+      - Fusion-file session keeps existing `retryImportParametersFromDataPanel` behavior
+    - Copy-failed button now copies from active shared import session (CSV or Fusion-file).
+    - Clearing/reset behavior updated to hide follow-up actions and clear shared session at import start/error paths.
+  - Why:
+    - Align import troubleshooting UX and post-import visibility across CSV and Fusion-file workflows.
+
+- Validation status:
+  - `python -m pytest` -> `402 passed`, `0 failed`.
+  - canonical sync verify -> `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+
+- Remaining risk / next check:
+  - In Fusion UI, verify CSV import with failures triggers:
+    - same-style report popup
+    - follow-up buttons visible
+    - retry path works against same CSV file without reselection
+    - copy-failed rows output includes CSV source path and row details.
+- Milestone (import feedback popup UI consistency):
+  - Requirement: replace native alert-style feedback popup with in-app modal matching existing confirmation modal design language.
+  - What changed (`palette.html`):
+    - Added `importReportModal` + backdrop using the same `create-modal` / `create-modal-card is-discard-confirm` styling family as rapid-create confirmation modal.
+    - Replaced `showImportReportPopup` implementation from `window.alert(...)` to modal rendering (`setImportReportModalOpen(true)`) with title + multiline report body.
+    - Added modal controls and behavior parity:
+      - close button
+      - OK button
+      - backdrop click close
+      - Escape-key close path integrated in global keydown handler
+    - Shared modal body class update path reused to keep consistent body/modal state behavior.
+
+- Validation status:
+  - `python -m pytest` -> `402 passed`, `0 failed`.
+  - canonical sync verify -> `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+
+- Remaining risk / next check:
+  - In Fusion UI, verify import report modal readability for long failed-row lists (scroll behavior, focus close loop, Escape close).
+- Milestone (import popup modal unification + style correction):
+  - User feedback: import popup style diverged from existing rapid-create confirmation modal; both import popups should use same modal system.
+  - What changed (`palette.html`):
+    - Removed custom `importReportModal` implementation.
+    - Upgraded shared `requestConfirmation(...)` to support:
+      - custom title
+      - optional cancel button visibility (`showCancel`)
+      - preserved line breaks (`preserveLineBreaks`)
+    - Routed both import popup types through shared confirmation modal:
+      - preview/confirm dialogs for CSV + Fusion-file imports now use `requestConfirmation(...)` (no native `window.confirm`).
+      - post-import report popup now uses one-button confirmation modal (`OK`) via `requestConfirmation(...)`.
+    - Removed now-obsolete import-report modal event handlers and Escape branch.
+  - Why:
+    - Ensure import dialog UX is visually and behaviorally consistent with the established rapid-create confirmation modal design.
+
+- Validation status:
+  - `python -m pytest` -> `402 passed`, `0 failed`.
+  - canonical sync verify -> `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+
+- Remaining risk / next check:
+  - In Fusion UI, verify modal sizing/readability for long import reports and check focus/cancel behavior across repeated import operations.
+- Ship milestone (patch):
+  - Version shipped: `v0.8.2`.
+  - Release notes updated before ship in `scripts/release_notes_pending.md` to include CSV native-import compatibility and import-modal UX unification.
+  - Canonical ship command used:
+    - `powershell -ExecutionPolicy Bypass -File .\scripts\ship.ps1 -BumpType patch -FusionTested -NotesFile %USERPROFILE%\Documents\Codex\OpenParameters\scripts\release_notes_pending.md`
+  - GitHub release URL:
+    - `https://github.com/macifoxispurple/FusionBetterParameters/releases/tag/v0.8.2`
+  - Packaged artifact:
+    - `%USERPROFILE%\Documents\Codex\OpenParameters\_releases_packages\BetterParameters-0.8.2.zip`
+  - Ship report:
+    - `%USERPROFILE%\Documents\Codex\OpenParameters\scripts\_ship_reports\ship_20260505_201818.json`
+
+- Validation status at ship:
+  - `python -m pytest` -> `402 passed`, `0 failed`.
+  - canonical sync verify -> `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+
+- Remaining risk / next check:
+  - Quick in-Fusion smoke after update: CSV export -> native Fusion import + CSV/Fusion-file import modal UX flows.
+- Milestone (FE native confirm/prompt replacement):
+  - Goal: replace remaining FE native dialogs with shared modal system.
+  - What changed (`palette.html`):
+    - Extended shared confirmation modal with optional text-input mode:
+      - added `confirmModalTextInputWrap` + `confirmModalTextInput`
+      - added `requestTextInput(...)` promise API
+      - updated modal open/close resolver flow to support confirm-mode and text-input-mode
+    - Replaced group rename native prompt:
+      - `renameGroup(...)` now uses `requestTextInput(...)` modal flow.
+    - Replaced BP package import native confirm:
+      - package import preflight confirmation now uses `requestConfirmation(...)` modal flow.
+  - Native fallback paths retained only as defensive fallback if modal nodes are missing.
+
+- Validation status:
+  - `python -m pytest` -> `402 passed`, `0 failed`.
+  - canonical sync verify -> `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+
+- Remaining risk / next check:
+  - In Fusion UI, verify rename-group modal text entry UX (focus/select, Enter/cancel behavior) and package import confirmation readability for long summaries.
+- Milestone (modal text-input keyboard UX):
+  - User request: Enter should submit for new modal text-input flow, matching standard keyboard UX expectations.
+  - What changed (`palette.html`):
+    - Added `keydown` handler on `confirmModalTextInput`:
+      - `Enter` => confirm/submit (`setConfirmModalOpen(false, { result: true })`)
+      - `Escape` => cancel (`setConfirmModalOpen(false, { result: false })`)
+  - Why:
+    - Ensure rename/input modal behaves like standard dialog form inputs.
+
+- Validation status:
+  - `python -m pytest` -> `402 passed`, `0 failed`.
+  - canonical sync verify -> `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+
+- Remaining risk / next check:
+  - In Fusion UI, verify Enter/Escape behavior for rename-group flow and that focus returns correctly after close.
+- Ship milestone (patch):
+  - Version shipped: `v0.8.3`.
+  - Release notes updated before ship in `scripts/release_notes_pending.md` to include FE modal unification and modal text-input keyboard UX.
+  - Canonical ship command used:
+    - `powershell -ExecutionPolicy Bypass -File .\scripts\ship.ps1 -BumpType patch -FusionTested -NotesFile %USERPROFILE%\Documents\Codex\OpenParameters\scripts\release_notes_pending.md`
+  - GitHub release URL:
+    - `https://github.com/macifoxispurple/FusionBetterParameters/releases/tag/v0.8.3`
+  - Packaged artifact:
+    - `%USERPROFILE%\Documents\Codex\OpenParameters\_releases_packages\BetterParameters-0.8.3.zip`
+  - Ship report:
+    - `%USERPROFILE%\Documents\Codex\OpenParameters\scripts\_ship_reports\ship_20260505_202620.json`
+
+- Validation status at ship:
+  - `python -m pytest` -> `402 passed`, `0 failed`.
+  - canonical sync verify -> `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+
+- Remaining risk / next check:
+  - In-Fusion smoke: rename-group modal text input Enter/Escape behavior + package import modal confirmation formatting/readability.
+- Milestone (delete selected silent-failure bugfix, hybrid strategy):
+  - Issue: selected parameter deletes could fail silently (commonly dependency/reference blocked).
+  - Implemented hybrid delete strategy:
+    - BE `BetterParameters.py` `_delete_parameters_batch`:
+      - dependency-informed initial delete ordering (dependents before dependencies)
+      - multi-pass delete retries up to 10 passes
+      - explicit remaining-failure collection with per-parameter reason messages
+      - failure summary message now indicates likely dependency/reference cause
+    - FE `palette.html`:
+      - added delete-failure report modal for partial/no-delete outcomes
+      - modal shown only when failures remain; no modal when full success
+      - includes requested, deleted, remaining counts + row-level failure reasons
+      - wired for both main selection delete path and row-menu selected delete path
+
+- Tests added:
+  - `tests/test_delete_batch.py`
+    - dependency-order success case
+    - unresolved cyclic dependency failure reporting case
+
+- Validation status:
+  - `python -m pytest tests/test_delete_batch.py -q` -> `2 passed`, `0 failed`.
+  - `python -m pytest` -> `404 passed`, `0 failed`.
+  - canonical sync verify -> `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+
+- Remaining risk / next check:
+  - In Fusion UI, validate delete report modal details with mixed success/failure batches and confirm no report modal appears on full successful deletion.
+- Ship milestone (patch):
+  - Version shipped: `v0.8.4`.
+  - Release notes updated before ship in `scripts/release_notes_pending.md` to include hybrid delete ordering/retry and delete-failure report modal.
+  - Canonical ship command used:
+    - `powershell -ExecutionPolicy Bypass -File .\scripts\ship.ps1 -BumpType patch -FusionTested -NotesFile %USERPROFILE%\Documents\Codex\OpenParameters\scripts\release_notes_pending.md`
+  - GitHub release URL:
+    - `https://github.com/macifoxispurple/FusionBetterParameters/releases/tag/v0.8.4`
+  - Packaged artifact:
+    - `%USERPROFILE%\Documents\Codex\OpenParameters\_releases_packages\BetterParameters-0.8.4.zip`
+  - Ship report:
+    - `%USERPROFILE%\Documents\Codex\OpenParameters\scripts\_ship_reports\ship_20260505_204142.json`
+
+- Validation status at ship:
+  - `python -m pytest` -> `404 passed`, `0 failed`.
+  - canonical sync verify -> `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+
+- Remaining risk / next check:
+  - In-Fusion smoke for mixed delete batches to confirm failure report readability and no report on full-success deletes.
+- Milestone (RDP/off-screen recovery utility command):
+  - User issue: palette can appear off-screen when display geometry changes (e.g., smaller RDP viewport).
+  - What changed:
+    - `BetterParameters.py`:
+      - added new utility command definition: `Restore Window Position`
+      - added promoted Utilities dropdown in Better Parameters panel containing:
+        - `Better Parameters`
+        - `Restore Window Position`
+      - implemented restore action:
+        - force palette docking state to floating
+        - compute centered position when possible (fallback `(80,80)`)
+        - persist updated `palettePosition` and apply immediately to visible palette
+  - Scope respected: no manifest/settings schema changes; only runtime command/control behavior.
+
+- Validation status:
+  - `python -m pytest` -> `404 passed`, `0 failed`.
+  - canonical sync verify -> `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+
+- Remaining risk / next check:
+  - In Fusion over RDP/smaller viewport, verify `Better Parameters Utilities > Restore Window Position` reliably brings palette back on-screen.
+- Task start (restore window position feature only):
+  - Scope locked to implementing `Restore Window Position` utility action in ribbon UX without unrelated behavior changes.
+  - Plan: add restore command + split-button main control (main click opens Better Parameters, dropdown lists Better Parameters and Restore Window Position directly), then run pytest + sync verify.
+- Milestone (restore window position feature implementation):
+  - What changed:
+    - `BetterParameters.py` only:
+      - added command definition/handler: `Restore Window Position`
+      - added split-button control in Better Parameters panel where:
+        - main click executes `Better Parameters`
+        - dropdown includes direct action `Restore Window Position`
+      - implemented `_restore_palette_window_position()` to:
+        - force floating docking state
+        - persist centered/fallback on-screen position
+        - make palette visible and apply saved docking/position immediately
+      - retained existing save/restore settings schema and geometry flow.
+  - Why:
+    - recover off-screen palette scenarios (RDP/smaller viewport) while preserving desired ribbon UX.
+
+- Validation status:
+  - `python -m pytest` -> `404 passed`, `0 failed`.
+  - canonical sync verify -> `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+
+- Remaining risk / next check:
+  - In Fusion, verify ribbon UX matches expected split-button pattern and test restore action from off-screen state.
+
+- Task start (2026-05-06 15:52:26): FE/Release handoff intake complete.
+  - What changed:
+    - Read canonical HANDOFF.md and active CONTEXT.md.
+    - Confirmed repo root at %USERPROFILE%\Documents\Codex\OpenParameters\BetterParameters.
+    - Checked git status --short in repo root: clean working tree (no local changes).
+    - Scope confirmation: ready for FE-only or FE+BE per next explicit user task; no code edits made yet.
+  - Why:
+    - Mandatory startup procedure + preserve unrelated local changes before implementation.
+  - Validation run + pass/fail counts:
+    - No new validation executed in this intake step (tests: not run, sync verify: not run, harness: not run).
+  - Remaining risk / next check:
+    - On first implementation task, lock scope (FE-only vs FE+BE), then run required validation gates after edits.
+
+- Milestone (2026-05-06 15:55:20): FE+BE minimal 3-change patch set implemented (requested scope only).
+  - What changed:
+    - BetterParameters.py:
+      - Added palette create seed constants:
+        - PALETTE_CREATE_SEED_WIDTH = 420
+        - PALETTE_CREATE_SEED_HEIGHT = 320
+      - _ensure_palette() ui.palettes.add(...) now seeds with create-size constants (saved-size restore flow unchanged).
+      - Added restore command constants + registration/handlers:
+        - etterParametersRestoreWindowPosition
+        - execute path calls _restore_palette_window_position().
+      - Added restore command control in Utilities panel only (non-promoted), without split-button wiring and without altering main launch command behavior.
+      - Implemented _restore_palette_window_position() to ensure palette visible, force floating docking, recenter with fallback (80, 80), and persist docking/position.
+    - palette.html:
+      - In global keydown handler, added const ctrlOrMeta = event.ctrlKey || event.metaKey;.
+      - Updated shortcut gates to use ctrlOrMeta for D/T/M/C shortcuts while preserving Alt/Shift gating behavior.
+  - Why:
+    - Requested macOS palette create-size seed fix, Cmd/Ctrl shortcut parity, and restore-window-position utility action with minimal diffs.
+  - Validation run + pass/fail counts:
+    - python -m pytest => 404 passed, 0 failed.
+    - canonical sync verify => Done: 12 copied, 5 skipped, 0 error(s).
+    - verify lines:
+      - VERIFY OK     BetterParameters.py
+      - VERIFY OK     palette.html
+  - Remaining risk / next check:
+    - Restore centering relies on existing screen-metrics helper; on environments where centering probe is unavailable, fallback (80,80) is used as designed. Recommend quick in-Fusion smoke on macOS and RDP/off-screen recovery path.
+
+- Ship milestone (2026-05-06 16:33:53): patch release shipped via canonical script.
+  - What changed:
+    - Ran powershell -ExecutionPolicy Bypass -File .\scripts\ship.ps1 -BumpType patch -FusionTested from workspace root.
+    - Published release 0.8.5.
+    - Commit created by ship script: Release v0.8.5.
+  - Why:
+    - User requested patch ship for the completed 3-change FE+BE patch set.
+  - Validation run + pass/fail counts:
+    - Pre-ship validation from implementation step remained green:
+      - python -m pytest => 404 passed, 0 failed.
+      - canonical sync verify included required key lines:
+        - VERIFY OK BetterParameters.py
+        - VERIFY OK palette.html
+    - Ship run sync stage: Done: 17 copied, 4 skipped, 0 error(s).
+  - Remaining risk / next check:
+    - Run quick in-Fusion smoke on macOS for Cmd shortcuts and restore-window-position recovery behavior in off-screen/RDP scenario.
+
+- Repo hardening migration (2026-05-06 17:59:42):
+  - Moved git root to OpenParameters/ via history-preserving subtree import of legacy BetterParameters repo.
+  - Added root repo policy files: .gitignore, .gitattributes, .editorconfig, .gitleaks.toml.
+  - Added docs: root README.md, CONTRIBUTING.md.
+  - Updated scripts/ship.ps1 defaults to repo-relative paths + optional BP_LIVE_ADDIN_ROOT env override.
+  - Removed legacy migration leftovers (BetterParameters_legacy/, duplicate BetterParameters.py/).
+  - Validation: python -m pytest => 404 passed; sync verify => VERIFY OK BetterParameters.py + VERIFY OK palette.html.
+  - Pushed new root layout to origin/master (8f2b0c5..3739038).
+
+## 2026-05-06 - Ship.py rollout start
+- What changed: Began implementing cross-platform shipping transition (scripts/ship.py) and preparing wrapper/tests/docs updates.
+- Why: Need canonical release flow that works on Windows + macOS with deterministic packaging.
+- Validation: Not run yet for this task scope (pending).
+- Remaining risk/next check: Finish wrapper + tests + handoff updates, then run python -m pytest and verify pass counts.
+
+
+## 2026-05-06 - Ship.py transition milestone
+- What changed: Added canonical cross-platform ship script (scripts/ship.py), replaced scripts/ship.ps1 with thin compatibility wrapper that forwards legacy flags to ship.py, added shipping helper tests (	ests/test_ship_py.py), and updated HANDOFF ship procedure text to make ship.py canonical with wrapper transition note.
+- Why: Enable deterministic packaging and release flow from both Windows and macOS while preserving short-term PowerShell compatibility.
+- Validation: python -m pytest => 411 passed, 6 skipped, 0 failed. Sync verify => 0 errors; VERIFY OK BetterParameters.py; VERIFY OK palette.html.
+- Remaining risk/next check: Run first real release from macOS using python scripts/ship.py to confirm operator environment (gh auth) and release asset parity with prior Windows-only flow.
+
+
+## 2026-05-06 - Ship.py full cutover
+- What changed: Completed transition by removing scripts/ship.ps1 compatibility wrapper and deleting obsolete scripts/package_release.py; updated HANDOFF shipping docs to ship.py-only guidance and --notes-file flag wording.
+- Why: User requested complete move to Python shipping path before further testing.
+- Validation: Not run in this step (intentionally paused per request ordering).
+- Remaining risk/next check: Run python -m pytest, then do a dry-run ship invocation (--skip-push --skip-release) to confirm operator flow after wrapper removal.
+
+
+## 2026-05-06 - ship.py no-release full-flow trial
+- What changed: Committed ship.py cutover (100d76) and executed canonical ship flow without release publish using python .\scripts\ship.py --bump-type patch --fusion-tested --skip-release. Script completed successfully and produced local release commit/tag for v0.8.6 plus ship report JSON.
+- Why: Validate full end-to-end packaging/versioning/tagging path before any GitHub release publish.
+- Validation: ship.py run => success (Shipped v0.8.6 successfully.). Report: scripts/_ship_reports/ship_20260506_213652.json.
+- Remaining risk/next check: Branch is now ahead with local release/tag not yet pushed; decide whether to push branch+tag for GitHub inspection, or revert local ship commit/tag before further feature work.
+
+
+## 2026-05-06 - updater generator parity fix
+- What changed: Updated BetterParameters.py _updater_script_contents() so generated update_helper.py now matches robust repo helper behavior (recursive copy with per-file error capture, always-skip policy for .git/.gitignore/dev/tests, optional --verify hash checks for BetterParameters.py + palette.html, and explicit exit codes).
+- Why: Prevent staged update flow from overwriting robust helper with legacy minimal copier.
+- Validation: python -m pytest => 411 passed, 6 skipped, 0 failed. Canonical sync verify => 0 errors with VERIFY OK BetterParameters.py and VERIFY OK palette.html.
+- Remaining risk/next check: None expected functionally; if desired, run staged-update path smoke in Fusion to confirm generated helper executes identically during apply-update lifecycle.
+
