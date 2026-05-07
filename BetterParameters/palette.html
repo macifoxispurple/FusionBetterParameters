@@ -2436,6 +2436,14 @@
         color: var(--muted);
       }
 
+      .create-expression-value.is-success {
+        color: var(--success);
+      }
+
+      .create-expression-value.is-error {
+        color: var(--error);
+      }
+
       .rapid-create-inline-note {
         text-align: right;
       }
@@ -3515,6 +3523,7 @@
                   <div id="expressionSuggestions" class="expression-suggestions" hidden></div>
                 </div>
                 <div id="expressionError" class="field-error" aria-live="polite"></div>
+                <div id="createExpressionValue" class="rapid-create-active-status create-expression-value" aria-live="polite"></div>
               </label>
               <label>
                 Comment
@@ -3522,7 +3531,7 @@
               </label>
               <div class="actions">
                 <button class="primary" type="submit">Create Parameter</button>
-                <div class="rapid-create-help rapid-create-inline-note create-actions-inline-note">Try out Rapid Create parameters. Shortcut: <code>Ctrl+Shift+C</code></div>
+                <div id="rapidCreateShortcutHint" class="rapid-create-help rapid-create-inline-note create-actions-inline-note">Try out Rapid Create parameters. Shortcut: <code>Ctrl+Shift+C</code></div>
               </div>
             </form>
           </div>
@@ -4525,6 +4534,7 @@
           mode: "create",
           rowKey: ""
         },
+        hostPlatform: "",
         unitMenuAnchorEl: null
       };
       let textTunerLiveApplyTimer = null;
@@ -5340,6 +5350,23 @@
           variant: "discard"
         });
         if (shouldDiscard) {
+          setRapidCreateModalOpen(false, { discard: true });
+        }
+      }
+
+      function shouldShortcutSubmitRapidCreateAll() {
+        const rows = Array.isArray(state.rapidCreate.rows) ? state.rapidCreate.rows : [];
+        if (!rows.length) {
+          return false;
+        }
+        return rows.every((row) => String(row?.severity || "") === "ready");
+      }
+
+      async function runRapidCreateAllAndMaybeClose() {
+        await runRapidCreateAll();
+        const rows = Array.isArray(state.rapidCreate.rows) ? state.rapidCreate.rows : [];
+        const hasRemainingChanges = rows.some((row) => String(row?.createState || "") !== "created");
+        if (!hasRemainingChanges) {
           setRapidCreateModalOpen(false, { discard: true });
         }
       }
@@ -8378,6 +8405,83 @@
         expressionInput.setAttribute("aria-invalid", message ? "true" : "false");
       }
 
+      function setCreateExpressionValue(message, kind = "") {
+        const node = document.getElementById("createExpressionValue");
+        if (!node) {
+          return;
+        }
+        node.textContent = String(message || "");
+        node.classList.toggle("is-success", kind === "success");
+        node.classList.toggle("is-error", kind === "error");
+      }
+
+      function scheduleCreateExpressionPreview(delayMs = ROW_EXPRESSION_PREVIEW_DEBOUNCE_MS) {
+        const input = document.getElementById("newExpression");
+        if (!input) {
+          return;
+        }
+        if (expressionValidationTimer) {
+          window.clearTimeout(expressionValidationTimer);
+        }
+        expressionValidationTimer = window.setTimeout(() => {
+          void previewCreateExpressionAgainstFusion(input).catch(() => {});
+        }, Math.max(0, Number(delayMs || 0)));
+      }
+
+      async function previewCreateExpressionAgainstFusion(input) {
+        if (!input) {
+          return false;
+        }
+        const expression = String(input.value || "");
+        if (!expression.trim()) {
+          setExpressionError("Expression is required.");
+          setCreateExpressionValue("");
+          return false;
+        }
+
+        state.rowPreviewRequestNonce += 1;
+        const requestNonce = String(state.rowPreviewRequestNonce);
+        input.setAttribute("data-preview-request-nonce", requestNonce);
+        const expressionAtRequest = expression;
+
+        try {
+          const response = await sendToFusion(ACTION.PREVIEW_EXPRESSION, {
+            expression: expressionAtRequest,
+            currentParameterName: String(document.getElementById("newName")?.value || "").trim(),
+            units: String(document.getElementById("newUnit")?.value || ""),
+            fallbackPreview: ""
+          });
+
+          if (input.getAttribute("data-preview-request-nonce") !== requestNonce) {
+            return false;
+          }
+          if (String(input.value || "") !== expressionAtRequest) {
+            return false;
+          }
+
+          if (!response.ok) {
+            setExpressionError(response.message || "Invalid expression.");
+            setCreateExpressionValue("");
+            return false;
+          }
+
+          setExpressionError("");
+          const previewValue = String(response.preview || "").trim();
+          setCreateExpressionValue(previewValue ? `Value: ${previewValue}` : "Value:", "success");
+          return true;
+        } catch (error) {
+          if (input.getAttribute("data-preview-request-nonce") !== requestNonce) {
+            return false;
+          }
+          if (String(input.value || "") !== expressionAtRequest) {
+            return false;
+          }
+          setExpressionError(String(error?.message || "Expression preview failed."));
+          setCreateExpressionValue("");
+          return false;
+        }
+      }
+
       function escapeHtml(value) {
         return (value || "").replace(/[&<>"']/g, (char) => {
           return ({
@@ -10974,6 +11078,11 @@
           maybeSeedRememberedUnitFromDocumentDefaults();
         }
 
+        if (typeof payload.hostPlatform === "string" && payload.hostPlatform.trim()) {
+          state.hostPlatform = payload.hostPlatform.trim();
+        }
+        renderRapidCreateShortcutHint();
+
         if (payload.textTunerState && typeof payload.textTunerState === "object") {
           state.textTunerState = { ...payload.textTunerState };
         }
@@ -13097,6 +13206,8 @@
 
         if (isOpen) {
           setSettingsPanelOpen(false);
+          renderRapidCreateShortcutHint();
+          setCreateExpressionValue("");
           const normalizeNullableField = (id) => {
             const input = document.getElementById(id);
             if (!input) {
@@ -13122,11 +13233,33 @@
 
         setNameError("");
         setExpressionError("");
+        setCreateExpressionValue("");
         setUnitMenuOpen(false);
         closeExpressionSuggestions();
         if (shouldRestoreFocus) {
           requestAnimationFrame(() => launchButton.focus());
         }
+      }
+
+      function isMacLikeHostPlatform() {
+        const host = String(state.hostPlatform || "").trim().toLowerCase();
+        if (host) {
+          return host.includes("darwin") || host.includes("mac");
+        }
+        const platformHint = String(navigator.platform || navigator.userAgent || "").toLowerCase();
+        return platformHint.includes("mac");
+      }
+
+      function getRapidCreateShortcutLabel() {
+        return isMacLikeHostPlatform() ? "Cmd+Shift+C" : "Ctrl+Shift+C";
+      }
+
+      function renderRapidCreateShortcutHint() {
+        const hint = document.getElementById("rapidCreateShortcutHint");
+        if (!hint) {
+          return;
+        }
+        hint.innerHTML = `Try out Rapid Create parameters. Shortcut: <code>${escapeHtml(getRapidCreateShortcutLabel())}</code>`;
       }
 
       function resolvePendingConfirmation(result) {
@@ -13295,7 +13428,7 @@
       });
 
       document.getElementById("rapidCreateCreateAllButton").addEventListener("click", async () => {
-        await runRapidCreateAll();
+        await runRapidCreateAllAndMaybeClose();
       });
 
       document.getElementById("rapidCreateEditor").addEventListener("input", () => {
@@ -13574,20 +13707,15 @@
         updateExpressionSuggestions(event.currentTarget, document.getElementById("newName").value.trim());
         updateFunctionHelper(event.currentTarget);
 
-        if (expressionValidationTimer) {
-          window.clearTimeout(expressionValidationTimer);
-        }
-
         const input = event.currentTarget;
         const value = input.value;
         if (!value.trim()) {
           setExpressionError("Expression is required.");
+          setCreateExpressionValue("");
           return;
         }
 
-        expressionValidationTimer = window.setTimeout(() => {
-          void validateExpressionAgainstFusion(input).catch(() => {});
-        }, ROW_EXPRESSION_PREVIEW_DEBOUNCE_MS);
+        scheduleCreateExpressionPreview(ROW_EXPRESSION_PREVIEW_DEBOUNCE_MS);
       });
 
       document.getElementById("newExpression").addEventListener("click", (event) => {
@@ -13657,7 +13785,7 @@
           window.clearTimeout(expressionValidationTimer);
           expressionValidationTimer = null;
         }
-        await validateExpressionAgainstFusion(event.currentTarget);
+        await previewCreateExpressionAgainstFusion(event.currentTarget);
       });
 
       document.getElementById("expressionSuggestions").addEventListener("mousedown", (event) => {
@@ -14397,9 +14525,6 @@
         if (!row) {
           return;
         }
-        if (document.body.classList.contains("narrow-stack")) {
-          return;
-        }
         if (hasBlockingLocalEdits()) {
           setGlobalStatus("Save or discard pending row edits before using reorder actions.", "warning");
           return;
@@ -14552,6 +14677,7 @@
               }
             } else {
               applySelectedUnit(normalizedUnit, { persistLastUnit: true, markRememberedSelection: true });
+              scheduleCreateExpressionPreview(0);
             }
             renderUnitPicker();
             setUnitMenuOpen(false);
@@ -14579,6 +14705,7 @@
             }
           } else {
             applySelectedUnit(unitValue, { persistLastUnit: true, markRememberedSelection: true });
+            scheduleCreateExpressionPreview(0);
           }
           renderUnitPicker();
           setUnitMenuOpen(false);
@@ -15786,6 +15913,7 @@
           form.reset();
           setNameError("");
           setExpressionError("");
+          setCreateExpressionValue("");
           syncDefaultUnit(true);
           applyStateFromFusion(response);
           setCreateModalOpen(false, { restoreFocus: false });
@@ -16197,6 +16325,15 @@
         }
         if (isRapidCreateShortcut) {
           event.preventDefault();
+          const rapidCreateModal = document.getElementById("rapidCreateModal");
+          if (rapidCreateModal && !rapidCreateModal.hidden) {
+            if (shouldShortcutSubmitRapidCreateAll()) {
+              void runRapidCreateAllAndMaybeClose();
+            } else {
+              void requestRapidCreateClose();
+            }
+            return;
+          }
           const createModal = document.getElementById("createModal");
           if (createModal && !createModal.hidden) {
             setCreateModalOpen(false, { restoreFocus: false });
@@ -16395,4 +16532,3 @@
     </script>
   </body>
 </html>
-

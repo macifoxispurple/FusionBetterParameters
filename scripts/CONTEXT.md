@@ -2266,3 +2266,97 @@ Legend:
 - Remaining risk / next check:
   - None identified for these scoped changes.
   - Optional: run quick in-Fusion smoke on macOS for Cmd shortcuts and palette resize floor behavior after create-seed adjustment.
+
+## 2026-05-07 - narrow-view right-click parity for group/reorder row menu
+- What changed:
+  - `BetterParameters/palette.html`
+    - Updated row `contextmenu` handler for `#parameterRows tr.parameter-row[data-parameter-key]` to allow opening the existing reorder/group context menu in narrow/condensed view.
+    - Removed the narrow-stack early return so narrow rows now expose the same right-click menu behavior as main table rows.
+- Why:
+  - User requested parity: narrow view rows should expose the same right-click context menu used for group organization/reorder actions in the main table view.
+- Validation run + pass/fail counts:
+  - `python3 -m pytest` => failed preflight in this environment (`No module named pytest`).
+  - Repo venv equivalent: `.venv/bin/python -m pytest` => 411 passed, 6 skipped, 0 failed.
+  - Live Fusion AddIns sync (changed file only, manifest untouched):
+    - copied `palette.html` to `$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters/palette.html`
+    - hash verification => `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke recommended: right-click on narrow row in condensed view should open row menu at cursor and preserve existing safeguards (blocking local edits/search reorder constraints).
+
+## 2026-05-07 - Rapid Create shortcut UX parity + modal shortcut action
+- What changed:
+  - `BetterParameters/palette.html`
+    - Added platform-aware shortcut hint target in standard New Parameter modal:
+      - `id="rapidCreateShortcutHint"`
+    - Added FE host-platform shortcut label helpers:
+      - `isMacLikeHostPlatform()`
+      - `getRapidCreateShortcutLabel()`
+      - `renderRapidCreateShortcutHint()`
+    - Wired hint rendering to modal open + state-apply refresh so hint updates to:
+      - macOS: `Cmd+Shift+C`
+      - Windows/other: `Ctrl+Shift+C`
+      - uses optional backend-provided `payload.hostPlatform` when present, with navigator fallback.
+    - Added rapid-create shortcut branch behavior while Rapid Create modal is already open:
+      - if all rows are `READY` (`severity === "ready"` for all rows), shortcut runs existing `runRapidCreateAll()` path.
+      - after submit, if no remaining changes, modal dismisses.
+      - otherwise, shortcut routes to existing `requestRapidCreateClose()` safe-dismiss flow (dirty confirmation / error-safe behavior preserved).
+- Why:
+  - User requested OS-appropriate shortcut note in standard modal and keyboard shortcut behavior inside Rapid Create modal that submits-or-safely-dismisses based on readiness/dirty state.
+- Validation run + pass/fail counts:
+  - Repo venv test gate:
+    - `.venv/bin/python -m pytest` => 411 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed runtime file only:
+    - `BetterParameters/palette.html` -> `$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters/palette.html`
+  - Hash verification:
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion smoke:
+    - confirm standard modal hint text shows Cmd on macOS and Ctrl on Windows host.
+    - with Rapid Create open, press shortcut on all-ready rows => Create All runs and modal closes.
+    - with dirty/non-ready rows => shortcut follows safe dismiss confirmation path.
+
+## 2026-05-07 - Rapid Create Create-All button dismiss parity
+- What changed:
+  - `BetterParameters/palette.html`
+    - Added shared helper `runRapidCreateAllAndMaybeClose()`:
+      - runs existing `runRapidCreateAll()`
+      - closes Rapid Create modal when no remaining changes (`createState !== "created"` none remain), using existing modal close path.
+    - Updated Rapid Create `Create All` button click handler to call shared helper.
+    - Updated Rapid Create keyboard shortcut in-modal submit branch to reuse same shared helper.
+- Why:
+  - User requested Create All button to dismiss modal on successful all-created outcome, matching shortcut behavior.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 411 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed file only: `BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: Rapid Create `Create All` should close modal only when all rows created; partial/failed/skipped runs should keep modal open.
+
+## 2026-05-07 - Standard New Parameter modal live-ish Value preview
+- What changed:
+  - `BetterParameters/palette.html`
+    - Added live value status line in standard New Parameter modal:
+      - `#createExpressionValue` under expression validation message.
+    - Added FE preview helpers for create modal expression:
+      - `setCreateExpressionValue(message, kind)`
+      - `scheduleCreateExpressionPreview(delayMs)`
+      - `previewCreateExpressionAgainstFusion(input)`
+    - Live preview behavior now uses backend `PREVIEW_EXPRESSION` (same backend path Rapid Create leverages) while editing in standard modal.
+    - New expression input now:
+      - debounces into preview call (live-ish value updates)
+      - clears preview when empty
+      - on blur runs preview call immediately.
+    - Unit changes in create-context now trigger immediate preview refresh so Value reflects selected unit.
+    - Modal open/close and successful create reset clear the create live Value line.
+    - Added small style hooks for success/error coloring on create live Value line.
+- Why:
+  - User requested standard new parameter flow to show Fusion-calculated Value live-ish, similar to Rapid Create behavior.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 411 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed file only: `BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: verify new modal Value line updates quickly while typing, re-evaluates when units change, clears on invalid/empty expressions, and resets after successful create/close.
