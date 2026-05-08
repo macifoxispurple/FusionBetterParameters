@@ -338,6 +338,8 @@ Auth startup check (recommended before release work):
 
 - Validate network/auth context with no mutations:
   - `python3 ./scripts/ship.py --check-auth-only --fusion-tested`
+- Local push key notes (machine-specific, not committed):
+  - `scripts/PUSHNOTES.md` (read before first push attempt on a new session/machine)
 - SSH is the default ship auth mode.
 - Optional explicit key routing:
   - `python3 ./scripts/ship.py --check-auth-only --fusion-tested --auth-mode ssh --git-ssh-key <path-to-private-key>`

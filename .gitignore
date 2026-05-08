@@ -34,6 +34,7 @@ BetterParameters.py/
 # Local operational logs (machine-specific)
 CONTEXT.md
 HANDOFF.md
+scripts/PUSHNOTES.md
 !scripts/CONTEXT.md
 !scripts/HANDOFF.md
 
