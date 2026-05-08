@@ -3081,3 +3081,38 @@ Legend:
   - Hash verification: `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
 - Remaining risk / next check:
   - In-Fusion smoke: rename user parameter used by one or more model parameters and verify model rows update without manual refresh.
+
+## 2026-05-08 - Minimal full-table-only Revert column split (independent from Comments hide)
+- What changed:
+  - `BetterParameters/palette.html`
+    - Added dedicated main-table Revert column header/cell:
+      - header: `th.revert-col` (after Comments)
+      - row cell: `td.revert-cell` containing `${revertButton}`
+    - Loading-state colspan updated from 6 -> 7.
+    - Added full-table Revert column styles + hide toggle class:
+      - `.revert-col`, `.revert-cell`
+      - `.hide-revert .revert-col`, `.hide-revert td.revert-cell`
+    - `renderRevertToggle()` now toggles `body.hide-revert` from `Show Revert` setting.
+    - Full-table width budgeting now reserves dedicated Revert width when comments are hidden:
+      - `REVERT_COL_WIDTH_PX = 86`
+      - in `applyColumnWidths()`, slack fill when comments hidden uses
+        `mainBudgetPx = containerWidth - (revertVisible ? REVERT_COL_WIDTH_PX : 0)`.
+      - dedicated revert header width is set via `headers[6]` in non-narrow mode.
+    - Visible column count logic updated for new column base and hide-revert state.
+    - To avoid full-table duplicate revert actions while preserving existing narrow behavior path, hide comments-cell revert button only in non-narrow mode:
+      - `body:not(.narrow-stack) ... .row-actions .revert-button { display: none; }`
+- Why:
+  - Requested minimum change set for full/main table only: Revert must be its own independent column and remain visible even when Comments column is hidden in wide/full table mode.
+  - Explicitly avoided narrow/ultralight-specific behavioral edits.
+- Validation run + pass/fail counts:
+  - `python3 -m pytest` => failed to start (`No module named pytest` in system Python).
+  - `.venv/bin/python -m pytest` => 420 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed runtime file only: `BetterParameters/palette.html` -> `~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion full-width smoke with combinations:
+    - Comment On/Revert On
+    - Comment Off/Revert On
+    - Comment On/Revert Off
+    - Comment Off/Revert Off

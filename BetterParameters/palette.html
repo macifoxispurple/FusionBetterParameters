@@ -1287,8 +1287,27 @@
         min-width: 220px;
       }
 
+      .revert-col {
+        width: 86px;
+        min-width: 86px;
+      }
+
       .comments-cell {
         min-width: 0;
+      }
+
+      .revert-cell {
+        text-align: right;
+      }
+
+      .revert-cell .revert-button {
+        width: 74px;
+        min-width: 74px;
+        max-width: 74px;
+      }
+
+      body:not(.narrow-stack) #parameterRows tr.parameter-row td.comments-cell .row-actions .revert-button {
+        display: none;
       }
 
       .comment-shell {
@@ -1311,6 +1330,11 @@
       }
 
       .hide-comment td.comments-cell {
+        display: none;
+      }
+
+      .hide-revert .revert-col,
+      .hide-revert td.revert-cell {
         display: none;
       }
 
@@ -3642,11 +3666,12 @@
                   <th class="sortable-header has-resizer" data-sort-col="expression"><span class="header-main"><span class="header-label">Expression</span><span class="sort-indicator" aria-hidden="true"></span></span><div class="column-resizer" data-col="expression"></div></th>
                   <th class="value-col sortable-header has-resizer" data-sort-col="value"><span class="header-main"><span class="header-label">Value</span><span class="sort-indicator" aria-hidden="true"></span></span><div class="column-resizer" data-col="value"></div></th>
                   <th class="comment-col comments-col sortable-header" data-sort-col="comment"><span class="header-main"><span class="header-label">Comments</span><span class="sort-indicator" aria-hidden="true"></span></span></th>
+                  <th class="revert-col">Revert</th>
                 </tr>
               </thead>
               <tbody id="parameterRows">
                 <tr>
-                  <td colspan="6" class="empty">Loading parameters...</td>
+                  <td colspan="7" class="empty">Loading parameters...</td>
                 </tr>
               </tbody>
             </table>
@@ -4110,6 +4135,7 @@
       const ROW_NAME_VALIDATION_DEBOUNCE_MS = 180;
       const FIELD_HELPER_CLOSE_DELAY_MS = 120;
       const COMMENTS_MIN_WIDTH_PX = 120;
+      const REVERT_COL_WIDTH_PX = 86;
       const PACKAGE_PREFS_STORAGE_KEY = "bp_package_ui_prefs";
       const LAYOUT_DEBUG_STORAGE_KEY = "bp_layout_debug";
       const DEBUG_CAPTURE_ENABLED_STORAGE_KEY = "bp_debug_capture_enabled";
@@ -6075,15 +6101,17 @@
         }
 
         const commentsVisible = userShowsComments && !autoHideComments;
+        const revertVisible = !document.body.classList.contains("hide-revert");
         const adjustedMainPx = { ...columnPx };
         if (autoHideParameter) adjustedMainPx.parameter = 0;
         if (autoHideUnit) adjustedMainPx.unit = 0;
         if (autoHideValue) adjustedMainPx.value = 0;
-        if (!commentsVisible && containerWidth > visibleMainPx) {
-          const slackPx = containerWidth - visibleMainPx;
+        if (!commentsVisible) {
+          const mainBudgetPx = Math.max(0, containerWidth - (revertVisible ? REVERT_COL_WIDTH_PX : 0));
+          const slackPx = Math.max(0, mainBudgetPx - visibleMainPx);
           const fillPriority = ["expression", "name", "value", "unit", "parameter"];
           const fillKey = fillPriority.find((key) => visibleMainKeys.includes(key));
-          if (fillKey) {
+          if (fillKey && slackPx > 0) {
             adjustedMainPx[fillKey] = (adjustedMainPx[fillKey] || 0) + slackPx;
           }
         }
@@ -6118,16 +6146,20 @@
           if (isNarrowMode) {
             table.style.width = fluidResizeWidth ? "100%" : `${containerWidth}px`;
             if (headers[5]) headers[5].style.width = "";
+            if (headers[6]) headers[6].style.width = "";
             scheduleLayoutDebugPanelUpdate();
             return;
           }
 
-          const effectiveSumPx = visibleMainKeys.reduce((sum, key) => sum + (adjustedMainPx[key] || 0), 0);
+          const effectiveSumPx = visibleMainKeys.reduce((sum, key) => sum + (adjustedMainPx[key] || 0), 0) + (revertVisible ? REVERT_COL_WIDTH_PX : 0);
           const commentsWidth = commentsVisible
             ? (containerWidth > effectiveSumPx ? containerWidth - effectiveSumPx : COMMENTS_MIN_WIDTH_PX)
             : 0;
           if (headers[5]) {
             headers[5].style.width = commentsVisible && commentsWidth > 0 ? `${commentsWidth}px` : "0px";
+          }
+          if (headers[6]) {
+            headers[6].style.width = revertVisible ? `${REVERT_COL_WIDTH_PX}px` : "0px";
           }
           table.style.width = fluidResizeWidth ? "100%" : `${containerWidth}px`;
         }
@@ -6135,8 +6167,11 @@
       }
 
       function getVisibleTableColumnCount() {
-        let visibleCount = 6;
+        let visibleCount = 7;
         if (document.body.classList.contains("hide-comment") || document.body.classList.contains("auto-hide-comments")) {
+          visibleCount -= 1;
+        }
+        if (document.body.classList.contains("hide-revert")) {
           visibleCount -= 1;
         }
         if (document.body.classList.contains("auto-hide-parameter")) {
@@ -6338,6 +6373,7 @@
         const button = document.getElementById("toggleRevertButtonsButton");
         const isOn = state.settings.showRevertButtons !== false;
         button.textContent = `Show Revert: ${isOn ? "On" : "Off"}`;
+        document.body.classList.toggle("hide-revert", !isOn);
       }
 
       function renderAutoFitToggle() {
@@ -9412,6 +9448,9 @@
                       <span class="parameter-kind">Type: ${kindText}</span>
                     </div>
                   </div>
+                </td>
+                <td class="revert-cell">
+                  ${revertButton}
                 </td>
               </tr>
             `);
