@@ -12980,6 +12980,7 @@
               throw new Error(renameResponse.message || "Rename failed.");
             }
             applyStateFromFusion(renameResponse, { source: "response", action: ACTION.RENAME_PARAMETER });
+            await ensureModelParametersForCurrentQuery(true);
             currentName = nextName;
             if (parameterKey) {
               const refreshedRow = getParameterRowByKey(parameterKey);
@@ -13210,6 +13211,7 @@
             }
           }
 
+          let modelRefreshNeededAfterRename = false;
           for (const op of renameOps) {
             if (!state.parameters.some((item) => String(item?.key || "") === op.key)) {
               markFailure(op, "Parameter no longer exists.", "name");
@@ -13250,6 +13252,7 @@
                 throw new Error(renameResponse.message || "Rename failed.");
               }
               applyStateFromFusion(renameResponse, { source: "response", action: ACTION.RENAME_PARAMETER });
+              modelRefreshNeededAfterRename = true;
               op.name = op.nextName;
               pending.set(op.key, { name: op.nextName, expression: op.expression, comment: op.comment, nameErrorMessage: "", errorMessage: "" });
               if (!op.expressionDirty && !op.commentDirty) {
@@ -13266,6 +13269,10 @@
               }
             }
             restorePendingDirtyOps(pending);
+          }
+
+          if (modelRefreshNeededAfterRename) {
+            await ensureModelParametersForCurrentQuery(true);
           }
 
           if (!stoppedByTransportFailure) {

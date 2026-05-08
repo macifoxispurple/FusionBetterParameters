@@ -3062,3 +3062,22 @@ Legend:
   - Hash verification: `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
 - Remaining risk / next check:
   - In-Fusion smoke: promote from model rows in multiple components and verify created user parameters appear under matching component-group labels.
+
+## 2026-05-07 - Option 1 implemented: force-refresh model parameters after user-parameter rename
+- What changed:
+  - `BetterParameters/palette.html`
+    - Single-row rename flow:
+      - after successful `ACTION.RENAME_PARAMETER` response apply, now runs `await ensureModelParametersForCurrentQuery(true)`.
+    - Bulk rename flow:
+      - tracks whether any rename succeeded (`modelRefreshNeededAfterRename`).
+      - performs one coalesced `await ensureModelParametersForCurrentQuery(true)` after rename loop when needed.
+- Why:
+  - Ensures model parameter rows that reference user parameter names are refreshed from Fusion immediately after user parameter rename, keeping expressions/value display aligned.
+  - Keeps refresh efficient in bulk flow (one refresh instead of per-row refresh).
+- Validation run + pass/fail counts:
+  - `python -m pytest` => 420 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload using `update_helper.py` with manifest excluded.
+  - Hash verification: `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: rename user parameter used by one or more model parameters and verify model rows update without manual refresh.
