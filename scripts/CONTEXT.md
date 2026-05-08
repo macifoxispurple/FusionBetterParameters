@@ -2998,3 +2998,67 @@ Legend:
   - Hash verification: `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
 - Remaining risk / next check:
   - Existing users with persisted settings keep their saved value; this change affects default/new settings hydration only.
+
+## 2026-05-07 - Model parameter context menu: promote to user parameter (ordered create + link)
+- What changed:
+  - `BetterParameters/BetterParameters.py`
+    - Added new mutating action: `promoteModelParameterToUserParameter`.
+    - Added action handling path in `_handle_palette_action(...)`.
+    - Implemented `_promote_model_parameter_to_user_parameter(data)` with explicit ordered flow:
+      1) resolve selected model parameter by token/name
+      2) validate requested user parameter name
+      3) create user parameter using model parameter expression + unit (+ comment)
+      4) after create succeeds, set model parameter expression to the new user parameter name.
+    - Added rollback attempt if step (4) fails: delete newly created user parameter and return explicit error.
+  - `BetterParameters/palette.html`
+    - Added new action constant: `PROMOTE_MODEL_PARAMETER_TO_USER_PARAMETER`.
+    - Extended existing right-click row context menu (`#reorderMenu`) with model-row-only promote section:
+      - input field `#promoteModelParameterNameInput`
+      - button `#promoteModelParameterButton` (`Promote + Link`)
+    - Added menu mode routing in `setReorderMenuMode()`:
+      - user rows: existing reorder/group controls
+      - model rows: promote section only.
+    - Added `handlePromoteModelParameterFromMenu()`:
+      - reads selected model row key/name
+      - submits new name to backend action
+      - supports Enter-key submit and button click
+      - refreshes model-parameter page after success and shows success/error status.
+    - `openReorderMenu(...)` now autofocuses promote input for model rows.
+  - `tests/test_model_parameters.py`
+    - Added coverage:
+      - action list includes `promoteModelParameterToUserParameter`
+      - ordered operation: user parameter add occurs before model expression rewrite
+      - rollback path: created user parameter is deleted when link step fails.
+- Why:
+  - Requested feature: promote model parameter from context menu with typed name and strict operation ordering (create first, then link model expression to new user parameter name).
+- Validation run + pass/fail counts:
+  - `python -m pytest` => 419 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload with manifest excluded.
+  - Hash verification: `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: right-click model row -> promote input Enter-submit -> verify new user parameter appears and model parameter expression rewires to the new user parameter name.
+
+## 2026-05-07 - Promote model parameter: inherit model component group for created user parameter
+- What changed:
+  - `BetterParameters/BetterParameters.py`
+    - Enhanced `_promote_model_parameter_to_user_parameter(data)` to accept optional `group` value.
+    - After creating the user parameter (and before model-expression rewire), now assigns the new user parameter to that group via `_set_parameter_group(...)`.
+    - If group assignment fails, deletes newly created user parameter and returns explicit error.
+  - `BetterParameters/palette.html`
+    - Promote context-menu submit payload now includes row group label:
+      - `group: row.getAttribute("data-group-name")`
+    - This maps model-row component group labels into backend promote flow.
+  - `tests/test_model_parameters.py`
+    - Updated ordered-flow test to assert sequence:
+      - add user parameter -> assign group -> rewrite model expression.
+    - Added rollback test for group-assignment failure (created parameter must be deleted).
+- Why:
+  - Requested behavior: promoted user parameter should automatically land in the same component group as the source model parameter.
+- Validation run + pass/fail counts:
+  - `python -m pytest` => 420 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload using `update_helper.py` with manifest excluded.
+  - Hash verification: `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: promote from model rows in multiple components and verify created user parameters appear under matching component-group labels.

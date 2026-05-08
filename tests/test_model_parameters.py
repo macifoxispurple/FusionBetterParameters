@@ -511,3 +511,122 @@ def test_get_model_parameters_in_read_only_actions():
 
 def test_get_model_parameters_not_in_mutating_actions():
     assert "getModelParameters" not in BP._MUTATING_ACTIONS
+
+
+def test_promote_model_parameter_action_in_mutating_actions():
+    assert "promoteModelParameterToUserParameter" in BP._MUTATING_ACTIONS
+
+
+def test_promote_model_parameter_creates_user_then_links_model_expression():
+    events = []
+
+    class _ModelParam:
+        def __init__(self):
+            self.name = "d12"
+            self.unit = "mm"
+            self.comment = "model comment"
+            self._expression = "base_width * 2"
+
+        @property
+        def expression(self):
+            return self._expression
+
+        @expression.setter
+        def expression(self, value):
+            events.append(("set_model_expression", value))
+            self._expression = value
+
+    model_param = _ModelParam()
+    created_param = MagicMock()
+    design = MagicMock()
+
+    def _add_user(name, value_input, unit, comment):
+        events.append(("add_user", name, unit, comment))
+        return created_param
+
+    design.userParameters.add.side_effect = _add_user
+
+    def _set_group(payload):
+        events.append(("set_group", payload.get("name"), payload.get("group")))
+
+    with patch.object(BP, "_require_design", return_value=design), \
+         patch.object(BP, "_find_model_parameter_by_token", return_value=model_param), \
+         patch.object(BP, "_set_parameter_group", side_effect=_set_group), \
+         patch.object(BP, "_validate_parameter_name_response", return_value={"ok": True, "message": ""}):
+        BP._promote_model_parameter_to_user_parameter({
+            "key": "tok_model_1",
+            "newName": "promoted_width",
+            "group": "Body"
+        })
+
+    assert events[0] == ("add_user", "promoted_width", "mm", "model comment")
+    assert events[1] == ("set_group", "promoted_width", "Body")
+    assert events[2] == ("set_model_expression", "promoted_width")
+
+
+def test_promote_model_parameter_rolls_back_new_user_param_if_link_step_fails():
+    class _ModelParam:
+        def __init__(self):
+            self.name = "d13"
+            self.unit = "mm"
+            self.comment = ""
+            self._expression = "20 mm"
+
+        @property
+        def expression(self):
+            return self._expression
+
+        @expression.setter
+        def expression(self, _value):
+            raise RuntimeError("cannot set expression")
+
+    model_param = _ModelParam()
+    created_param = MagicMock()
+    design = MagicMock()
+    design.userParameters.add.return_value = created_param
+
+    with patch.object(BP, "_require_design", return_value=design), \
+         patch.object(BP, "_find_model_parameter_by_token", return_value=model_param), \
+         patch.object(BP, "_validate_parameter_name_response", return_value={"ok": True, "message": ""}):
+        with pytest.raises(ValueError, match="Created user parameter 'promoted_depth'"):
+            BP._promote_model_parameter_to_user_parameter({
+                "key": "tok_model_2",
+                "newName": "promoted_depth"
+            })
+
+    created_param.deleteMe.assert_called_once()
+
+
+def test_promote_model_parameter_rolls_back_if_group_assignment_fails():
+    class _ModelParam:
+        def __init__(self):
+            self.name = "d14"
+            self.unit = "mm"
+            self.comment = ""
+            self._expression = "30 mm"
+
+        @property
+        def expression(self):
+            return self._expression
+
+        @expression.setter
+        def expression(self, value):
+            self._expression = value
+
+    model_param = _ModelParam()
+    created_param = MagicMock()
+    design = MagicMock()
+    design.userParameters.add.return_value = created_param
+
+    with patch.object(BP, "_require_design", return_value=design), \
+         patch.object(BP, "_find_model_parameter_by_token", return_value=model_param), \
+         patch.object(BP, "_set_parameter_group", side_effect=ValueError("group write failed")), \
+         patch.object(BP, "_validate_parameter_name_response", return_value={"ok": True, "message": ""}):
+        with pytest.raises(ValueError, match="failed to assign group 'Body'"):
+            BP._promote_model_parameter_to_user_parameter({
+                "key": "tok_model_3",
+                "newName": "promoted_height",
+                "group": "Body"
+            })
+
+    created_param.deleteMe.assert_called_once()

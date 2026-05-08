@@ -3913,6 +3913,7 @@
       </div>
       <div id="functionHelper" class="function-helper" hidden></div>
       <div id="reorderMenu" class="reorder-menu" hidden>
+        <div id="reorderMenuUserSection">
         <div class="reorder-menu-actions">
           <button id="moveRowTopButton" class="ghost" type="button">Move to Group Top</button>
           <button id="moveRowBottomButton" class="ghost" type="button">Move to Group Bottom</button>
@@ -3928,6 +3929,12 @@
           <label id="moveRowNewGroupLabel" class="reorder-menu-label" for="moveRowNewGroupInput">Add New Group</label>
           <input id="moveRowNewGroupInput" type="text" placeholder="Type new group name" />
           <button id="moveRowGroupButton" class="primary" type="button">Create + Assign</button>
+        </div>
+        </div>
+        <div id="reorderMenuPromoteSection" class="reorder-menu-section" hidden>
+          <label class="reorder-menu-label" for="promoteModelParameterNameInput">Promote to User Parameter</label>
+          <input id="promoteModelParameterNameInput" type="text" placeholder="Type new parameter name" />
+          <button id="promoteModelParameterButton" class="primary" type="button">Promote + Link</button>
         </div>
       </div>
     </div>
@@ -4140,6 +4147,7 @@
         GET_MODEL_PARAMETERS: "getModelParameters",
         RENAME_PARAMETER: "renameParameter",
         UPDATE_MODEL_PARAMETER: "updateModelParameter",
+        PROMOTE_MODEL_PARAMETER_TO_USER_PARAMETER: "promoteModelParameterToUserParameter",
         BATCH_UPDATE_PARAMETERS: "batchUpdateParameters",
         COPY_PARAMETER: "copyParameter",
         DELETE_PARAMETERS: "deleteParameters",
@@ -4172,7 +4180,7 @@
         ACTION.SAVE_PARAMETER_ORDER, ACTION.SAVE_GROUP_UI_STATE, ACTION.SAVE_SETTINGS, ACTION.SAVE_PALETTE_GEOMETRY,
         ACTION.GET_TEXT_TUNER_STATE, ACTION.SAVE_TEXT_TUNER_STATE,
         ACTION.VALIDATE_PARAMETER_NAME, ACTION.VALIDATE_EXPRESSION, ACTION.PREVIEW_EXPRESSION, ACTION.VALIDATE_UNIT, ACTION.GET_MODEL_PARAMETERS,
-        ACTION.RENAME_PARAMETER, ACTION.UPDATE_MODEL_PARAMETER, ACTION.BATCH_UPDATE_PARAMETERS, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
+        ACTION.RENAME_PARAMETER, ACTION.UPDATE_MODEL_PARAMETER, ACTION.PROMOTE_MODEL_PARAMETER_TO_USER_PARAMETER, ACTION.BATCH_UPDATE_PARAMETERS, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
         ACTION.GET_BACKEND_CONTRACT_INFO, ACTION.GET_PARAMETER_DEPENDENCY_GRAPH, ACTION.RUN_SELF_TEST_SUITE,
         ACTION.SEED_TEST_PARAMETERS, ACTION.RESET_TEST_STATE,
         ACTION.IMPORT_PARAMETERS, ACTION.PREVIEW_IMPORT_PARAMETERS_FROM_DATA_PANEL, ACTION.IMPORT_PARAMETERS_FROM_DATA_PANEL, ACTION.RETRY_IMPORT_PARAMETERS_FROM_DATA_PANEL, ACTION.EXPORT_PARAMETERS,
@@ -4186,7 +4194,7 @@
         ACTION.READY, ACTION.REFRESH, ACTION.CREATE_PARAMETER, ACTION.DELETE_PARAMETER, ACTION.UPDATE_PARAMETER, ACTION.REVERT_PARAMETER,
         ACTION.SET_PARAMETER_FAVORITE, ACTION.SET_PARAMETER_GROUP, ACTION.RENAME_GROUP, ACTION.DELETE_GROUP,
         ACTION.SAVE_PARAMETER_ORDER, ACTION.SAVE_GROUP_UI_STATE, ACTION.SAVE_SETTINGS, ACTION.SAVE_PALETTE_GEOMETRY,
-        ACTION.RENAME_PARAMETER, ACTION.UPDATE_MODEL_PARAMETER, ACTION.BATCH_UPDATE_PARAMETERS, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
+        ACTION.RENAME_PARAMETER, ACTION.UPDATE_MODEL_PARAMETER, ACTION.PROMOTE_MODEL_PARAMETER_TO_USER_PARAMETER, ACTION.BATCH_UPDATE_PARAMETERS, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
         ACTION.SEED_TEST_PARAMETERS, ACTION.RESET_TEST_STATE,
         ACTION.IMPORT_PARAMETERS, ACTION.IMPORT_PARAMETERS_FROM_DATA_PANEL, ACTION.RETRY_IMPORT_PARAMETERS_FROM_DATA_PANEL, ACTION.IMPORT_PARAMETERS_PACKAGE,
         ACTION.SAVE_TEXT_TUNER_STATE, ACTION.CHECK_FOR_UPDATES, ACTION.DOWNLOAD_AND_STAGE_UPDATE, ACTION.REINSTALL_CURRENT_VERSION,
@@ -10033,12 +10041,29 @@
         const moveBottom = document.getElementById("moveRowBottomButton");
         const moveNumber = document.getElementById("moveRowNumberButton");
         const moveNumberInput = document.getElementById("moveRowNumberInput");
+        const userSection = document.getElementById("reorderMenuUserSection");
+        const promoteSection = document.getElementById("reorderMenuPromoteSection");
+        const promoteInput = document.getElementById("promoteModelParameterNameInput");
+        const isModelRow = (() => {
+          const row = getReorderMenuTargetRow();
+          const scope = String(row?.getAttribute("data-parameter-scope") || "user").trim().toLowerCase();
+          return scope === "model";
+        })();
         const disabled = searchActive;
         [moveTop, moveBottom, moveNumber, moveNumberInput].forEach((el) => {
           if (el) {
             el.disabled = disabled;
           }
         });
+        if (userSection) {
+          userSection.hidden = isModelRow;
+        }
+        if (promoteSection) {
+          promoteSection.hidden = !isModelRow;
+        }
+        if (promoteInput && !isModelRow) {
+          promoteInput.value = "";
+        }
       }
 
       function setBusyOverlay(isVisible, message = "Working...") {
@@ -10160,7 +10185,63 @@
         const top = Math.max(gutter, Math.min(rawTop, page.clientHeight - menuRect.height - gutter));
         menu.style.left = `${left}px`;
         menu.style.top = `${top}px`;
-        window.setTimeout(() => input.focus(), 0);
+        const scope = String(row.getAttribute("data-parameter-scope") || "user").trim().toLowerCase();
+        const promoteInput = document.getElementById("promoteModelParameterNameInput");
+        window.setTimeout(() => {
+          if (scope === "model" && promoteInput) {
+            promoteInput.focus();
+            return;
+          }
+          input.focus();
+        }, 0);
+      }
+
+      async function handlePromoteModelParameterFromMenu() {
+        cancelReorderMenuClose();
+        const row = getReorderMenuTargetRow();
+        if (!row) {
+          closeReorderMenu();
+          return;
+        }
+        if (String(row.getAttribute("data-parameter-scope") || "").toLowerCase() !== "model") {
+          closeReorderMenu();
+          return;
+        }
+        const input = document.getElementById("promoteModelParameterNameInput");
+        const newName = String(input?.value || "").trim();
+        if (!newName) {
+          setGlobalStatus("Type a new user parameter name first.", "error");
+          input?.focus();
+          return;
+        }
+        const key = String(row.getAttribute("data-parameter-key") || "");
+        const name = String(row.getAttribute("data-parameter-name") || "");
+        if (!key && !name) {
+          setGlobalStatus("Model parameter target is missing.", "error");
+          return;
+        }
+
+        const overlayToken = beginBusyOverlay("Promoting model parameter...");
+        await yieldForBusyOverlayPaint();
+        try {
+          const response = await sendToFusion(ACTION.PROMOTE_MODEL_PARAMETER_TO_USER_PARAMETER, {
+            key,
+            name,
+            newName,
+            group: String(row.getAttribute("data-group-name") || "")
+          });
+          if (!response || response.ok === false) {
+            throw new Error(response?.message || "Promote failed.");
+          }
+          applyStateFromFusion(response, { source: "response", action: ACTION.PROMOTE_MODEL_PARAMETER_TO_USER_PARAMETER });
+          await ensureModelParametersForCurrentQuery(true);
+          closeReorderMenu();
+          setGlobalStatus(`Promoted model parameter "${name}" to user parameter "${newName}".`, "success");
+        } catch (error) {
+          setGlobalStatus(String(error?.message || "Promote failed."), "error");
+        } finally {
+          await endBusyOverlay(overlayToken);
+        }
       }
 
       function scheduleReorderMenuClose(delayMs = 500) {
@@ -14735,6 +14816,22 @@
         }
 
         if (event.key === "Escape") {
+          closeReorderMenu();
+        }
+      });
+
+      document.getElementById("promoteModelParameterButton").addEventListener("click", async () => {
+        await handlePromoteModelParameterFromMenu();
+      });
+
+      document.getElementById("promoteModelParameterNameInput").addEventListener("keydown", async (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          await handlePromoteModelParameterFromMenu();
+          return;
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
           closeReorderMenu();
         }
       });

@@ -195,7 +195,7 @@ _MUTATING_ACTIONS = [
     "setParameterGroup", "renameGroup", "deleteGroup",
     "saveParameterOrder", "saveGroupUiState", "createParameter",
     "deleteParameter", "deleteParameters", "renameParameter",
-    "updateModelParameter", "copyParameter", "sortByTimelineOrder",
+    "updateModelParameter", "promoteModelParameterToUserParameter", "copyParameter", "sortByTimelineOrder",
     "importParameters", "saveSettings", "savePaletteGeometry",
     "saveTextTunerState", "downloadAndStageUpdate", "reinstallCurrentVersion",
     "syncMetadataJsonToFusion", "syncMetadataFusionToJson", "repairMetadata",
@@ -600,6 +600,10 @@ def _handle_palette_action(action, data):
 
     if action == "updateModelParameter":
         _update_model_parameter(data)
+        return _ok_state(_current_state_payload())
+
+    if action == "promoteModelParameterToUserParameter":
+        _promote_model_parameter_to_user_parameter(data)
         return _ok_state(_current_state_payload())
 
     if action == "copyParameter":
@@ -2774,6 +2778,76 @@ def _update_model_parameter(data):
             parameter.comment = str(data.get("comment") or "")
         except Exception:
             pass
+
+
+def _promote_model_parameter_to_user_parameter(data):
+    design = _require_design()
+    key = str(data.get("key") or "").strip()
+    name = str(data.get("name") or "").strip()
+    if not key and not name:
+        raise ValueError('Either "key" or "name" is required.')
+    new_name = _required_text(data, "newName")
+    promote_group = _normalize_group_name(data.get("group") or "")
+
+    validation = _validate_parameter_name_response(new_name)
+    if not validation["ok"]:
+        raise ValueError(validation["message"])
+
+    parameter = _find_model_parameter_by_token(design, key) if key else None
+    if not parameter and name:
+        try:
+            all_comps = design.allComponents
+            for _ci in range(all_comps.count):
+                _comp = all_comps.item(_ci)
+                if not _comp:
+                    continue
+                try:
+                    _p = _comp.modelParameters.itemByName(name)
+                    if _p:
+                        parameter = _p
+                        break
+                except Exception:
+                    continue
+        except Exception:
+            pass
+    if not parameter:
+        raise ValueError("Model parameter was not found.")
+
+    source_expression = str(parameter.expression or "").strip()
+    source_unit = str(parameter.unit or "").strip()
+    source_comment = str(getattr(parameter, "comment", "") or "")
+    if not source_expression:
+        raise ValueError("Model parameter expression is empty.")
+    if not source_unit:
+        raise ValueError("Model parameter unit is empty.")
+
+    created = None
+    try:
+        value_input = adsk.core.ValueInput.createByString(source_expression)
+        created = design.userParameters.add(new_name, value_input, source_unit, source_comment)
+    except Exception as exc:
+        raise ValueError(f"Fusion could not create user parameter '{new_name}': {exc}")
+    if not created:
+        raise ValueError("Fusion rejected the promoted user parameter.")
+
+    if promote_group:
+        try:
+            _set_parameter_group({"name": new_name, "group": promote_group})
+        except Exception as exc:
+            try:
+                created.deleteMe()
+            except Exception:
+                pass
+            raise ValueError(f"Created user parameter '{new_name}', but failed to assign group '{promote_group}': {exc}")
+
+    try:
+        parameter.expression = new_name
+    except Exception as exc:
+        try:
+            created.deleteMe()
+        except Exception:
+            pass
+        raise ValueError(f"Created user parameter '{new_name}', but failed to update model parameter '{parameter.name}': {exc}")
 
 
 def _validate_unit_change_response(data):
