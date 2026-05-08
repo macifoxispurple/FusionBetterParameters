@@ -541,83 +541,124 @@ def _ok_data(**kwargs):
     return {"ok": True, "message": "", "state": None, **kwargs}
 
 
+def _perf_debug_enabled():
+    value = str(os.environ.get("BP_PERF_DEBUG", "") or "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+def _perf_log(event_name, **payload):
+    if not _perf_debug_enabled():
+        return
+    details = ", ".join(f"{k}={v}" for k, v in payload.items())
+    print(f"[BP PERF] {event_name}: {details}")
+
+
+def _cancelled_response(message, **kwargs):
+    return {"ok": False, "message": message, "errorCode": ERROR_DIALOG_CANCELLED, "state": None, **kwargs}
+
+
+def _build_user_parameter_row_patch(token_or_name):
+    token_or_name = str(token_or_name or "").strip()
+    if not token_or_name:
+        return None
+    design = _design()
+    if not design:
+        return None
+    param = _find_user_parameter_by_token(design, token_or_name)
+    if not param:
+        params = design.userParameters
+        for index in range(params.count):
+            candidate = params.item(index)
+            if candidate and str(candidate.name or "") == token_or_name:
+                param = candidate
+                break
+    if not param:
+        return None
+    units_manager = design.unitsManager
+    order_state = _sync_ui_state_between_local_and_fusion(design, _read_document_order_state())
+    saved_records = _resolve_document_order_records(design, order_state.get("parameters") or {})
+    parameter_key = _parameter_entity_token(param)
+    saved_record = saved_records.get(parameter_key) or {}
+    fusion_payload = _parameter_metadata_payload(param)
+    json_payload = _normalized_metadata_payload(
+        group_name=saved_record.get("group") or "",
+        metadata_changed_at=saved_record.get(METADATA_CHANGED_AT_RECORD_KEY),
+        revision=saved_record.get(METADATA_REVISION_RECORD_KEY),
+        writer_id=saved_record.get(METADATA_WRITER_ID_RECORD_KEY),
+        writer_version=saved_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
+    )
+    latest_payload = _choose_latest_metadata(fusion_payload, json_payload)
+    row = {
+        "key": parameter_key,
+        "name": param.name,
+        "expression": _normalize_text_expression_for_ui(param.expression, param.unit),
+        "unit": param.unit,
+        "comment": param.comment or "",
+        "isFavorite": param.isFavorite,
+        "group": latest_payload.get("group") or "",
+        "valuePreview": _format_parameter_value(param, units_manager),
+        "previousExpression": str(saved_record.get("previous_expression") or ""),
+        "previousValue": str(saved_record.get("previous_value") or ""),
+        "metadataChangedAt": _metadata_changed_at_value(latest_payload.get(METADATA_CHANGED_AT_RECORD_KEY)),
+        "metadataRevision": _metadata_revision_value(latest_payload.get(METADATA_REVISION_RECORD_KEY)),
+        "metadataWriterId": _metadata_writer_id_value(latest_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
+        "metadataWriterVersion": _metadata_writer_version_value(latest_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
+    }
+    return {"mode": "upsert", "parameter": row}
+
+
+def _stateful_ok_response(data=None, settings=None, action="", row_key=""):
+    request_data = data if isinstance(data, dict) else {}
+    if request_data.get("_incremental") is True and action in {
+        "updateParameter", "revertParameter", "setParameterFavorite", "setParameterGroup", "renameParameter",
+    }:
+        patch = _build_user_parameter_row_patch(row_key or request_data.get("key") or request_data.get("name") or "")
+        if patch:
+            return _ok_data(stateMode="incremental", rowPatch=patch)
+    return _ok_state(_current_state_payload(settings=settings))
+
+
 def _handle_palette_action(action, data):
+    simple_mutating_handlers = {
+        "updateParameter": _update_parameter,
+        "revertParameter": _revert_parameter,
+        "setParameterFavorite": _set_parameter_favorite,
+        "setParameterGroup": _set_parameter_group,
+        "renameGroup": _rename_group,
+        "deleteGroup": _delete_group,
+        "saveParameterOrder": _save_parameter_order,
+        "saveGroupUiState": _save_group_ui_state,
+        "createParameter": _create_parameter,
+        "deleteParameter": _delete_parameter,
+        "renameParameter": _rename_parameter,
+        "updateModelParameter": _update_model_parameter,
+        "promoteModelParameterToUserParameter": _promote_model_parameter_to_user_parameter,
+        "copyParameter": _copy_parameter,
+        "sortByTimelineOrder": lambda _data: _sort_by_timeline_order(),
+    }
     if action in ("ready", "refresh"):
         return _ok_state(_current_state_payload())
 
-    if action == "updateParameter":
-        _update_parameter(data)
-        return _ok_state(_current_state_payload())
+    if action in simple_mutating_handlers:
+        row_key = ""
+        if isinstance(data, dict):
+            row_key = str(data.get("key") or data.get("name") or "")
+        simple_mutating_handlers[action](data)
+        return _stateful_ok_response(data=data, action=action, row_key=row_key)
 
     if action == "batchUpdateParameters":
         result = _batch_update_parameters(data)
         state = _current_state_payload() if result["ok"] else None
         return {**result, "state": state}
 
-    if action == "revertParameter":
-        _revert_parameter(data)
-        return _ok_state(_current_state_payload())
-
-    if action == "setParameterFavorite":
-        _set_parameter_favorite(data)
-        return _ok_state(_current_state_payload())
-
-    if action == "setParameterGroup":
-        _set_parameter_group(data)
-        return _ok_state(_current_state_payload())
-
-    if action == "renameGroup":
-        _rename_group(data)
-        return _ok_state(_current_state_payload())
-
-    if action == "deleteGroup":
-        _delete_group(data)
-        return _ok_state(_current_state_payload())
-
-    if action == "saveParameterOrder":
-        _save_parameter_order(data)
-        return _ok_state(_current_state_payload())
-
-    if action == "saveGroupUiState":
-        _save_group_ui_state(data)
-        return _ok_state(_current_state_payload())
-
-    if action == "createParameter":
-        _create_parameter(data)
-        return _ok_state(_current_state_payload())
-
-    if action == "deleteParameter":
-        _delete_parameter(data)
-        return _ok_state(_current_state_payload())
-
     if action == "deleteParameters":
         result = _delete_parameters_batch(data)
         return {**result, "state": _current_state_payload() if result["ok"] else None}
 
-    if action == "renameParameter":
-        _rename_parameter(data)
-        return _ok_state(_current_state_payload())
-
-    if action == "updateModelParameter":
-        _update_model_parameter(data)
-        return _ok_state(_current_state_payload())
-
-    if action == "promoteModelParameterToUserParameter":
-        _promote_model_parameter_to_user_parameter(data)
-        return _ok_state(_current_state_payload())
-
-    if action == "copyParameter":
-        _copy_parameter(data)
-        return _ok_state(_current_state_payload())
-
-    if action == "sortByTimelineOrder":
-        _sort_by_timeline_order()
-        return _ok_state(_current_state_payload())
-
     if action == "exportParameters":
         result = _export_parameters(data)
         if result.get("cancelled"):
-            return {"ok": False, "message": "Export cancelled.", "errorCode": ERROR_DIALOG_CANCELLED, "state": None, "exportedCount": 0, "filePath": ""}
+            return _cancelled_response("Export cancelled.", exportedCount=0, filePath="")
         return _ok_data(exportedCount=result["exportedCount"], filePath=result["filePath"])
 
     if action == "importParameters":
@@ -639,16 +680,16 @@ def _handle_palette_action(action, data):
     if action == "previewImportParametersFromDataPanel":
         result = _preview_import_parameters_from_data_panel(data)
         if result.get("cancelled"):
-            return {
-                "ok": False, "message": "Import cancelled.", "errorCode": ERROR_DIALOG_CANCELLED, "state": None,
-                "selectionToken": "",
-                "sourceFileName": "",
-                "sourceFileId": "",
-                "sourceWasAlreadyOpen": False,
-                "sourceOpenedTemporarily": False,
-                "importedCount": 0, "skippedCount": 0, "failedCount": 0, "failedRows": [],
-                "dryRun": True,
-            }
+            return _cancelled_response(
+                "Import cancelled.",
+                selectionToken="",
+                sourceFileName="",
+                sourceFileId="",
+                sourceWasAlreadyOpen=False,
+                sourceOpenedTemporarily=False,
+                importedCount=0, skippedCount=0, failedCount=0, failedRows=[],
+                dryRun=True,
+            )
         return {
             "ok": result["ok"],
             "message": result["message"],
@@ -669,16 +710,16 @@ def _handle_palette_action(action, data):
         dry_run = bool(data.get("dryRun", False))
         result = _import_parameters_from_data_panel(data, dry_run=dry_run)
         if result.get("cancelled"):
-            return {
-                "ok": False, "message": "Import cancelled.", "errorCode": ERROR_DIALOG_CANCELLED, "state": None,
-                "selectionToken": "",
-                "sourceFileName": "",
-                "sourceFileId": "",
-                "sourceWasAlreadyOpen": False,
-                "sourceOpenedTemporarily": False,
-                "importedCount": 0, "skippedCount": 0, "failedCount": 0, "failedRows": [],
-                "dryRun": dry_run,
-            }
+            return _cancelled_response(
+                "Import cancelled.",
+                selectionToken="",
+                sourceFileName="",
+                sourceFileId="",
+                sourceWasAlreadyOpen=False,
+                sourceOpenedTemporarily=False,
+                importedCount=0, skippedCount=0, failedCount=0, failedRows=[],
+                dryRun=dry_run,
+            )
         state = _current_state_payload() if (result["ok"] and not dry_run) else None
         return {
             "ok": result["ok"],
@@ -721,25 +762,25 @@ def _handle_palette_action(action, data):
     if action == "exportParametersPackage":
         result = _export_parameters_package(data)
         if result.get("cancelled"):
-            return {"ok": False, "message": "Export cancelled.", "errorCode": ERROR_DIALOG_CANCELLED, "state": None, "exportedCount": 0, "filePath": "", "format": "bpmeta.json"}
+            return _cancelled_response("Export cancelled.", exportedCount=0, filePath="", format="bpmeta.json")
         return _ok_data(exportedCount=result["exportedCount"], filePath=result["filePath"], format="bpmeta.json")
 
     if action == "validateParametersPackageImport":
         result = _validate_parameters_package_import(data)
         if result.get("cancelled"):
-            return {"ok": False, "message": "Import cancelled.", "errorCode": ERROR_DIALOG_CANCELLED, "state": None, "filePath": "", "preview": None}
+            return _cancelled_response("Import cancelled.", filePath="", preview=None)
         return {"ok": True, "message": "", "state": None, "filePath": result["filePath"], "preview": result["preview"]}
 
     if action == "importParametersPackage":
         dry_run = bool(data.get("dryRun", False))
         result = _import_parameters_package(data, dry_run=dry_run)
         if result.get("cancelled"):
-            return {
-                "ok": False, "message": "Import cancelled.", "errorCode": ERROR_DIALOG_CANCELLED, "state": None,
-                "filePath": "",
-                "importedCount": 0, "updatedCount": 0, "skippedCount": 0, "failedCount": 0, "failedRows": [],
-                "dryRun": dry_run,
-            }
+            return _cancelled_response(
+                "Import cancelled.",
+                filePath="",
+                importedCount=0, updatedCount=0, skippedCount=0, failedCount=0, failedRows=[],
+                dryRun=dry_run,
+            )
         state = _current_state_payload() if (result["ok"] and not dry_run) else None
         return {
             "ok": result["ok"],
@@ -756,12 +797,12 @@ def _handle_palette_action(action, data):
 
     if action == "saveSettings":
         settings = _save_settings(data)
-        return _ok_state(_current_state_payload(settings=settings))
+        return _stateful_ok_response(data=data, settings=settings, action=action)
 
     if action == "savePaletteGeometry":
         geometry = {k: data[k] for k in ("paletteSize", "palettePosition", "paletteDockingState") if k in data}
         settings = _save_settings(geometry)
-        return _ok_state(_current_state_payload(settings=settings))
+        return _stateful_ok_response(data=data, settings=settings, action=action)
 
     if action == "getTextTunerState":
         return _ok_data(values=_load_text_tuner_state())
@@ -769,7 +810,7 @@ def _handle_palette_action(action, data):
     if action == "saveTextTunerState":
         values = data.get("values") if isinstance(data, dict) else {}
         _save_text_tuner_state(values)
-        return _ok_state(_current_state_payload())
+        return _stateful_ok_response(data=data, action=action)
 
     if action == "validateParameterName":
         result = _validate_parameter_name_response(data.get("name", ""))
@@ -810,18 +851,18 @@ def _handle_palette_action(action, data):
     if action == "checkForUpdates":
         release_info = _latest_release_info(force_refresh=True)
         _save_update_check(release_info)
-        return _ok_state(_current_state_payload())
+        return _stateful_ok_response(data=data, action=action)
 
     if action == "downloadAndStageUpdate":
         release_info = _latest_release_info(force_refresh=True, allow_cached_on_error=False)
         _stage_update_payload(release_info)
-        return _ok_state(_current_state_payload())
+        return _stateful_ok_response(data=data, action=action)
 
     if action == "reinstallCurrentVersion":
         current_version = _current_addin_version()
         release_info = _release_info_for_version(current_version)
         _stage_update_payload(release_info)
-        return _ok_state(_current_state_payload())
+        return _stateful_ok_response(data=data, action=action)
 
     if action == "getMetadataDebugSnapshot":
         return _ok_data(debugMetadata=_collect_metadata_debug_snapshot())
@@ -902,11 +943,12 @@ def _send_to_palette(action, payload):
 
 
 def _current_state_payload(settings=None):
+    perf_start = time.perf_counter()
     active_settings = settings if settings is not None else _load_settings()
     design = _design()
     order_state = _sync_ui_state_between_local_and_fusion(design, _read_document_order_state()) if design else _read_document_order_state()
     parameters = _collect_user_parameters(order_state)
-    return {
+    payload = {
         "ok": True,
         "apiVersion": 1,
         "parameters": parameters,
@@ -923,6 +965,9 @@ def _current_state_payload(settings=None):
         "fusionTheme": _detect_fusion_theme(),
         "updateInfo": _build_update_info_payload(active_settings),
     }
+    elapsed_ms = round((time.perf_counter() - perf_start) * 1000.0, 3)
+    _perf_log("current_state_payload", elapsed_ms=elapsed_ms, parameter_count=len(parameters))
+    return payload
 
 
 def _build_update_info_payload(settings=None):

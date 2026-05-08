@@ -4200,43 +4200,62 @@
         SYNC_METADATA_FUSION_TO_JSON: "syncMetadataFusionToJson",
         REPAIR_METADATA: "repairMetadata"
       });
-      const NORMATIVE_ACTIONS = new Set([
-        ACTION.READY, ACTION.REFRESH, ACTION.CREATE_PARAMETER, ACTION.DELETE_PARAMETER, ACTION.UPDATE_PARAMETER, ACTION.REVERT_PARAMETER,
-        ACTION.SET_PARAMETER_FAVORITE, ACTION.SET_PARAMETER_GROUP, ACTION.RENAME_GROUP, ACTION.DELETE_GROUP,
-        ACTION.SAVE_PARAMETER_ORDER, ACTION.SAVE_GROUP_UI_STATE, ACTION.SAVE_SETTINGS, ACTION.SAVE_PALETTE_GEOMETRY,
-        ACTION.GET_TEXT_TUNER_STATE, ACTION.SAVE_TEXT_TUNER_STATE,
-        ACTION.VALIDATE_PARAMETER_NAME, ACTION.VALIDATE_EXPRESSION, ACTION.PREVIEW_EXPRESSION, ACTION.VALIDATE_UNIT, ACTION.GET_MODEL_PARAMETERS,
-        ACTION.RENAME_PARAMETER, ACTION.UPDATE_MODEL_PARAMETER, ACTION.PROMOTE_MODEL_PARAMETER_TO_USER_PARAMETER, ACTION.BATCH_UPDATE_PARAMETERS, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
-        ACTION.GET_BACKEND_CONTRACT_INFO, ACTION.GET_PARAMETER_DEPENDENCY_GRAPH, ACTION.RUN_SELF_TEST_SUITE,
-        ACTION.SEED_TEST_PARAMETERS, ACTION.RESET_TEST_STATE,
-        ACTION.IMPORT_PARAMETERS, ACTION.PREVIEW_IMPORT_PARAMETERS_FROM_DATA_PANEL, ACTION.IMPORT_PARAMETERS_FROM_DATA_PANEL, ACTION.RETRY_IMPORT_PARAMETERS_FROM_DATA_PANEL, ACTION.EXPORT_PARAMETERS,
-        ACTION.EXPORT_PARAMETERS_PACKAGE, ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, ACTION.IMPORT_PARAMETERS_PACKAGE,
-        ACTION.COPY_TO_CLIPBOARD,
-        ACTION.OPEN_HELP_URL,
-        ACTION.CHECK_FOR_UPDATES, ACTION.DOWNLOAD_AND_STAGE_UPDATE, ACTION.REINSTALL_CURRENT_VERSION,
-        ACTION.SYNC_METADATA_JSON_TO_FUSION, ACTION.SYNC_METADATA_FUSION_TO_JSON, ACTION.REPAIR_METADATA
-      ]);
-      const MUTATING_ACTIONS = new Set([
-        ACTION.READY, ACTION.REFRESH, ACTION.CREATE_PARAMETER, ACTION.DELETE_PARAMETER, ACTION.UPDATE_PARAMETER, ACTION.REVERT_PARAMETER,
-        ACTION.SET_PARAMETER_FAVORITE, ACTION.SET_PARAMETER_GROUP, ACTION.RENAME_GROUP, ACTION.DELETE_GROUP,
-        ACTION.SAVE_PARAMETER_ORDER, ACTION.SAVE_GROUP_UI_STATE, ACTION.SAVE_SETTINGS, ACTION.SAVE_PALETTE_GEOMETRY,
-        ACTION.RENAME_PARAMETER, ACTION.UPDATE_MODEL_PARAMETER, ACTION.PROMOTE_MODEL_PARAMETER_TO_USER_PARAMETER, ACTION.BATCH_UPDATE_PARAMETERS, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
-        ACTION.SEED_TEST_PARAMETERS, ACTION.RESET_TEST_STATE,
-        ACTION.IMPORT_PARAMETERS, ACTION.IMPORT_PARAMETERS_FROM_DATA_PANEL, ACTION.RETRY_IMPORT_PARAMETERS_FROM_DATA_PANEL, ACTION.IMPORT_PARAMETERS_PACKAGE,
-        ACTION.SAVE_TEXT_TUNER_STATE, ACTION.CHECK_FOR_UPDATES, ACTION.DOWNLOAD_AND_STAGE_UPDATE, ACTION.REINSTALL_CURRENT_VERSION,
-        ACTION.SYNC_METADATA_JSON_TO_FUSION, ACTION.SYNC_METADATA_FUSION_TO_JSON, ACTION.REPAIR_METADATA
-      ]);
-      const READ_ONLY_OR_VALIDATION_ACTIONS = new Set([
-        ACTION.GET_TEXT_TUNER_STATE, ACTION.VALIDATE_PARAMETER_NAME, ACTION.VALIDATE_EXPRESSION, ACTION.PREVIEW_EXPRESSION, ACTION.VALIDATE_UNIT, ACTION.GET_MODEL_PARAMETERS,
-        ACTION.PREVIEW_IMPORT_PARAMETERS_FROM_DATA_PANEL, ACTION.EXPORT_PARAMETERS, ACTION.EXPORT_PARAMETERS_PACKAGE, ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, ACTION.COPY_TO_CLIPBOARD, ACTION.OPEN_HELP_URL,
-        ACTION.GET_BACKEND_CONTRACT_INFO, ACTION.GET_PARAMETER_DEPENDENCY_GRAPH, ACTION.RUN_SELF_TEST_SUITE
-      ]);
-      // Compatibility: import flows can return ok=true with state=null from current backend paths.
-      const STATE_OPTIONAL_MUTATING_ACTIONS = new Set([
-        ACTION.IMPORT_PARAMETERS,
-        ACTION.IMPORT_PARAMETERS_FROM_DATA_PANEL,
-        ACTION.IMPORT_PARAMETERS_PACKAGE
-      ]);
+      const ACTION_METADATA = Object.freeze({
+        [ACTION.READY]: { mutating: true },
+        [ACTION.REFRESH]: { mutating: true },
+        [ACTION.CREATE_PARAMETER]: { mutating: true },
+        [ACTION.DELETE_PARAMETER]: { mutating: true },
+        [ACTION.UPDATE_PARAMETER]: { mutating: true, supportsIncremental: true },
+        [ACTION.REVERT_PARAMETER]: { mutating: true, supportsIncremental: true },
+        [ACTION.SET_PARAMETER_FAVORITE]: { mutating: true, supportsIncremental: true },
+        [ACTION.SET_PARAMETER_GROUP]: { mutating: true, supportsIncremental: true },
+        [ACTION.RENAME_GROUP]: { mutating: true },
+        [ACTION.DELETE_GROUP]: { mutating: true },
+        [ACTION.SAVE_PARAMETER_ORDER]: { mutating: true },
+        [ACTION.SAVE_GROUP_UI_STATE]: { mutating: true },
+        [ACTION.SAVE_SETTINGS]: { mutating: true },
+        [ACTION.SAVE_PALETTE_GEOMETRY]: { mutating: true },
+        [ACTION.GET_TEXT_TUNER_STATE]: { readOnly: true },
+        [ACTION.SAVE_TEXT_TUNER_STATE]: { mutating: true },
+        [ACTION.VALIDATE_PARAMETER_NAME]: { readOnly: true },
+        [ACTION.VALIDATE_EXPRESSION]: { readOnly: true },
+        [ACTION.PREVIEW_EXPRESSION]: { readOnly: true },
+        [ACTION.VALIDATE_UNIT]: { readOnly: true },
+        [ACTION.GET_MODEL_PARAMETERS]: { readOnly: true },
+        [ACTION.RENAME_PARAMETER]: { mutating: true, supportsIncremental: true },
+        [ACTION.UPDATE_MODEL_PARAMETER]: { mutating: true },
+        [ACTION.PROMOTE_MODEL_PARAMETER_TO_USER_PARAMETER]: { mutating: true },
+        [ACTION.BATCH_UPDATE_PARAMETERS]: { mutating: true },
+        [ACTION.COPY_PARAMETER]: { mutating: true },
+        [ACTION.DELETE_PARAMETERS]: { mutating: true },
+        [ACTION.SORT_BY_TIMELINE_ORDER]: { mutating: true },
+        [ACTION.GET_BACKEND_CONTRACT_INFO]: { readOnly: true },
+        [ACTION.GET_PARAMETER_DEPENDENCY_GRAPH]: { readOnly: true },
+        [ACTION.RUN_SELF_TEST_SUITE]: { readOnly: true },
+        [ACTION.SEED_TEST_PARAMETERS]: { mutating: true },
+        [ACTION.RESET_TEST_STATE]: { mutating: true },
+        [ACTION.IMPORT_PARAMETERS]: { mutating: true, stateOptional: true },
+        [ACTION.PREVIEW_IMPORT_PARAMETERS_FROM_DATA_PANEL]: { readOnly: true },
+        [ACTION.IMPORT_PARAMETERS_FROM_DATA_PANEL]: { mutating: true, stateOptional: true },
+        [ACTION.RETRY_IMPORT_PARAMETERS_FROM_DATA_PANEL]: { mutating: true },
+        [ACTION.EXPORT_PARAMETERS]: { readOnly: true },
+        [ACTION.EXPORT_PARAMETERS_PACKAGE]: { readOnly: true },
+        [ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT]: { readOnly: true },
+        [ACTION.IMPORT_PARAMETERS_PACKAGE]: { mutating: true, stateOptional: true },
+        [ACTION.COPY_TO_CLIPBOARD]: { readOnly: true },
+        [ACTION.OPEN_HELP_URL]: { readOnly: true },
+        [ACTION.CHECK_FOR_UPDATES]: { mutating: true },
+        [ACTION.DOWNLOAD_AND_STAGE_UPDATE]: { mutating: true },
+        [ACTION.REINSTALL_CURRENT_VERSION]: { mutating: true },
+        [ACTION.SYNC_METADATA_JSON_TO_FUSION]: { mutating: true },
+        [ACTION.SYNC_METADATA_FUSION_TO_JSON]: { mutating: true },
+        [ACTION.REPAIR_METADATA]: { mutating: true }
+      });
+      const NORMATIVE_ACTIONS = new Set(Object.keys(ACTION_METADATA));
+      const MUTATING_ACTIONS = new Set(Object.entries(ACTION_METADATA).filter(([, meta]) => meta.mutating === true).map(([name]) => name));
+      const READ_ONLY_OR_VALIDATION_ACTIONS = new Set(Object.entries(ACTION_METADATA).filter(([, meta]) => meta.readOnly === true).map(([name]) => name));
+      const STATE_OPTIONAL_MUTATING_ACTIONS = new Set(Object.entries(ACTION_METADATA).filter(([, meta]) => meta.stateOptional === true).map(([name]) => name));
+      const INCREMENTAL_MUTATING_ACTIONS = new Set(Object.entries(ACTION_METADATA).filter(([, meta]) => meta.supportsIncremental === true).map(([name]) => name));
       const QUEUE_STATE_WHILE_EDITING_ACTIONS = new Set([
         ACTION.REFRESH
       ]);
@@ -4249,6 +4268,25 @@
       // It must stay unreachable during normal Fusion runtime when `adsk.fusionSendData` is present.
       const MOCK_BRIDGE_ENABLED = !!window.__BP_USE_MOCK_BRIDGE;
       const BOOTSTRAP_LAYOUT_DEBUG_ENABLED = window.__BP_LAYOUT_DEBUG_START === true;
+      const PERF_DEBUG_ENABLED = window.__BP_PERF_DEBUG === true;
+
+      function perfNowMs() {
+        if (window.performance && typeof window.performance.now === "function") {
+          return window.performance.now();
+        }
+        return Date.now();
+      }
+
+      function logPerfMetric(eventName, payload = {}) {
+        if (!PERF_DEBUG_ENABLED) {
+          return;
+        }
+        try {
+          console.debug(`[BP PERF] ${eventName}`, payload);
+        } catch (_error) {
+          // ignore debug logging failures
+        }
+      }
 
       function hasNativeFusionBridge() {
         if (typeof adsk !== "undefined" && typeof adsk.fusionSendData === "function") {
@@ -9240,7 +9278,17 @@
         return "";
       }
 
+      function buildFavoriteButtonHtml(isModelRow, isFavorite, favoriteTitle) {
+        const favoriteClass = isFavorite ? "favorite-button is-on" : "favorite-button";
+        const favoriteIconEntity = isFavorite ? "&#9733;" : "&#9734;";
+        if (isModelRow) {
+          return `<button class="${favoriteClass}" type="button" aria-pressed="${isFavorite ? "true" : "false"}" title="${favoriteTitle}" disabled><span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span></button>`;
+        }
+        return `<button class="${favoriteClass}" type="button" data-favorite-toggle="true" aria-pressed="${isFavorite ? "true" : "false"}" title="${favoriteTitle}"><span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span></button>`;
+      }
+
       function renderParameters(parameters) {
+        const renderStartMs = perfNowMs();
         state.parameters = parameters || [];
         clearAllManagedRowTimers();
         const tbody = document.getElementById("parameterRows");
@@ -9317,8 +9365,6 @@
             const favoriteTitle = isModelRow
               ? (param.isFavorite ? "Favorite (display only)" : "Not favorite (display only)")
               : (param.isFavorite ? "Remove from favorites" : "Add to favorites");
-            const favoriteClass = param.isFavorite ? "favorite-button is-on" : "favorite-button";
-            const favoriteIconEntity = param.isFavorite ? "&#9733;" : "&#9734;";
             const reorderTitle = isSearchActive
               ? "Clear search to reorder parameters."
               : `Drag to reorder ${safeName}. Right-click for group + reorder options.`;
@@ -9360,12 +9406,8 @@
             const kindText = isModelRow
               ? (String(param?.createdBy || "").trim() ? `Model Parameter • ${escapeHtml(String(param.createdBy || ""))}` : "Model Parameter")
               : "User Parameter";
-            const favoriteButtonMain = isModelRow
-              ? `<button class="${favoriteClass}" type="button" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}" disabled><span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span></button>`
-              : `<button class="${favoriteClass}" type="button" data-favorite-toggle="true" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}"><span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span></button>`;
-            const favoriteButtonNarrow = isModelRow
-              ? `<button class="${favoriteClass}" type="button" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}" disabled><span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span></button>`
-              : `<button class="${favoriteClass}" type="button" data-favorite-toggle="true" aria-pressed="${param.isFavorite ? "true" : "false"}" title="${favoriteTitle}"><span class="star-icon" aria-hidden="true">${favoriteIconEntity}</span></button>`;
+            const favoriteButtonMain = buildFavoriteButtonHtml(isModelRow, !!param.isFavorite, favoriteTitle);
+            const favoriteButtonNarrow = buildFavoriteButtonHtml(isModelRow, !!param.isFavorite, favoriteTitle);
             const reorderHandleHtml = (isFavoritesGroup || isModelRow)
               ? `<span class="reorder-handle-placeholder" aria-hidden="true"></span>`
               : `<button class="reorder-handle" type="button" data-reorder-handle="true" tabindex="-1" aria-label="${reorderTitle}" title="${reorderTitle}"${isSearchActive ? " disabled" : ""}></button>`;
@@ -9476,6 +9518,11 @@
         refreshBatchActionBar();
         restorePendingTableScrollAnchor();
         scheduleLayoutDebugPanelUpdate();
+        logPerfMetric("renderParameters", {
+          elapsedMs: Math.round((perfNowMs() - renderStartMs) * 1000) / 1000,
+          rowCount: Array.isArray(state.parameters) ? state.parameters.length : 0,
+          groupedCount: grouped.length
+        });
       }
 
       function getTableWrapElement() {
@@ -11700,7 +11747,10 @@
           return { ok: false, message: 'Envelope field "message" must be string.' };
         }
         const hasStateObject = hasObjectStatePayload(envelope.state);
-        const stateOptionalForMutating = source === "response" && STATE_OPTIONAL_MUTATING_ACTIONS.has(action);
+        const stateOptionalForMutating = source === "response" && (
+          STATE_OPTIONAL_MUTATING_ACTIONS.has(action)
+          || (envelope.ok === true && envelope.stateMode === "incremental" && INCREMENTAL_MUTATING_ACTIONS.has(action))
+        );
         const shouldHaveStateObject = source === "push" || (MUTATING_ACTIONS.has(action) && envelope.ok === true && !stateOptionalForMutating);
         if (shouldHaveStateObject && !hasStateObject) {
           return { ok: false, message: "Mutating/push envelope must include object state." };
@@ -11903,6 +11953,17 @@
         }
 
         if (
+          (!envelope.state || typeof envelope.state !== "object")
+          && context.source === "response"
+          && INCREMENTAL_MUTATING_ACTIONS.has(context.action || "")
+          && envelope.stateMode === "incremental"
+          && envelope.rowPatch
+        ) {
+          applyIncrementalRowPatch(envelope.rowPatch);
+          return envelope;
+        }
+
+        if (
           envelope.state
           && typeof envelope.state === "object"
           && context.source === "response"
@@ -11940,6 +12001,50 @@
         return envelope;
       }
 
+      function recomputeGroupsFromParameters(parameters) {
+        const seen = new Set();
+        const groups = [];
+        (parameters || []).forEach((param) => {
+          const normalized = canonicalGroupName(param?.group || "");
+          if (!normalized) {
+            return;
+          }
+          const key = normalized.toLowerCase();
+          if (seen.has(key)) {
+            return;
+          }
+          seen.add(key);
+          groups.push(normalized);
+        });
+        groups.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+        return groups;
+      }
+
+      function applyIncrementalRowPatch(rowPatch) {
+        if (!rowPatch || typeof rowPatch !== "object") {
+          return;
+        }
+        const mode = String(rowPatch.mode || "");
+        if (mode === "upsert" && rowPatch.parameter && typeof rowPatch.parameter === "object") {
+          const patchRow = rowPatch.parameter;
+          const patchKey = String(patchRow.key || patchRow.name || "");
+          const existing = Array.isArray(state.parameters) ? state.parameters.slice() : [];
+          const index = existing.findIndex((item) => String(item?.key || item?.name || "") === patchKey);
+          if (index >= 0) {
+            existing[index] = { ...existing[index], ...patchRow };
+          } else {
+            existing.push(patchRow);
+          }
+          state.parameters = existing;
+          state.groups = recomputeGroupsFromParameters(existing);
+          const names = new Set(existing.map((item) => String(item?.name || "")).filter((name) => !!name));
+          state.parameterNames = Array.from(names).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+          renderParameters(state.parameters);
+          setParameterSummary(state.parameters);
+          logPerfMetric("incrementalRowPatch", { mode: "upsert", key: patchKey });
+        }
+      }
+
       async function sendToFusion(action, data = {}) {
         const bridge = getFusionBridge();
         if (!bridge) {
@@ -11947,8 +12052,12 @@
           throw new Error("Fusion palette bridge is not available.");
         }
 
-        appendRawTrace("bridge.request", { action, data });
-        const rawResponse = await bridge.fusionSendData(action, JSON.stringify(data));
+        const requestPayload = (data && typeof data === "object" && !Array.isArray(data)) ? { ...data } : {};
+        if (INCREMENTAL_MUTATING_ACTIONS.has(action) && requestPayload._incremental !== false) {
+          requestPayload._incremental = true;
+        }
+        appendRawTrace("bridge.request", { action, data: requestPayload });
+        const rawResponse = await bridge.fusionSendData(action, JSON.stringify(requestPayload));
         appendRawTrace("bridge.response.raw", {
           action,
           rawType: typeof rawResponse,
@@ -11966,7 +12075,7 @@
           }
         }
         appendRawTrace("bridge.response.parsed", { action, envelope });
-        const validation = validateEnvelope(envelope, { source: "response", action, requestData: data });
+        const validation = validateEnvelope(envelope, { source: "response", action, requestData: requestPayload });
         if (!validation.ok) {
           const message = `Backend contract error (${action}): ${validation.message}`;
           appendRawTrace("bridge.response.invalid", { action, validation });

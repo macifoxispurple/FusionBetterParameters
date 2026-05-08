@@ -3125,3 +3125,78 @@ Legend:
   - Not run (release metadata update only).
 - Verification:
   - `gh release view v0.9.1 --json body,...` confirms updated body now matches intended content.
+
+## 2026-05-08 - Comprehensive code-health/perf review (hybrid) + prioritized remediation backlog
+- What changed:
+  - Added review artifact:
+    - `scripts/CODE_HEALTH_REVIEW_2026-05-08.md`
+  - Report includes:
+    - ranked findings (`P1/P2`) with file-level evidence
+    - quantified hotspot list (LOC concentration, longest-function metrics, duplicate-window counts)
+    - duplicate/dead/redundancy map
+    - staged remediation backlog (quick wins vs structural refactors vs deferred)
+    - validation plan per fix class
+- Why:
+  - Requested implementation of comprehensive codebase health/performance review plan (hybrid static + runtime proxy profiling) with decision-ready backlog.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest -q --durations=30` => 420 passed, 6 skipped, 0 failed (0.42s).
+  - `.venv/bin/python -m pytest -q tests/test_fe_current_baseline.py tests/test_fe_browser_current.py --durations=10` => 3 passed, 6 skipped, 0 failed (0.01s).
+  - `.venv/bin/python -m cProfile -s cumtime -m pytest tests/test_model_parameters.py -q` => 39 passed, 0 failed; profiling captured backend hotspots (notably `_get_model_parameters`, `_serialize_model_parameter`, `_format_parameter_value` under test path).
+- Live Fusion AddIns sync:
+  - Not required (no runtime add-in payload edits).
+- Remaining risk / next check:
+  - Live Fusion/browser timing for large real documents is still pending; offline profiling indicates likely hotspots but does not replace in-Fusion wall-time verification.
+
+## 2026-05-08 - Implemented six-step remediation ladder (FE metadata unification, BE envelopes/dispatch helpers, perf instrumentation, incremental response path)
+- What changed:
+  - `BetterParameters/BetterParameters.py`
+    - Added envelope/perf helpers:
+      - `_perf_debug_enabled()`, `_perf_log(...)`
+      - `_cancelled_response(...)`
+      - `_build_user_parameter_row_patch(...)`
+      - `_stateful_ok_response(...)`
+    - `_handle_palette_action(...)` refactor:
+      - introduced table-style `simple_mutating_handlers` dispatch for common mutating actions.
+      - centralized response policy for these actions through `_stateful_ok_response`.
+      - standardized several cancelled responses via `_cancelled_response`.
+    - Added debug-gated timing in `_current_state_payload(...)` (`[BP PERF] current_state_payload ...`) with no user-facing behavior change.
+    - Introduced incremental response support (opt-in request flag `_incremental`) for selected high-frequency user-parameter actions:
+      - `updateParameter`, `revertParameter`, `setParameterFavorite`, `setParameterGroup`, `renameParameter`.
+      - Returns `{ ok:true, state:null, stateMode:"incremental", rowPatch:{...} }` when patch materializes; otherwise falls back to full state payload.
+  - `BetterParameters/palette.html`
+    - Replaced duplicated action-set declarations with unified `ACTION_METADATA` registry and derived sets:
+      - `NORMATIVE_ACTIONS`, `MUTATING_ACTIONS`, `READ_ONLY_OR_VALIDATION_ACTIONS`, `STATE_OPTIONAL_MUTATING_ACTIONS`, `INCREMENTAL_MUTATING_ACTIONS`.
+    - Render duplication reduction:
+      - extracted `buildFavoriteButtonHtml(...)` and reused for main/narrow row favorite button rendering.
+    - Perf instrumentation (debug-gated):
+      - `PERF_DEBUG_ENABLED`, `perfNowMs()`, `logPerfMetric(...)`.
+      - Added render timing metric in `renderParameters(...)`.
+    - Incremental FE path:
+      - `sendToFusion(...)` now auto-adds `_incremental:true` for incremental-capable mutating actions (unless explicitly disabled).
+      - `validateEnvelope(...)` now accepts state-null successful mutating envelopes when `stateMode:"incremental"`.
+      - `applyStateFromFusion(...)` applies incremental row patches when full `state` is absent.
+      - added `applyIncrementalRowPatch(...)` + `recomputeGroupsFromParameters(...)` with full-state fallback unchanged.
+- Why:
+  - Implements requested six-step remediation ladder in staged form:
+    - FE action metadata deduplication,
+    - FE duplicate-fragment extraction,
+    - BE response standardization helpers,
+    - targeted perf instrumentation,
+    - dispatch refactor toward table-driven style,
+    - incremental update path with backward-compatible full-state fallback.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 420 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed runtime files only:
+    - `BetterParameters/BetterParameters.py`
+    - `BetterParameters/palette.html`
+  - Hash verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - Incremental patch path currently covers selected single-row mutating actions only; non-covered or unresolved-row cases intentionally fall back to full-state payload.
+  - Recommended in-Fusion smoke for large designs:
+    - repeated single-row edit/revert/favorite/group/rename loops,
+    - batch updates,
+    - group reorder,
+    - model parameter page transitions.
