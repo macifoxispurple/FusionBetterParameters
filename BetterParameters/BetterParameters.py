@@ -609,12 +609,39 @@ def _build_user_parameter_row_patch(token_or_name):
 
 def _stateful_ok_response(data=None, settings=None, action="", row_key=""):
     request_data = data if isinstance(data, dict) else {}
+    force_full_refresh_actions = {
+        "revertParameter",
+        "batchUpdateParameters",
+        "importParameters",
+        "importParametersFromDataPanel",
+        "retryImportParametersFromDataPanel",
+        "importParametersPackage",
+        "syncMetadataJsonToFusion",
+        "syncMetadataFusionToJson",
+        "repairMetadata",
+    }
     if request_data.get("_incremental") is True and action in {
         "updateParameter", "revertParameter", "setParameterFavorite", "setParameterGroup", "renameParameter",
     }:
+        if action in force_full_refresh_actions:
+            return _ok_state(_current_state_payload(settings=settings))
         patch = _build_user_parameter_row_patch(row_key or request_data.get("key") or request_data.get("name") or "")
         if patch:
-            return _ok_data(stateMode="incremental", rowPatch=patch)
+            refresh_hint = "dependents" if action == "updateParameter" else "none"
+            changed_key = str(patch.get("parameter", {}).get("key") or patch.get("parameter", {}).get("name") or "")
+            response = _ok_data(
+                stateMode="incremental",
+                rowPatch=patch,
+                refreshHint=refresh_hint,
+                changedKeys=[changed_key] if changed_key else [],
+            )
+            _perf_log(
+                "incremental_response",
+                action=action,
+                refresh_hint=refresh_hint,
+                changed_key=changed_key or "none",
+            )
+            return response
     return _ok_state(_current_state_payload(settings=settings))
 
 

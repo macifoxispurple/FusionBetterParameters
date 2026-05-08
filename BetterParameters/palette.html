@@ -4790,7 +4790,18 @@
           rowKey: ""
         },
         hostPlatform: "",
-        unitMenuAnchorEl: null
+        unitMenuAnchorEl: null,
+        incrementalRefreshQueue: {
+          timerId: null,
+          pendingHint: "none",
+          pendingKeys: [],
+          inFlight: false
+        },
+        incrementalRefreshStats: {
+          incrementalOnlyApplied: 0,
+          queuedDependentRefreshes: 0,
+          forcedFullRefreshes: 0
+        }
       };
       let textTunerLiveApplyTimer = null;
       let textTunerPersistTimer = null;
@@ -11756,6 +11767,15 @@
           return { ok: false, message: "Mutating/push envelope must include object state." };
         }
         if (stateOptionalForMutating && envelope.ok === true && !hasStateObject) {
+          if (envelope.stateMode === "incremental") {
+            const hint = normalizeRefreshHint(envelope.refreshHint || "none");
+            if (hint !== "none" && hint !== "dependents" && hint !== "full") {
+              return { ok: false, message: "Incremental envelope has invalid refreshHint." };
+            }
+            if (Object.prototype.hasOwnProperty.call(envelope, "changedKeys") && !Array.isArray(envelope.changedKeys)) {
+              return { ok: false, message: "Incremental envelope field changedKeys must be an array when present." };
+            }
+          }
           const requestDryRun = requestData.dryRun === true;
           const responseDryRun = envelope.dryRun === true;
           if (!requestDryRun && !responseDryRun) {
@@ -11959,7 +11979,16 @@
           && envelope.stateMode === "incremental"
           && envelope.rowPatch
         ) {
+          const refreshHint = normalizeRefreshHint(envelope.refreshHint || "none");
+          const changedKeys = Array.isArray(envelope.changedKeys) ? envelope.changedKeys : [];
+          const forceFullRefresh = shouldForceFullRefreshAfterIncremental(envelope.rowPatch) || refreshHint === "full";
           applyIncrementalRowPatch(envelope.rowPatch);
+          if (forceFullRefresh) {
+            state.incrementalRefreshStats.forcedFullRefreshes += 1;
+            queueIncrementalFollowupRefresh("full", changedKeys);
+          } else {
+            queueIncrementalFollowupRefresh(refreshHint, changedKeys);
+          }
           return envelope;
         }
 
@@ -12041,8 +12070,101 @@
           state.parameterNames = Array.from(names).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
           renderParameters(state.parameters);
           setParameterSummary(state.parameters);
+          state.incrementalRefreshStats.incrementalOnlyApplied += 1;
           logPerfMetric("incrementalRowPatch", { mode: "upsert", key: patchKey });
         }
+      }
+
+      function normalizeRefreshHint(hintRaw) {
+        const hint = String(hintRaw || "").trim().toLowerCase();
+        if (hint === "full" || hint === "dependents" || hint === "none") {
+          return hint;
+        }
+        return "none";
+      }
+
+      function mergeRefreshHint(existingHint, incomingHint) {
+        const rank = { none: 0, dependents: 1, full: 2 };
+        const current = normalizeRefreshHint(existingHint);
+        const incoming = normalizeRefreshHint(incomingHint);
+        return rank[incoming] > rank[current] ? incoming : current;
+      }
+
+      function shouldForceFullRefreshAfterIncremental(rowPatch) {
+        if (!rowPatch || typeof rowPatch !== "object") {
+          return true;
+        }
+        const parameter = rowPatch.parameter && typeof rowPatch.parameter === "object" ? rowPatch.parameter : null;
+        if (!parameter) {
+          return true;
+        }
+        const key = String(parameter.key || parameter.name || "");
+        if (!key) {
+          return true;
+        }
+        const existing = (state.parameters || []).find((item) => String(item?.key || item?.name || "") === key);
+        if (!existing) {
+          return true;
+        }
+        const beforeExpression = String(existing.expression || "");
+        const beforePreview = String(existing.valuePreview || "");
+        const afterExpression = String(parameter.expression || "");
+        const afterPreview = String(parameter.valuePreview || "");
+        if (afterPreview.trim() === "" || /^nan$/i.test(afterPreview.trim())) {
+          return true;
+        }
+        if (beforeExpression !== afterExpression && beforePreview === afterPreview) {
+          return true;
+        }
+        return false;
+      }
+
+      function queueIncrementalFollowupRefresh(refreshHintRaw, changedKeysRaw = []) {
+        const hint = normalizeRefreshHint(refreshHintRaw);
+        if (hint === "none") {
+          return;
+        }
+        const queue = state.incrementalRefreshQueue;
+        queue.pendingHint = mergeRefreshHint(queue.pendingHint, hint);
+        const changedKeys = Array.isArray(changedKeysRaw) ? changedKeysRaw : [];
+        changedKeys.forEach((value) => {
+          const key = String(value || "").trim();
+          if (key && !queue.pendingKeys.includes(key)) {
+            queue.pendingKeys.push(key);
+          }
+        });
+        if (queue.timerId) {
+          clearTimeout(queue.timerId);
+        }
+        state.incrementalRefreshStats.queuedDependentRefreshes += 1;
+        queue.timerId = setTimeout(() => {
+          queue.timerId = null;
+          const nextHint = queue.pendingHint;
+          const nextKeys = queue.pendingKeys.slice();
+          queue.pendingHint = "none";
+          queue.pendingKeys = [];
+          if (queue.inFlight) {
+            queue.pendingHint = mergeRefreshHint(queue.pendingHint, nextHint);
+            nextKeys.forEach((key) => {
+              if (!queue.pendingKeys.includes(key)) {
+                queue.pendingKeys.push(key);
+              }
+            });
+            return;
+          }
+          queue.inFlight = true;
+          const statusLabel = nextHint === "full" ? "Refreshing full state..." : "Refreshing dependent values...";
+          setGlobalStatus(statusLabel, "warning");
+          refreshParameters({ silentStatus: true }).finally(() => {
+            queue.inFlight = false;
+            if (queue.pendingHint !== "none") {
+              queueIncrementalFollowupRefresh(queue.pendingHint, queue.pendingKeys);
+              queue.pendingHint = "none";
+              queue.pendingKeys = [];
+            }
+          });
+          logPerfMetric("incrementalFollowupRefresh", { hint: nextHint, changedKeys: nextKeys });
+        }, 120);
       }
 
       async function sendToFusion(action, data = {}) {
@@ -13583,8 +13705,11 @@
         return true;
       }
 
-      async function refreshParameters() {
-        setGlobalStatus("Refreshing parameters...");
+      async function refreshParameters(options = {}) {
+        const silentStatus = options && options.silentStatus === true;
+        if (!silentStatus) {
+          setGlobalStatus("Refreshing parameters...");
+        }
         try {
           const response = await sendToFusion(ACTION.REFRESH);
           if (!response.ok) {
@@ -13592,7 +13717,9 @@
           }
 
           applyStateFromFusion(response, { source: "response", action: ACTION.REFRESH });
-          setGlobalStatus(`Loaded ${state.parameters.length} parameter(s).`, "success");
+          if (!silentStatus) {
+            setGlobalStatus(`Loaded ${state.parameters.length} parameter(s).`, "success");
+          }
 
           if (state.settings.autoFitColumns === true) {
             requestAnimationFrame(() => {
@@ -13603,7 +13730,9 @@
             });
           }
         } catch (error) {
-          setGlobalStatus(error.message, "error");
+          if (!silentStatus) {
+            setGlobalStatus(error.message, "error");
+          }
         }
       }
 

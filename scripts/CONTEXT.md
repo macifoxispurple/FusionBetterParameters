@@ -3200,3 +3200,46 @@ Legend:
     - batch updates,
     - group reorder,
     - model parameter page transitions.
+
+## 2026-05-08 - Incremental refresh reliability pass (refresh hints + debounced dependent/full refresh queue)
+- What changed:
+  - `BetterParameters/BetterParameters.py`
+    - Enhanced `_stateful_ok_response(...)` incremental contract for selected row-level mutating actions:
+      - returns `stateMode: "incremental"` + `rowPatch` (existing behavior)
+      - now also returns:
+        - `refreshHint`: `"none" | "dependents"`
+        - `changedKeys`: key list for touched parameter(s)
+    - Added forced full-state fallback for safety-sensitive actions in incremental mode path (`revertParameter`, batch/import/sync family).
+    - Added perf debug event for incremental envelopes (`_perf_log("incremental_response", ...)`).
+  - `BetterParameters/palette.html`
+    - Added incremental reliability queue state:
+      - `state.incrementalRefreshQueue` (timer, hint, keys, inFlight)
+      - `state.incrementalRefreshStats` counters.
+    - Added helpers:
+      - `normalizeRefreshHint(...)`
+      - `mergeRefreshHint(...)`
+      - `shouldForceFullRefreshAfterIncremental(...)`
+      - `queueIncrementalFollowupRefresh(...)` (120ms debounce/coalescing)
+    - `applyStateFromFusion(...)` incremental branch now:
+      - applies row patch,
+      - schedules follow-up refresh based on `refreshHint`/`changedKeys`,
+      - escalates to forced full refresh when stale-value guard trips.
+    - `refreshParameters(...)` now supports `options.silentStatus` for queued background refreshes.
+    - `validateEnvelope(...)` expanded incremental compatibility guard for `refreshHint` and `changedKeys` shape.
+- Why:
+  - Addressed observed reliability gaps where incremental-only updates could miss:
+    - visible reverted expression/value state,
+    - recalculated values in dependent rows.
+  - New model keeps refreshes sane via debounce/coalescing while restoring correctness for dependent/full-table recomputations.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 420 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed runtime files only:
+    - `BetterParameters/BetterParameters.py`
+    - `BetterParameters/palette.html`
+  - Hash verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion smoke still required to tune debounce cadence under large designs and rapid edit bursts.
+  - If any latency/regression appears, disable incremental request flag for target actions and rely on full-state responses while preserving other remediation improvements.
