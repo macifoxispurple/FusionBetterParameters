@@ -3460,3 +3460,34 @@ Legend:
   - Verification:
     - `VERIFY OK BetterParameters.py`
     - `VERIFY OK palette.html`
+
+## 2026-05-08 - Add settings toggle: Hide Groups (flat parameter rows with group-independent sorting)
+- What changed:
+  - `BetterParameters/BetterParameters.py`
+    - Added persisted setting `hideGroups` to defaults and `_load_settings` / `_save_settings` validation.
+    - Enforced boolean validation on save (`"hideGroups" must be a boolean.`).
+  - `BetterParameters/palette.html`
+    - Added new Appearance action button: `Hide Groups: On/Off` (`#hideGroupsButton`).
+    - Added FE settings state field `hideGroups` and render helper `renderHideGroupsToggle()`.
+    - Hooked backend settings hydration path to honor `settings.hideGroups`.
+    - Added toggle handler to persist via existing `saveSettingsPartial`, with optimistic UI and rollback on save error.
+    - Updated `renderParameters(...)` behavior:
+      - when `hideGroups` is ON, no `group-header-row` rows are rendered.
+      - parameter rows are rendered in a single flat list.
+      - if a table sort column is active, sorting is applied globally across all visible parameters (group-agnostic).
+      - if no table sort column is active (e.g., timeline-order mode), existing incoming parameter order is preserved globally (group-agnostic).
+- Why:
+  - Requested feature: hide all group rows while continuing to show parameter rows, and ensure sort modes (name/timeline/etc.) are not influenced by grouping when groups are hidden.
+- Validation run + pass/fail counts:
+  - `python3 -m pytest` failed due missing global pytest module on this machine.
+  - Repo venv equivalent run: `.venv/bin/python -m pytest` => `425 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion manual smoke with Hide Groups ON/OFF:
+    - header sort toggles (asc/desc/none) remain correct in flat mode,
+    - timeline sort stays globally ordered in flat mode,
+    - group drag/collapse actions are naturally unavailable while headers hidden and resume when turned back ON.

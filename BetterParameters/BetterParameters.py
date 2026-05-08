@@ -160,6 +160,7 @@ DEFAULT_SETTINGS = {
     "showCommentColumn": False,
     "ultralightNarrowUi": True,
     "showTextTunerSidebar": False,
+    "hideGroups": False,
     "autoFitColumns": True,
     "pinnedUnits": [],
     "autoCheckUpdates": True,
@@ -1643,6 +1644,7 @@ def _load_settings():
     settings["showCommentColumn"] = bool(DEFAULT_SETTINGS["showCommentColumn"])
     settings["ultralightNarrowUi"] = bool(DEFAULT_SETTINGS["ultralightNarrowUi"])
     settings["showTextTunerSidebar"] = bool(DEFAULT_SETTINGS["showTextTunerSidebar"])
+    settings["hideGroups"] = bool(DEFAULT_SETTINGS["hideGroups"])
     settings["updateCheck"] = {}
     settings_path = _settings_path()
     if not settings_path.exists():
@@ -1730,6 +1732,9 @@ def _load_settings():
 
         if isinstance(loaded.get("showTextTunerSidebar"), bool):
             settings["showTextTunerSidebar"] = loaded["showTextTunerSidebar"]
+
+        if isinstance(loaded.get("hideGroups"), bool):
+            settings["hideGroups"] = loaded["hideGroups"]
 
         if isinstance(loaded.get("autoFitColumns"), bool):
             settings["autoFitColumns"] = loaded["autoFitColumns"]
@@ -1904,6 +1909,12 @@ def _save_settings(data):
         if not isinstance(show_text_tuner_sidebar, bool):
             raise ValueError('"showTextTunerSidebar" must be a boolean.')
         settings["showTextTunerSidebar"] = show_text_tuner_sidebar
+
+    if "hideGroups" in data:
+        hide_groups = data.get("hideGroups")
+        if not isinstance(hide_groups, bool):
+            raise ValueError('"hideGroups" must be a boolean.')
+        settings["hideGroups"] = hide_groups
 
     if "autoFitColumns" in data:
         auto_fit_columns = data.get("autoFitColumns")

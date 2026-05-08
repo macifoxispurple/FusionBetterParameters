@@ -3880,6 +3880,7 @@
               <button id="commentColumnButton" class="ghost" type="button">Comment: Off</button>
               <button id="textTunerSidebarButton" class="ghost" type="button">Text Tuner: On</button>
               <button id="toggleRevertButtonsButton" class="ghost" type="button">Show Revert: On</button>
+              <button id="hideGroupsButton" class="ghost" type="button">Hide Groups: Off</button>
               <button id="ultralightNarrowUiButton" class="ghost" type="button">Ultralight Narrow UI: Off</button>
               <button id="computeModeButton" class="ghost" type="button">Compute: Auto</button>
               <button id="autoFitColumnsButton" class="ghost" type="button">Auto Fit</button>
@@ -4656,6 +4657,7 @@
           showCommentColumn: DEFAULT_SHOW_COMMENT_COLUMN,
           ultralightNarrowUi: false,
           showTextTunerSidebar: DEFAULT_SHOW_TEXT_TUNER_SIDEBAR,
+          hideGroups: false,
           autoFitColumns: true,
           pinnedUnits: [],
           packageConflictPolicy: normalizePackageConflictPolicy(localPackagePrefs?.packageConflictPolicy),
@@ -6625,6 +6627,14 @@
           button.textContent = `Ultralight Narrow UI: ${isOn ? "On" : "Off"}`;
         }
         document.body.classList.toggle("ultralight-narrow-ui", isOn);
+      }
+
+      function renderHideGroupsToggle() {
+        const button = document.getElementById("hideGroupsButton");
+        const isOn = state.settings.hideGroups === true;
+        if (button) {
+          button.textContent = `Hide Groups: ${isOn ? "On" : "Off"}`;
+        }
       }
 
       function shouldUseCompactRevertLabel() {
@@ -9669,7 +9679,24 @@
 
         const combinedParameters = getCombinedParametersForMainTable();
         const filteredParameters = getFilteredParameters(combinedParameters);
-        const grouped = buildGroupedParameters(filteredParameters);
+        const hideGroups = state.settings.hideGroups === true;
+        const grouped = hideGroups
+          ? [{
+            groupId: "",
+            label: "",
+            isFavoritesGroup: false,
+            isModelGroup: false,
+            isSystemGroup: false,
+            parameters: (() => {
+              const activeSortColumn = String(state.tableSort?.column || "");
+              if (!activeSortColumn) {
+                return filteredParameters.slice();
+              }
+              const activeSortDirection = String(state.tableSort?.direction || "asc");
+              return sortParametersForColumn(filteredParameters, activeSortColumn, activeSortDirection);
+            })()
+          }]
+          : buildGroupedParameters(filteredParameters);
         const hasRenderableGroups = grouped.length > 0;
         if (!hasRenderableGroups && !filteredParameters.length) {
           tbody.innerHTML = `<tr><td colspan="${visibleColspan}" class="empty">No parameters match your search.</td></tr>`;
@@ -9686,8 +9713,9 @@
         let renderRowCounter = 0;
         let nonFavoritesStripeCursor = 0;
         for (const groupBlock of grouped) {
+          const groupRowsVisible = !hideGroups;
           ensureGroupUiState(groupBlock.label, groupBlock.groupId);
-          const groupCollapsed = isGroupCollapsed(groupBlock.label, groupBlock.groupId);
+          const groupCollapsed = groupRowsVisible ? isGroupCollapsed(groupBlock.label, groupBlock.groupId) : false;
           const safeGroupLabel = escapeHtml(groupBlock.label);
           const safeGroupId = escapeHtml(groupBlock.groupId || "");
           const isFavoritesGroup = groupBlock.isFavoritesGroup === true;
@@ -9700,7 +9728,8 @@
           const isUngrouped = groupBlock.label === UNGROUPED_GROUP_LABEL;
           const isGroupDraggable = !isFavoritesGroup && !isSystemGroup;
           const toggleGlyph = groupCollapsed ? "\u25b8" : "\u25be";
-          pieces.push(`
+          if (groupRowsVisible) {
+            pieces.push(`
             <tr class="group-header-row" data-group-header="${safeGroupLabel}" data-group-id="${safeGroupId}"${isFavoritesGroup ? ' data-favorites-group="true"' : ''}${isGroupDraggable ? ' data-group-draggable="true"' : ''}>
               <td colspan="${visibleColspan}">
                 <div class="group-header${isGroupDraggable ? " is-draggable" : ""}">
@@ -9716,6 +9745,7 @@
               </td>
             </tr>
           `);
+          }
 
           groupBlock.parameters.forEach((param, index) => {
             renderRowCounter += 1;
@@ -11171,6 +11201,9 @@
           showTextTunerSidebar: typeof settings.showTextTunerSidebar === "boolean"
             ? settings.showTextTunerSidebar
             : (state.settings.showTextTunerSidebar !== false),
+          hideGroups: typeof settings.hideGroups === "boolean"
+            ? settings.hideGroups
+            : (state.settings.hideGroups === true),
           packageConflictPolicy: normalizePackageConflictPolicy(
             Object.prototype.hasOwnProperty.call(settings, "packageConflictPolicy")
               ? settings.packageConflictPolicy
@@ -11202,6 +11235,7 @@
         renderAutoOpenToggle();
         renderCommentColumnToggle();
         renderUltralightNarrowUiToggle();
+        renderHideGroupsToggle();
         renderTextTunerSidebarToggle();
         renderComputeModeButton();
         applyComputeModeClasses();
@@ -16482,6 +16516,25 @@
         } catch (error) {
           state.settings.ultralightNarrowUi = previousValue;
           renderUltralightNarrowUiToggle();
+          setGlobalStatus(error.message, "error");
+        }
+      });
+
+      document.getElementById("hideGroupsButton").addEventListener("click", async () => {
+        const previousValue = state.settings.hideGroups === true;
+        const nextValue = !previousValue;
+        state.settings.hideGroups = nextValue;
+        renderHideGroupsToggle();
+        renderParameters(state.parameters);
+        applyColumnWidths();
+
+        try {
+          await saveSettingsPartial({ hideGroups: nextValue });
+        } catch (error) {
+          state.settings.hideGroups = previousValue;
+          renderHideGroupsToggle();
+          renderParameters(state.parameters);
+          applyColumnWidths();
           setGlobalStatus(error.message, "error");
         }
       });

@@ -62,3 +62,22 @@ def test_load_settings_sanitizes_parameter_table_column_order(tmp_path, monkeypa
         "comment",
         "revert",
     ]
+
+
+def test_save_settings_persists_hide_groups(tmp_path, monkeypatch):
+    settings_path = tmp_path / "settings.json"
+    monkeypatch.setattr(BP, "_settings_path", lambda: settings_path)
+
+    saved = BP._save_settings({"hideGroups": True})
+
+    assert saved["hideGroups"] is True
+    loaded = BP._load_settings()
+    assert loaded["hideGroups"] is True
+
+
+def test_save_settings_rejects_non_boolean_hide_groups(tmp_path, monkeypatch):
+    settings_path = tmp_path / "settings.json"
+    monkeypatch.setattr(BP, "_settings_path", lambda: settings_path)
+
+    with pytest.raises(ValueError, match='"hideGroups" must be a boolean.'):
+        BP._save_settings({"hideGroups": "yes"})
