@@ -12049,6 +12049,85 @@
         return groups;
       }
 
+      function updateFavoriteButtonElement(button, isFavorite, favoriteTitle) {
+        if (!button) {
+          return;
+        }
+        const favoriteClass = isFavorite ? "favorite-button is-on" : "favorite-button";
+        const favoriteIconEntity = isFavorite ? "★" : "☆";
+        button.className = favoriteClass;
+        button.setAttribute("aria-pressed", isFavorite ? "true" : "false");
+        button.setAttribute("title", favoriteTitle);
+        const icon = button.querySelector(".star-icon");
+        if (icon) {
+          icon.textContent = favoriteIconEntity;
+        }
+      }
+
+      function tryApplyIncrementalRowPatchInPlace(existingRowState, patchRow, patchKey) {
+        if (!existingRowState || !patchRow || !patchKey) {
+          return false;
+        }
+        const structuralChanged = (
+          String(existingRowState.name || "") !== String(patchRow.name || "")
+          || String(existingRowState.group || "") !== String(patchRow.group || "")
+          || Boolean(existingRowState.isFavorite) !== Boolean(patchRow.isFavorite)
+        );
+        if (structuralChanged) {
+          return false;
+        }
+        const rows = Array.from(document.querySelectorAll("tr.parameter-row")).filter((row) => String(row.getAttribute("data-parameter-key") || "") === patchKey);
+        if (rows.length === 0) {
+          return false;
+        }
+        const rawName = String(patchRow.name || "");
+        const rawExpression = String(patchRow.expression || "");
+        const rawComment = String(patchRow.comment || "");
+        const rawPreview = String(patchRow.valuePreview || "");
+        const rawUnit = String(patchRow.unit || "");
+        const rawGroup = String(patchRow.group || "");
+        rows.forEach((row) => {
+          row.setAttribute("data-parameter-name", rawName);
+          row.setAttribute("data-group-name", rawGroup);
+          const nameInput = row.querySelector(".param-name-input");
+          if (nameInput) {
+            nameInput.value = rawName;
+            nameInput.setAttribute("data-saved-name", rawName);
+          }
+          const exprInput = row.querySelector(".expression-input");
+          if (exprInput) {
+            exprInput.value = rawExpression;
+            exprInput.setAttribute("data-saved-expression", rawExpression);
+            exprInput.setAttribute("data-parameter-name", rawName);
+            exprInput.setAttribute("data-parameter-unit", rawUnit);
+          }
+          const commentInput = row.querySelector(".comment-input");
+          if (commentInput) {
+            commentInput.value = rawComment;
+            commentInput.setAttribute("data-saved-comment", rawComment);
+          }
+          const unitDisplay = row.querySelector(".unit-display");
+          if (unitDisplay) {
+            unitDisplay.textContent = rawUnit || "No Units";
+          }
+          const previewCell = row.querySelector(".preview-cell");
+          if (previewCell) {
+            previewCell.setAttribute("data-saved-preview", rawPreview);
+            setPreviewCellContent(previewCell, rawPreview);
+          }
+          const isModelRow = String(row.getAttribute("data-parameter-scope") || "").toLowerCase() === "model";
+          const favoriteTitle = isModelRow
+            ? (patchRow.isFavorite ? "Favorite (display only)" : "Not favorite (display only)")
+            : (patchRow.isFavorite ? "Remove from favorites" : "Add to favorites");
+          row.querySelectorAll(".favorite-button").forEach((button) => {
+            updateFavoriteButtonElement(button, Boolean(patchRow.isFavorite), favoriteTitle);
+          });
+          updateRowSaveState(row);
+        });
+        setParameterSummary(state.parameters);
+        return true;
+      }
+
       function applyIncrementalRowPatch(rowPatch) {
         if (!rowPatch || typeof rowPatch !== "object") {
           return;
@@ -12059,6 +12138,7 @@
           const patchKey = String(patchRow.key || patchRow.name || "");
           const existing = Array.isArray(state.parameters) ? state.parameters.slice() : [];
           const index = existing.findIndex((item) => String(item?.key || item?.name || "") === patchKey);
+          const existingRowState = index >= 0 ? existing[index] : null;
           if (index >= 0) {
             existing[index] = { ...existing[index], ...patchRow };
           } else {
@@ -12068,10 +12148,13 @@
           state.groups = recomputeGroupsFromParameters(existing);
           const names = new Set(existing.map((item) => String(item?.name || "")).filter((name) => !!name));
           state.parameterNames = Array.from(names).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-          renderParameters(state.parameters);
-          setParameterSummary(state.parameters);
+          const appliedInPlace = tryApplyIncrementalRowPatchInPlace(existingRowState, existing[index >= 0 ? index : (existing.length - 1)], patchKey);
+          if (!appliedInPlace) {
+            renderParameters(state.parameters);
+            setParameterSummary(state.parameters);
+          }
           state.incrementalRefreshStats.incrementalOnlyApplied += 1;
-          logPerfMetric("incrementalRowPatch", { mode: "upsert", key: patchKey });
+          logPerfMetric("incrementalRowPatch", { mode: "upsert", key: patchKey, appliedInPlace });
         }
       }
 

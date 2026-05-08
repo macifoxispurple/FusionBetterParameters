@@ -3243,3 +3243,37 @@ Legend:
 - Remaining risk / next check:
   - In-Fusion smoke still required to tune debounce cadence under large designs and rapid edit bursts.
   - If any latency/regression appears, disable incremental request flag for target actions and rely on full-state responses while preserving other remediation improvements.
+
+## 2026-05-08 - Implemented pending review items #1 and #2 (true partial FE patch path + completed BE table-driven dispatch)
+- What changed:
+  - `BetterParameters/BetterParameters.py`
+    - Completed `_handle_palette_action(...)` refactor to table-driven style:
+      - `simple_mutating_handlers` map for core mutating actions.
+      - `complex_handlers` map for import/export/sync/stateful composite actions.
+      - `readonly_handlers` map for validation/read-only actions.
+      - unified unknown-action fallback remains unchanged (`ERROR_CONTRACT`).
+    - Preserved response envelope compatibility while centralizing dispatch behavior.
+    - Kept incremental envelope reliability semantics (`stateMode`, `rowPatch`, `refreshHint`, `changedKeys`) in `_stateful_ok_response(...)`.
+  - `BetterParameters/palette.html`
+    - Implemented true in-place partial row patch path for incremental updates:
+      - `tryApplyIncrementalRowPatchInPlace(...)`
+      - `updateFavoriteButtonElement(...)`
+      - `applyIncrementalRowPatch(...)` now attempts in-place DOM update first; falls back to full `renderParameters(...)` only when structure changed or row unavailable.
+    - In-place patch updates saved/value fields for name/expression/comment/unit/preview and favorite state, then recomputes row save-state and summary.
+- Why:
+  - Addresses remaining code review backlog:
+    1) reduce full-table rebuild frequency by applying safe row-only DOM updates for incremental responses.
+    2) reduce backend dispatcher complexity/duplication with explicit action maps and stable response policy.
+- Validation run + pass/fail counts:
+  - `python3 -m py_compile BetterParameters/BetterParameters.py` => OK.
+  - `.venv/bin/python -m pytest` => 420 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed runtime files only:
+    - `BetterParameters/BetterParameters.py`
+    - `BetterParameters/palette.html`
+  - Hash verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-place row patch path intentionally falls back to full render for structural changes (name/group/favorite) to avoid DOM regroup/reorder edge-case regressions.
+  - In-Fusion smoke recommended for rapid mixed edits under large parameter sets to tune thresholds and ensure no stale UI edge cases.
