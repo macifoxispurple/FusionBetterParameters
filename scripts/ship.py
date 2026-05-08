@@ -95,6 +95,9 @@ def _write_manifest_version(manifest_path: Path, version: str) -> None:
     raw = manifest_path.read_text(encoding="utf-8-sig")
     replaced = re.sub(r'"version"\s*:\s*"\d+\.\d+\.\d+"', f'"version": "{version}"', raw, count=1)
     if replaced == raw:
+        current = _parse_manifest_version(manifest_path)
+        if current == version:
+            return
         raise ShipError("Failed to update manifest version.")
     manifest_path.write_text(replaced, encoding="utf-8", newline="\n")
 
@@ -466,6 +469,7 @@ def _parse_args() -> argparse.Namespace:
             "Modes:\n"
             "  - normal ship: --bump-type <major|feature|patch>\n"
             "  - finalize existing tag: --finalize-existing-tag vX.Y.Z\n"
+            "  - re-ship in place (rebuild package + replace release asset): --reship-in-place-tag vX.Y.Z\n"
             "  - commit only (no bump/tag/release): --commit-only [--commit-message ...]\n"
             "  - plan only (print resolved actions/paths, no mutation): --plan"
         ),
@@ -473,6 +477,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--bump-type", choices=("major", "feature", "patch"), default="")
     parser.add_argument("--finalize-existing-tag", default="")
+    parser.add_argument("--reship-in-place-tag", default="")
     parser.add_argument("--commit-only", action="store_true")
     parser.add_argument("--commit-message", default="")
     parser.add_argument("--plan", action="store_true")
@@ -496,9 +501,10 @@ def main() -> int:
     if not args.check_auth_only and not args.commit_only and not args.fusion_tested:
         raise ShipError("Missing --fusion-tested.")
     finalize_mode = bool(args.finalize_existing_tag)
-    mode_count = int(bool(args.bump_type)) + int(finalize_mode) + int(args.commit_only)
+    reship_in_place_mode = bool(args.reship_in_place_tag)
+    mode_count = int(bool(args.bump_type)) + int(finalize_mode) + int(reship_in_place_mode) + int(args.commit_only)
     if not args.check_auth_only and mode_count != 1:
-        raise ShipError("Choose exactly one mode: --bump-type, --finalize-existing-tag, or --commit-only.")
+        raise ShipError("Choose exactly one mode: --bump-type, --finalize-existing-tag, --reship-in-place-tag, or --commit-only.")
 
     _require_tool("git")
     python_exe = _python_tool()
@@ -522,16 +528,24 @@ def main() -> int:
 
     if args.plan:
         current_version_plan = _parse_manifest_version(manifest_path)
-        mode_label = "commit-only" if args.commit_only else ("finalize" if finalize_mode else "normal-ship")
+        mode_label = (
+            "commit-only"
+            if args.commit_only
+            else ("finalize" if finalize_mode else ("reship-in-place" if reship_in_place_mode else "normal-ship"))
+        )
         next_version_plan = (
             current_version_plan
-            if args.commit_only or finalize_mode
+            if args.commit_only or finalize_mode or reship_in_place_mode
             else _bumped_version(current_version_plan, args.bump_type)
         )
         next_tag_plan = (
             "(none)"
             if args.commit_only
-            else (args.finalize_existing_tag.strip() if finalize_mode else f"v{next_version_plan}")
+            else (
+                args.finalize_existing_tag.strip()
+                if finalize_mode
+                else (args.reship_in_place_tag.strip() if reship_in_place_mode else f"v{next_version_plan}")
+            )
         )
         print("Ship plan:")
         print(f"- mode: {mode_label}")
@@ -629,8 +643,8 @@ def main() -> int:
     branch = _git_branch(workspace_root)
     current_version = _parse_manifest_version(manifest_path)
 
-    if finalize_mode:
-        tag = args.finalize_existing_tag.strip()
+    if finalize_mode or reship_in_place_mode:
+        tag = (args.finalize_existing_tag.strip() if finalize_mode else args.reship_in_place_tag.strip())
         new_version = _semver_from_tag(tag)
         if not args.skip_push and not _remote_tag_exists(workspace_root, tag, env=git_env):
             raise ShipError(f"Finalize target tag not found on remote: {tag}")
@@ -644,7 +658,7 @@ def main() -> int:
 
     notes_temp = _release_notes_file(workspace_root, tag, new_version, args.notes_file)
     report = {
-        "mode": "finalize" if finalize_mode else "normal",
+        "mode": "reship-in-place" if reship_in_place_mode else ("finalize" if finalize_mode else "normal"),
         "branch": branch,
         "tag": tag,
         "version": new_version,
@@ -654,7 +668,7 @@ def main() -> int:
     }
 
     try:
-        if not finalize_mode:
+        if not finalize_mode and not reship_in_place_mode:
             if live_addin_root:
                 if not live_addin_root.exists():
                     raise ShipError(f"Live add-in root missing: {live_addin_root}")
@@ -695,6 +709,26 @@ def main() -> int:
                     )
                     raise ShipError(str(exc) + recovery) from exc
                 report["steps"].append("push:ok")
+        elif reship_in_place_mode:
+            if live_addin_root:
+                if not live_addin_root.exists():
+                    raise ShipError(f"Live add-in root missing: {live_addin_root}")
+                _sync_source_to_live(workspace_root, source_root, live_addin_root, python_exe)
+                report["steps"].append("reship_sync_source_to_live:ok")
+            else:
+                report["steps"].append("reship_sync_source_to_live:skipped")
+
+            zip_path = build_deterministic_package(
+                source_root=source_root,
+                workspace_root=workspace_root,
+                expected_version=new_version,
+                release_assets_path=workspace_root / "scripts" / "release_assets",
+            )
+            report["steps"].append(f"reship_package_build_verify:ok:{zip_path}")
+
+            if not args.skip_push:
+                _run(["git", "-C", str(workspace_root), "push", "origin", branch], env=git_env)
+                report["steps"].append("reship_push_branch:ok")
         else:
             zip_path = workspace_root / "_releases_packages" / f"BetterParameters-{new_version}.zip"
             allowed = set()

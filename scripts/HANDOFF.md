@@ -376,12 +376,18 @@ Modes:
 7. Auth preflight-only mode (no mutations):
 - `python3 ./scripts/ship.py --check-auth-only --fusion-tested`
 
+8. Re-ship in place (rebuild package for an existing version and replace release asset/notes):
+- `python3 ./scripts/ship.py --reship-in-place-tag vX.Y.Z --fusion-tested --notes-file <path-to-notes.md>`
+- Optional no-push variant (asset/notes update without branch push):
+  - `python3 ./scripts/ship.py --reship-in-place-tag vX.Y.Z --fusion-tested --notes-file <path-to-notes.md> --skip-push`
+
 Important preflight behavior:
 
 - `--bump-type` and `--finalize-existing-tag` require `--fusion-tested`.
+- `--reship-in-place-tag` requires `--fusion-tested`.
 - `--commit-only` does not require `--fusion-tested`.
 - Exactly one mode selector is required:
-  - `--bump-type` OR `--finalize-existing-tag` OR `--commit-only`.
+  - `--bump-type` OR `--finalize-existing-tag` OR `--reship-in-place-tag` OR `--commit-only`.
   - Exception: `--check-auth-only` runs standalone and does not require mode selection.
 - `--skip-release` skips GitHub release publish, but normal ship mode still performs bump/tag/package steps.
 - Auth defaults/overrides:
@@ -443,6 +449,18 @@ Finalize/recovery mode:
   - release-notes preflight preparation
   - existing zip verification (`BetterParameters-X.Y.Z.zip` manifest/version/root-shape checks)
   - create/update GitHub release + asset upload/verification
+
+Re-ship in place mode:
+
+- `scripts\ship.py` supports explicit same-version re-ship mode:
+  - `python .\scripts\ship.py --reship-in-place-tag vX.Y.Z --fusion-tested --notes-file <path-to-notes.md>`
+- Re-ship mode is intended when you need to replace the already-published asset/notes for an existing release tag.
+- Re-ship mode does not bump version, create a release commit, or create/push a new tag.
+- Re-ship mode performs:
+  - optional source -> live add-in sync (same behavior as normal ship when live root is provided)
+  - deterministic package rebuild for `X.Y.Z` from current source state
+  - branch push (unless `--skip-push`)
+  - create/update GitHub release + asset upload/verification for the existing tag
 
 Push-failure recovery behavior:
 

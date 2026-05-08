@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+import re
 import zipfile
 
 
@@ -80,3 +81,40 @@ def test_build_deterministic_package_shapes_zip_and_version(tmp_path: Path):
 
         manifest = archive.read("BetterParameters/BetterParameters.manifest").decode("utf-8")
         assert '"version": "0.1.1"' in manifest
+
+
+def test_write_manifest_version_is_idempotent_when_version_matches(tmp_path: Path):
+    manifest_path = tmp_path / "BetterParameters.manifest"
+    original = '{\n  "version": "0.8.10"\n}\n'
+    manifest_path.write_text(original, encoding="utf-8")
+
+    ship._write_manifest_version(manifest_path, "0.8.10")
+
+    assert manifest_path.read_text(encoding="utf-8") == original
+
+
+def test_parse_args_supports_reship_in_place_tag(monkeypatch):
+    monkeypatch.setattr("sys.argv", ["ship.py", "--reship-in-place-tag", "v0.8.10", "--fusion-tested"])
+    args = ship._parse_args()
+    assert args.reship_in_place_tag == "v0.8.10"
+
+
+def test_main_requires_exactly_one_mode_with_reship(monkeypatch, tmp_path: Path):
+    workspace_root = tmp_path
+    source_root = workspace_root / "BetterParameters"
+    source_root.mkdir(parents=True, exist_ok=True)
+    _write_manifest(source_root / "BetterParameters.manifest", "0.8.10")
+
+    monkeypatch.setattr("sys.argv", [
+        "ship.py",
+        "--workspace-root", str(workspace_root),
+        "--source-root", str(source_root),
+        "--fusion-tested",
+        "--reship-in-place-tag", "v0.8.10",
+        "--bump-type", "patch",
+    ])
+    try:
+        ship.main()
+        raise AssertionError("Expected ShipError for multi-mode selection.")
+    except ship.ShipError as exc:
+        assert re.search(r"Choose exactly one mode", str(exc))

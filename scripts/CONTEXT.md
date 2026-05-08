@@ -2891,3 +2891,39 @@ Legend:
   - Hash verification: `VERIFY OK palette.html`.
 - Remaining risk / next check:
   - In-Fusion smoke: verify staged update-pill text now renders fully while tiny-width micro-mode behavior remains acceptable.
+
+## 2026-05-07 - ship.py: first-class in-place re-ship support + HANDOFF docs
+- What changed:
+  - `scripts/ship.py`
+    - Added new mode selector: `--reship-in-place-tag vX.Y.Z`.
+    - Mode validation now accepts exactly one of:
+      - `--bump-type`
+      - `--finalize-existing-tag`
+      - `--reship-in-place-tag`
+      - `--commit-only`
+    - Plan output now includes `reship-in-place` mode label and target tag/version resolution.
+    - Implemented in-place re-ship flow:
+      - optional source->live sync (same as normal ship when live root provided)
+      - deterministic package rebuild for existing version from current source
+      - optional branch push (`--skip-push` supported)
+      - release create/edit + asset upload/verification for existing tag
+      - no bump, no release commit, no new tag creation
+    - Made manifest version write idempotent for same-version packaging:
+      - `_write_manifest_version(...)` now no-ops when manifest already matches requested version, instead of throwing.
+  - `tests/test_ship_py.py`
+    - Added tests for:
+      - idempotent same-version manifest write
+      - argument parsing support for `--reship-in-place-tag`
+      - exact-one-mode enforcement including new mode
+  - `scripts/HANDOFF.md`
+    - Added `Re-ship in place` usage in modes list.
+    - Updated mode/`--fusion-tested`/exactly-one-mode rules to include new selector.
+    - Added dedicated `Re-ship in place mode` behavior section with command and guarantees.
+- Why:
+  - Existing finalize flow only verified/uploaded a prebuilt zip and did not rebuild package from current source; manual rebuilds for same-version tags were awkward and brittle.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 416 passed, 6 skipped, 0 failed.
+- Remaining risk / next check:
+  - Optional smoke run suggestion:
+    - `python3 ./scripts/ship.py --reship-in-place-tag v0.8.10 --fusion-tested --notes-file <notes.md> --plan`
+    - then one real non-destructive trial with `--skip-push` in a safe context.
