@@ -4824,6 +4824,7 @@
       let dataPanelImportSession = null;
       let parameterFileImportSession = null;
       let pendingConfirmVariant = "";
+      const favoriteToggleInFlightKeys = new Set();
       let pendingConfirmMode = "confirm";
       let pendingTextInputResolver = null;
 
@@ -7863,7 +7864,7 @@
             legacyBody = legacyBody.slice("legacy:".length);
           }
           const canonicalLegacy = canonicalGroupName(legacyBody);
-          return canonicalLegacy ? `legacy:${canonicalLegacy.toLowerCase()}` : "";
+          return canonicalLegacy ? `u:${canonicalLegacy.toLowerCase()}` : "";
         }
         return "";
       }
@@ -7994,7 +7995,7 @@
         if (display === UNGROUPED_GROUP_LABEL) {
           return SYSTEM_GROUP_ID_UNGROUPED;
         }
-        return `legacy:${display.toLowerCase()}`;
+        return makeUserGroupIdFromLabel(display);
       }
 
       function ensureGroupUiState(groupLabel, groupId = "") {
@@ -8025,7 +8026,7 @@
             return;
           }
           const canonical = canonicalGroupName(candidate);
-          const key = canonical ? `legacy:${canonical.toLowerCase()}` : "";
+          const key = canonical ? `u:${canonical.toLowerCase()}` : "";
           if (seen.has(key)) {
             return;
           }
@@ -8041,7 +8042,7 @@
             if (!legacyLabel && String(key || "").trim() !== "") {
               return "";
             }
-            return legacyLabel ? `legacy:${legacyLabel.toLowerCase()}` : "";
+            return legacyLabel ? `u:${legacyLabel.toLowerCase()}` : "";
           })();
           if (!normalizedKey && String(key || "").trim() !== "") {
             return;
@@ -8146,7 +8147,7 @@
           orderedIds.push(id);
         };
 
-        const resolveLegacyStoredOrderToken = (token) => {
+        const resolveStoredOrderToken = (token) => {
           const raw = String(token || "").trim();
           if (!raw) {
             return "";
@@ -8155,13 +8156,13 @@
           if (tokenId && groupMetaById.has(tokenId)) {
             return tokenId;
           }
-          const legacyLabel = raw.startsWith("legacy:")
+          const label = raw.startsWith("legacy:")
             ? canonicalGroupName(raw.slice("legacy:".length))
             : canonicalGroupName(raw);
-          if (!legacyLabel) {
+          if (!label) {
             return "";
           }
-          const targetLower = legacyLabel.toLowerCase();
+          const targetLower = label.toLowerCase();
           const userMatch = Array.from(groupMetaById.values())
             .find((meta) => meta.groupType === "user" && String(meta.label || "").toLowerCase() === targetLower);
           if (userMatch) {
@@ -8176,7 +8177,7 @@
         };
 
         for (const storedGroup of (state.groupUi.order || [])) {
-          pushId(resolveLegacyStoredOrderToken(storedGroup));
+          pushId(resolveStoredOrderToken(storedGroup));
         }
 
         for (const meta of groupMetaById.values()) {
@@ -12062,6 +12063,35 @@
         if (icon) {
           icon.textContent = favoriteIconEntity;
         }
+      }
+
+      function applyOptimisticFavoriteState(parameterKey, parameterName, nextIsFavorite) {
+        const key = String(parameterKey || "").trim();
+        if (!key) {
+          return;
+        }
+        const safeName = String(parameterName || "");
+        (state.parameters || []).forEach((item) => {
+          const itemKey = String(item?.key || item?.name || "");
+          if (itemKey === key) {
+            item.isFavorite = !!nextIsFavorite;
+          }
+        });
+        const rows = Array.from(document.querySelectorAll("tr.parameter-row"))
+          .filter((row) => String(row.getAttribute("data-parameter-key") || "") === key);
+        rows.forEach((row) => {
+          const isModelRow = String(row.getAttribute("data-parameter-scope") || "").toLowerCase() === "model";
+          const favoriteTitle = isModelRow
+            ? (nextIsFavorite ? "Favorite (display only)" : "Not favorite (display only)")
+            : (nextIsFavorite ? "Remove from favorites" : "Add to favorites");
+          row.querySelectorAll(".favorite-button").forEach((button) => {
+            updateFavoriteButtonElement(button, !!nextIsFavorite, favoriteTitle);
+          });
+        });
+        const names = new Set((state.parameters || []).map((item) => String(item?.name || "")).filter((name) => !!name));
+        state.parameterNames = Array.from(names).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+        renderParameters(state.parameters);
+        setParameterSummary(state.parameters);
       }
 
       function tryApplyIncrementalRowPatchInPlace(existingRowState, patchRow, patchKey) {
@@ -16923,26 +16953,33 @@
           if (!parameter) {
             return;
           }
-
-          captureTableScrollAnchorFromRow(row);
-          favoriteButton.disabled = true;
-          try {
-            const response = await sendToFusion(ACTION.SET_PARAMETER_FAVORITE, {
-              key: parameter.key || "",
-              name: parameter.name,
-              isFavorite: !parameter.isFavorite
-            });
-            if (!response.ok) {
-              throw new Error(response.message || "Favorite update failed.");
-            }
-
-            applyStateFromFusion(response);
-            setGlobalStatus(`${parameter.name} ${parameter.isFavorite ? "removed from" : "added to"} favorites.`, "success");
-          } catch (error) {
-            state.pendingTableScrollAnchor = null;
-            favoriteButton.disabled = false;
-            setGlobalStatus(error.message, "error");
+          const parameterKey = String(parameter.key || parameter.name || "");
+          if (!parameterKey || favoriteToggleInFlightKeys.has(parameterKey)) {
+            return;
           }
+          const nextIsFavorite = !parameter.isFavorite;
+          captureTableScrollAnchorFromRow(row);
+          favoriteToggleInFlightKeys.add(parameterKey);
+          applyOptimisticFavoriteState(parameterKey, parameter.name, nextIsFavorite);
+          runBackgroundTask((async () => {
+            try {
+              const response = await sendToFusion(ACTION.SET_PARAMETER_FAVORITE, {
+                key: parameter.key || "",
+                name: parameter.name,
+                isFavorite: nextIsFavorite
+              });
+              if (!response.ok) {
+                throw new Error(response.message || "Favorite update failed.");
+              }
+              applyStateFromFusion(response);
+            } catch (error) {
+              state.pendingTableScrollAnchor = null;
+              applyOptimisticFavoriteState(parameterKey, parameter.name, !nextIsFavorite);
+              setGlobalStatus(error.message, "error");
+            } finally {
+              favoriteToggleInFlightKeys.delete(parameterKey);
+            }
+          })(), "Favorite toggle");
           return;
         }
 

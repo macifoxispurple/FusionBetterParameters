@@ -1285,7 +1285,6 @@ def _save_text_tuner_state(values):
 def _document_order_root():
     path = _app_support_root() / DOCUMENT_ORDER_DIRNAME
     path.mkdir(parents=True, exist_ok=True)
-    _migrate_legacy_document_order_dir(path)
     return path
 
 
@@ -1304,25 +1303,6 @@ def _app_support_root():
         return Path(xdg_root) / "BetterParameters"
 
     return home / ".config" / "BetterParameters"
-
-
-def _legacy_document_order_root():
-    return Path(ADDIN_DIR) / DOCUMENT_ORDER_DIRNAME
-
-
-def _migrate_legacy_document_order_dir(target_root):
-    legacy_root = _legacy_document_order_root()
-    if legacy_root == target_root or not legacy_root.exists() or not legacy_root.is_dir():
-        return
-
-    for legacy_file in legacy_root.glob("*.json"):
-        target_file = target_root / legacy_file.name
-        if target_file.exists():
-            continue
-        try:
-            shutil.copy2(legacy_file, target_file)
-        except Exception:
-            continue
 
 
 def _document_order_storage_key(document_id, document_name):

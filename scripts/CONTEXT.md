@@ -3296,3 +3296,55 @@ Legend:
     - `VERIFY OK palette.html`
 - Remaining risk / next check:
   - Manual in-Fusion smoke: confirm no transient refresh status text appears after normal edits/reverts while errors still surface as before.
+
+## 2026-05-08 - Legacy-path retirement work (item #3)
+- What changed:
+  - `BetterParameters/BetterParameters.py`
+    - Retired backend legacy document-order directory migration path:
+      - removed `_migrate_legacy_document_order_dir(...)` invocation from `_document_order_root()`.
+      - removed `_legacy_document_order_root()` and `_migrate_legacy_document_order_dir(...)` helper functions.
+    - Current canonical app-support storage path behavior remains unchanged.
+  - `BetterParameters/palette.html`
+    - Retired `legacy:` token generation for group UI state keys.
+    - Group collapse/order keys now canonicalize to modern user/system/component tokens (not `legacy:` writes).
+    - Backward-compat conversion retained for reading historical stored tokens:
+      - `legacy:<name>` normalizes to canonical `u:<name>`.
+      - existing stored order/collapsed entries are mapped into modern keyspace during normalize/load.
+- Why:
+  - Implements legacy-path retirement while minimizing user-visible regressions:
+    - stop producing/depending on legacy token paths,
+    - keep one-way compatibility for previously stored local UI state.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 420 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed runtime files only:
+    - `BetterParameters/BetterParameters.py`
+    - `BetterParameters/palette.html`
+  - Hash verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - Users relying on very old legacy document-order directory copies will no longer receive auto-migration; canonical app-support store is now sole source.
+  - In-Fusion smoke recommended for group collapse/order persistence across reopen after this token canonicalization change.
+
+## 2026-05-08 - Favorite toggle responsiveness fix (optimistic/non-blocking)
+- What changed:
+  - `BetterParameters/palette.html`
+    - Favorite toggle click path changed from blocking `await` flow with disabled-button lock to optimistic non-blocking flow:
+      - added `favoriteToggleInFlightKeys` guard set (per-parameter in-flight dedupe)
+      - added `applyOptimisticFavoriteState(...)` to update FE state + row visuals immediately
+      - favorite request now runs via `runBackgroundTask(...)` (background sync)
+      - on backend failure, optimistic change is reverted and error is shown
+    - Removed UI lock behavior that caused prolonged wait cursor/blocked interaction during slow backend roundtrips.
+- Why:
+  - Reported issue: Favorite state changes taking 30s+ with spinner/wait and locked user interaction.
+  - Desired behavior: nearly instantaneous action with background reconciliation.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 420 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed runtime file only:
+    - `BetterParameters/palette.html`
+  - Hash verification:
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion smoke: rapid repeated favorite toggles on same row and across multiple rows; verify no duplicate-request glitches and proper rollback on simulated backend error.
