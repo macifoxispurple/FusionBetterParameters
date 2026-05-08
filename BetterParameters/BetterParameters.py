@@ -132,6 +132,15 @@ DEFAULT_SETTINGS = {
         "expression": 220,
         "value": 120,
     },
+    "parameterTableColumnOrder": [
+        "parameter",
+        "name",
+        "unit",
+        "expression",
+        "value",
+        "comment",
+        "revert",
+    ],
     "unitCategoryState": {
         "Length": True,
         "Angle": True,
@@ -166,6 +175,30 @@ _COLUMN_KEY_OLD_NAMES = {
     "expression": "comment",
     "value": "actions",
 }
+_TABLE_COLUMN_ORDER_KEYS = tuple(DEFAULT_SETTINGS["parameterTableColumnOrder"])
+
+
+def _normalize_parameter_table_column_order(value, fallback=None):
+    base = [str(item) for item in _TABLE_COLUMN_ORDER_KEYS]
+    if isinstance(fallback, list):
+        fallback_filtered = [str(item) for item in fallback if str(item) in _TABLE_COLUMN_ORDER_KEYS]
+        if fallback_filtered:
+            base = fallback_filtered
+    if not isinstance(value, list):
+        return list(base)
+    normalized = []
+    seen = set()
+    for raw in value:
+        key = str(raw or "").strip()
+        if key not in _TABLE_COLUMN_ORDER_KEYS or key in seen:
+            continue
+        normalized.append(key)
+        seen.add(key)
+    for key in base:
+        if key not in seen:
+            normalized.append(key)
+            seen.add(key)
+    return normalized
 
 ALLOWED_PALETTE_DOCKING_STATE_NAMES = {"floating", "left", "right", "top", "bottom"}
 TARGET_PANEL_IDS = [
@@ -1603,6 +1636,7 @@ def _load_settings():
     settings["paletteSize"] = dict(DEFAULT_SETTINGS["paletteSize"])
     settings["palettePosition"] = {}
     settings["parameterTableColumns"] = dict(DEFAULT_SETTINGS["parameterTableColumns"])
+    settings["parameterTableColumnOrder"] = list(DEFAULT_SETTINGS["parameterTableColumnOrder"])
     settings["unitCategoryState"] = dict(DEFAULT_SETTINGS["unitCategoryState"])
     settings["customUnits"] = []
     settings["showRevertButtons"] = bool(DEFAULT_SETTINGS["showRevertButtons"])
@@ -1655,6 +1689,11 @@ def _load_settings():
                         incoming_value = stored_cols.get(old_key)
                 if isinstance(incoming_value, (int, float)) and incoming_value > 0:
                     settings["parameterTableColumns"][key] = float(incoming_value)
+        if "parameterTableColumnOrder" in loaded:
+            settings["parameterTableColumnOrder"] = _normalize_parameter_table_column_order(
+                loaded.get("parameterTableColumnOrder"),
+                fallback=settings.get("parameterTableColumnOrder"),
+            )
 
         if isinstance(loaded.get("unitCategoryState"), dict):
             for key, default_value in DEFAULT_SETTINGS["unitCategoryState"].items():
@@ -1802,6 +1841,14 @@ def _save_settings(data):
                 normalized[key] = float(incoming_value)
 
         settings["parameterTableColumns"] = normalized
+    if "parameterTableColumnOrder" in data:
+        table_column_order = data.get("parameterTableColumnOrder")
+        if not isinstance(table_column_order, list):
+            raise ValueError('"parameterTableColumnOrder" must be an array.')
+        settings["parameterTableColumnOrder"] = _normalize_parameter_table_column_order(
+            table_column_order,
+            fallback=settings.get("parameterTableColumnOrder"),
+        )
 
     category_state = data.get("unitCategoryState")
     if category_state is not None:

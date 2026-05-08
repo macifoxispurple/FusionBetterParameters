@@ -1943,6 +1943,27 @@
       .sortable-header {
         cursor: pointer;
       }
+      .sortable-header.is-column-drag-source {
+        opacity: 0.72;
+      }
+      .sortable-header.is-column-drag-target {
+        outline: 1px dashed var(--accent);
+        outline-offset: -2px;
+      }
+      .column-drag-ghost {
+        position: fixed;
+        z-index: 10020;
+        pointer-events: none;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--panel-raised) 92%, transparent);
+        box-shadow: 0 8px 20px color-mix(in srgb, var(--overlay) 45%, transparent);
+        padding: 6px 10px;
+        font-size: 0.86rem;
+        line-height: 1.1;
+        color: var(--ink);
+        white-space: nowrap;
+      }
 
       .sortable-header .header-label {
         pointer-events: none;
@@ -3385,8 +3406,8 @@
           grid-template-columns: 1fr;
         }
 
-        th:nth-child(6),
-        td:nth-child(6) {
+        th.comment-col,
+        td.comments-cell {
           display: none;
         }
       }
@@ -3659,15 +3680,7 @@
           <div class="table-wrap">
             <table>
               <thead>
-                <tr>
-                  <th class="parameter-col sortable-header has-resizer" data-sort-col="parameter"><span class="header-main"><span class="header-label">Parameter</span><span class="sort-indicator" aria-hidden="true"></span></span><div class="column-resizer" data-col="parameter"></div></th>
-                  <th class="sortable-header has-resizer" data-sort-col="name"><span class="header-main"><span class="header-label">Name</span><span class="sort-indicator" aria-hidden="true"></span></span><div class="column-resizer" data-col="name"></div></th>
-                  <th class="unit-col sortable-header has-resizer" data-sort-col="unit"><span class="header-main"><span class="header-label">Unit</span><span class="sort-indicator" aria-hidden="true"></span></span><div class="column-resizer" data-col="unit"></div></th>
-                  <th class="sortable-header has-resizer" data-sort-col="expression"><span class="header-main"><span class="header-label">Expression</span><span class="sort-indicator" aria-hidden="true"></span></span><div class="column-resizer" data-col="expression"></div></th>
-                  <th class="value-col sortable-header has-resizer" data-sort-col="value"><span class="header-main"><span class="header-label">Value</span><span class="sort-indicator" aria-hidden="true"></span></span><div class="column-resizer" data-col="value"></div></th>
-                  <th class="comment-col comments-col sortable-header" data-sort-col="comment"><span class="header-main"><span class="header-label">Comments</span><span class="sort-indicator" aria-hidden="true"></span></span></th>
-                  <th class="revert-col">Revert</th>
-                </tr>
+                <tr id="parameterHeaderRow"></tr>
               </thead>
               <tbody id="parameterRows">
                 <tr>
@@ -4124,6 +4137,8 @@
       const COLUMN_KEY_OLD_NAMES = { parameter: "name", name: "expression", unit: "preview", expression: "comment", value: "actions" };
 
       const COLUMN_KEYS = ["parameter", "name", "unit", "expression", "value"];
+      const ALL_TABLE_COLUMN_KEYS = ["parameter", "name", "unit", "expression", "value", "comment", "revert"];
+      const DEFAULT_TABLE_COLUMN_ORDER = [...ALL_TABLE_COLUMN_KEYS];
       const UNGROUPED_GROUP_LABEL = "Ungrouped";
       const FAVORITES_GROUP_LABEL = "\u2605 Favorites";
       const SYSTEM_GROUP_ID_UNGROUPED = "s:ungrouped";
@@ -4604,6 +4619,7 @@
           rememberUnit: false,
           lastUnit: "",
           parameterTableColumns: { ...DEFAULT_TABLE_COLUMNS },
+          parameterTableColumnOrder: [...DEFAULT_TABLE_COLUMN_ORDER],
           unitCategoryState: { ...DEFAULT_UNIT_CATEGORY_STATE },
           customUnits: [...DEFAULT_CUSTOM_UNITS],
           showRevertButtons: DEFAULT_SHOW_REVERT_BUTTONS,
@@ -4669,6 +4685,9 @@
           height: 640
         },
         activeColumnResize: null,
+        activeColumnHeaderDrag: null,
+        pendingColumnHeaderDragStart: null,
+        suppressNextHeaderSortClick: false,
         activeRowDrag: null,
         activeGroupDrag: null,
         activeGroupDragFinishing: false,
@@ -5898,6 +5917,116 @@
         });
       }
 
+      function normalizeColumnOrder(raw, fallback = null) {
+        const base = Array.isArray(fallback) ? fallback.slice() : DEFAULT_TABLE_COLUMN_ORDER.slice();
+        if (!Array.isArray(raw)) {
+          return base.slice();
+        }
+        const next = [];
+        const seen = new Set();
+        raw.forEach((item) => {
+          const key = String(item || "").trim();
+          if (!ALL_TABLE_COLUMN_KEYS.includes(key) || seen.has(key)) {
+            return;
+          }
+          seen.add(key);
+          next.push(key);
+        });
+        base.forEach((key) => {
+          if (!seen.has(key)) {
+            seen.add(key);
+            next.push(key);
+          }
+        });
+        return next;
+      }
+
+      function getEffectiveColumnOrder() {
+        if (document.body.classList.contains("narrow-stack")) {
+          return DEFAULT_TABLE_COLUMN_ORDER.slice();
+        }
+        return normalizeColumnOrder(state.settings.parameterTableColumnOrder, DEFAULT_TABLE_COLUMN_ORDER);
+      }
+
+      function getColumnHeaderHtml(key) {
+        if (key === "parameter") {
+          return '<th class="parameter-col sortable-header has-resizer" data-col-key="parameter" data-sort-col="parameter"><span class="header-main"><span class="header-label">Parameter</span><span class="sort-indicator" aria-hidden="true"></span></span><div class="column-resizer" data-col="parameter"></div></th>';
+        }
+        if (key === "name") {
+          return '<th class="sortable-header has-resizer" data-col-key="name" data-sort-col="name"><span class="header-main"><span class="header-label">Name</span><span class="sort-indicator" aria-hidden="true"></span></span><div class="column-resizer" data-col="name"></div></th>';
+        }
+        if (key === "unit") {
+          return '<th class="unit-col sortable-header has-resizer" data-col-key="unit" data-sort-col="unit"><span class="header-main"><span class="header-label">Unit</span><span class="sort-indicator" aria-hidden="true"></span></span><div class="column-resizer" data-col="unit"></div></th>';
+        }
+        if (key === "expression") {
+          return '<th class="sortable-header has-resizer" data-col-key="expression" data-sort-col="expression"><span class="header-main"><span class="header-label">Expression</span><span class="sort-indicator" aria-hidden="true"></span></span><div class="column-resizer" data-col="expression"></div></th>';
+        }
+        if (key === "value") {
+          return '<th class="value-col sortable-header has-resizer" data-col-key="value" data-sort-col="value"><span class="header-main"><span class="header-label">Value</span><span class="sort-indicator" aria-hidden="true"></span></span><div class="column-resizer" data-col="value"></div></th>';
+        }
+        if (key === "comment") {
+          return '<th class="comment-col comments-col sortable-header" data-col-key="comment" data-sort-col="comment"><span class="header-main"><span class="header-label">Comments</span><span class="sort-indicator" aria-hidden="true"></span></span></th>';
+        }
+        return '<th class="revert-col" data-col-key="revert">Revert</th>';
+      }
+
+      function renderTableHeaders() {
+        const row = document.getElementById("parameterHeaderRow");
+        if (!row) {
+          return;
+        }
+        const order = getEffectiveColumnOrder();
+        const missing = [];
+        order.forEach((key) => {
+          if (!row.querySelector(`th[data-col-key="${key}"]`)) {
+            missing.push(key);
+          }
+        });
+        if (missing.length) {
+          const template = document.createElement("template");
+          template.innerHTML = missing.map((key) => getColumnHeaderHtml(key)).join("");
+          Array.from(template.content.children).forEach((el) => row.appendChild(el));
+        }
+        order.forEach((key) => {
+          const th = row.querySelector(`th[data-col-key="${key}"]`);
+          if (th) {
+            row.appendChild(th);
+          }
+        });
+      }
+
+      function applyColumnOrderToHeaderRow(order = null) {
+        const row = document.getElementById("parameterHeaderRow");
+        if (!row) {
+          return;
+        }
+        const resolved = Array.isArray(order) ? order : getEffectiveColumnOrder();
+        resolved.forEach((key) => {
+          const th = row.querySelector(`th[data-col-key="${key}"]`);
+          if (th) {
+            row.appendChild(th);
+          }
+        });
+      }
+
+      function applyColumnOrderToBodyRows() {
+        const tbody = document.getElementById("parameterRows");
+        if (!tbody) {
+          return;
+        }
+        const order = getEffectiveColumnOrder();
+        const indexByKey = { parameter: 0, name: 1, unit: 2, expression: 3, value: 4, comment: 5, revert: 6 };
+        Array.from(tbody.querySelectorAll("tr.parameter-row")).forEach((row) => {
+          const cells = Array.from(row.children);
+          if (cells.length !== 7) {
+            return;
+          }
+          order.map((key) => cells[indexByKey[key]]).forEach((cell) => {
+            if (cell) row.appendChild(cell);
+          });
+        });
+      }
+
       const COLUMN_MIN_PX = { parameter: 60, name: 60, unit: 40, expression: 60, value: 60 };
 
       function measureTextWidth(text, font) {
@@ -6067,7 +6196,12 @@
       function applyColumnWidths() {
         const cols = state.settings.parameterTableColumns;
         const table = document.querySelector(".table-wrap table");
-        const headers = document.querySelectorAll(".table-wrap table thead th");
+        const headers = Array.from(document.querySelectorAll(".table-wrap table thead th[data-col-key]"));
+        const headerByKey = {};
+        headers.forEach((header) => {
+          const key = String(header.getAttribute("data-col-key") || "");
+          if (key) headerByKey[key] = header;
+        });
         const containerWidth = getTableWrapInnerWidth() || 600;
         const resolvedNarrowMode = resolveNarrowLayoutMode(containerWidth);
         const hasResizeModeLatch = typeof state.resizeNarrowLayoutModeLatch === "boolean";
@@ -6171,17 +6305,16 @@
         if (autoHideUnit) hiddenMainKeys.add("unit");
         if (autoHideValue) hiddenMainKeys.add("value");
         headers.forEach((header) => header.classList.remove("is-last-visible-col"));
-        COLUMN_KEYS.forEach((key, i) => {
-          if (!headers[i]) {
-            return;
-          }
+        COLUMN_KEYS.forEach((key) => {
+          const header = headerByKey[key];
+          if (!header) return;
           if (hiddenMainKeys.has(key)) {
-            headers[i].style.width = "0px";
+            header.style.width = "0px";
             return;
           }
-          headers[i].style.width = `${adjustedMainPx[key]}px`;
+          header.style.width = `${adjustedMainPx[key]}px`;
         });
-        const visibleResizableHeaders = Array.from(headers).filter((header) => (
+        const visibleResizableHeaders = headers.filter((header) => (
           header.classList.contains("has-resizer")
           && window.getComputedStyle(header).display !== "none"
         ));
@@ -6195,8 +6328,8 @@
           const fluidResizeWidth = state.isPaletteResizeActive === true;
           if (isNarrowMode) {
             table.style.width = fluidResizeWidth ? "100%" : `${containerWidth}px`;
-            if (headers[5]) headers[5].style.width = "";
-            if (headers[6]) headers[6].style.width = "";
+            if (headerByKey.comment) headerByKey.comment.style.width = "";
+            if (headerByKey.revert) headerByKey.revert.style.width = "";
             scheduleLayoutDebugPanelUpdate();
             return;
           }
@@ -6205,12 +6338,8 @@
           const commentsWidth = commentsVisible
             ? (containerWidth > effectiveSumPx ? containerWidth - effectiveSumPx : COMMENTS_MIN_WIDTH_PX)
             : 0;
-          if (headers[5]) {
-            headers[5].style.width = commentsVisible && commentsWidth > 0 ? `${commentsWidth}px` : "0px";
-          }
-          if (headers[6]) {
-            headers[6].style.width = revertVisible ? `${REVERT_COL_WIDTH_PX}px` : "0px";
-          }
+          if (headerByKey.comment) headerByKey.comment.style.width = commentsVisible && commentsWidth > 0 ? `${commentsWidth}px` : "0px";
+          if (headerByKey.revert) headerByKey.revert.style.width = revertVisible ? `${REVERT_COL_WIDTH_PX}px` : "0px";
           table.style.width = fluidResizeWidth ? "100%" : `${containerWidth}px`;
         }
         scheduleLayoutDebugPanelUpdate();
@@ -8323,6 +8452,180 @@
         });
       }
 
+      async function saveColumnOrderPreference(order) {
+        const normalizedOrder = normalizeColumnOrder(order, DEFAULT_TABLE_COLUMN_ORDER);
+        const previousOrder = normalizeColumnOrder(state.settings.parameterTableColumnOrder, DEFAULT_TABLE_COLUMN_ORDER);
+        state.settings.parameterTableColumnOrder = normalizedOrder;
+        applyColumnOrderToHeaderRow(normalizedOrder);
+        applyColumnOrderToBodyRows();
+        applyColumnWidths();
+        try {
+          await saveSettingsPartial({ parameterTableColumnOrder: normalizedOrder });
+        } catch (error) {
+          state.settings.parameterTableColumnOrder = previousOrder;
+          applyColumnOrderToHeaderRow(previousOrder);
+          applyColumnOrderToBodyRows();
+          applyColumnWidths();
+          throw error;
+        }
+      }
+
+      function reorderColumnOrder(fromKey, toKey) {
+        const current = normalizeColumnOrder(state.settings.parameterTableColumnOrder, DEFAULT_TABLE_COLUMN_ORDER);
+        const fromIndex = current.indexOf(fromKey);
+        const toIndex = current.indexOf(toKey);
+        if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) {
+          return current;
+        }
+        const next = current.slice();
+        const [moved] = next.splice(fromIndex, 1);
+        next.splice(toIndex, 0, moved);
+        return next;
+      }
+
+      function clearColumnDragHeaderStates() {
+        document.querySelectorAll(".table-wrap thead th[data-col-key]").forEach((th) => {
+          th.classList.remove("is-column-drag-source", "is-column-drag-target");
+          th.style.transition = "";
+          th.style.transform = "";
+        });
+      }
+
+      function clearColumnDragHeaderClasses() {
+        document.querySelectorAll(".table-wrap thead th[data-col-key]").forEach((th) => {
+          th.classList.remove("is-column-drag-source", "is-column-drag-target");
+        });
+      }
+
+      function applyColumnDragPreviewTransforms(fromKey, toKey, dragState = null) {
+        const headers = Array.from(document.querySelectorAll(".table-wrap thead th[data-col-key]"));
+        if (!headers.length) return;
+        const keys = headers.map((th) => String(th.getAttribute("data-col-key") || "")).filter(Boolean);
+        const fromIndex = keys.indexOf(fromKey);
+        const toIndex = keys.indexOf(toKey);
+        headers.forEach((th) => {
+          th.style.transition = "";
+          th.style.transform = "";
+        });
+        if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
+
+        const nextOrder = keys.slice();
+        const [moved] = nextOrder.splice(fromIndex, 1);
+        nextOrder.splice(toIndex, 0, moved);
+        const metricsByKey = {};
+        headers.forEach((th) => {
+          const key = String(th.getAttribute("data-col-key") || "");
+          const r = th.getBoundingClientRect();
+          metricsByKey[key] = { left: r.left, width: r.width };
+        });
+        const slotPositions = Array.isArray(dragState?.slotPositions) ? dragState.slotPositions : [];
+        const expectedLeftByKey = {};
+        if (slotPositions.length === headers.length) {
+          nextOrder.forEach((key, idx) => {
+            expectedLeftByKey[key] = Number(slotPositions[idx]?.left || metricsByKey[key]?.left || 0);
+          });
+        }
+        headers.forEach((th) => {
+          const key = String(th.getAttribute("data-col-key") || "");
+          const currentLeft = Number(metricsByKey[key]?.left || 0);
+          const expectedLeft = Number(expectedLeftByKey[key] || currentLeft);
+          const deltaX = expectedLeft - currentLeft;
+          if (Math.abs(deltaX) < 0.5) return;
+          th.style.transition = "transform 150ms ease";
+          th.style.transform = `translateX(${Math.round(deltaX)}px)`;
+        });
+      }
+
+      function buildColumnDragGhostLabel(header) {
+        const label = header?.querySelector(".header-label");
+        if (label) return String(label.textContent || "").trim();
+        return String(header?.textContent || "").trim();
+      }
+
+      function resolveColumnDropTargetKeyFromClientX(clientX, dragState = null) {
+        const slots = Array.isArray(dragState?.slotCenters) ? dragState.slotCenters : [];
+        if (!slots.length) return "";
+        let winner = slots[0];
+        let winnerDist = Math.abs(clientX - Number(winner.centerX || 0));
+        for (let i = 1; i < slots.length; i += 1) {
+          const candidate = slots[i];
+          const dist = Math.abs(clientX - Number(candidate.centerX || 0));
+          if (dist < winnerDist) {
+            winner = candidate;
+            winnerDist = dist;
+          }
+        }
+        return String(winner.key || "");
+      }
+
+      function startColumnHeaderDrag(event, header) {
+        if (document.body.classList.contains("narrow-stack") || state.activeColumnResize) return;
+        const fromKey = String(header?.getAttribute("data-col-key") || "");
+        if (!fromKey || !ALL_TABLE_COLUMN_KEYS.includes(fromKey)) return;
+        const rect = header.getBoundingClientRect();
+        const ghost = document.createElement("div");
+        ghost.className = "column-drag-ghost";
+        ghost.textContent = buildColumnDragGhostLabel(header);
+        ghost.style.left = `${Math.round(rect.left)}px`;
+        ghost.style.top = `${Math.round(rect.top)}px`;
+        ghost.style.width = `${Math.round(rect.width)}px`;
+        (document.getElementById("overlayRoot") || document.body).appendChild(ghost);
+        const headerRects = Array.from(document.querySelectorAll(".table-wrap thead th[data-col-key]")).map((th) => {
+          const key = String(th.getAttribute("data-col-key") || "");
+          const r = th.getBoundingClientRect();
+          return { key, left: r.left, width: r.width, centerX: r.left + (r.width / 2) };
+        });
+        state.activeColumnHeaderDrag = {
+          fromKey,
+          hoverKey: fromKey,
+          moved: false,
+          slotPositions: headerRects.map((x) => ({ key: x.key, left: x.left, width: x.width })),
+          slotCenters: headerRects.map((x) => ({ key: x.key, centerX: x.centerX })),
+          pointerOffsetX: event.clientX - rect.left,
+          pointerOffsetY: event.clientY - rect.top,
+          ghostEl: ghost
+        };
+        clearColumnDragHeaderStates();
+        header.classList.add("is-column-drag-source");
+      }
+
+      function updateColumnHeaderDrag(clientX, clientY) {
+        const dragState = state.activeColumnHeaderDrag;
+        if (!dragState) return;
+        if (dragState.ghostEl) {
+          dragState.ghostEl.style.left = `${Math.round(clientX - Number(dragState.pointerOffsetX || 0))}px`;
+          dragState.ghostEl.style.top = `${Math.round(clientY - Number(dragState.pointerOffsetY || 0))}px`;
+        }
+        const hoverKey = resolveColumnDropTargetKeyFromClientX(clientX, dragState);
+        if (!hoverKey || dragState.hoverKey === hoverKey) return;
+        dragState.hoverKey = hoverKey;
+        dragState.moved = true;
+        applyColumnDragPreviewTransforms(dragState.fromKey, hoverKey, dragState);
+        clearColumnDragHeaderClasses();
+        const sourceEl = document.querySelector(`.table-wrap thead th[data-col-key="${dragState.fromKey}"]`);
+        const targetEl = document.querySelector(`.table-wrap thead th[data-col-key="${hoverKey}"]`);
+        if (sourceEl) sourceEl.classList.add("is-column-drag-source");
+        if (targetEl) targetEl.classList.add("is-column-drag-target");
+      }
+
+      async function finishColumnHeaderDrag(options = {}) {
+        const dragState = state.activeColumnHeaderDrag;
+        if (!dragState) return;
+        state.activeColumnHeaderDrag = null;
+        if (dragState.ghostEl?.parentNode) dragState.ghostEl.parentNode.removeChild(dragState.ghostEl);
+        const cancelled = options.cancelled === true;
+        const fromKey = String(dragState.fromKey || "");
+        const toKey = String(dragState.hoverKey || fromKey);
+        clearColumnDragHeaderStates();
+        if (cancelled || !dragState.moved || !fromKey || !toKey || fromKey === toKey) return;
+        try {
+          await saveColumnOrderPreference(reorderColumnOrder(fromKey, toKey));
+          state.suppressNextHeaderSortClick = true;
+        } catch (error) {
+          setGlobalStatus(error.message, "error");
+        }
+      }
+
       function setSearchQuery(value) {
         state.searchQuery = String(value || "");
         renderSearchControls();
@@ -9302,6 +9605,7 @@
       function renderParameters(parameters) {
         const renderStartMs = perfNowMs();
         state.parameters = parameters || [];
+        renderTableHeaders();
         clearAllManagedRowTimers();
         const tbody = document.getElementById("parameterRows");
         const visibleColspan = getVisibleTableColumnCount();
@@ -9516,6 +9820,7 @@
         }
 
         tbody.innerHTML = pieces.join("");
+        applyColumnOrderToBodyRows();
         syncBodyColspansToVisibleColumns();
         renderReorderMenuGroupOptions();
 
@@ -10785,6 +11090,10 @@
           parameterTableColumns: migrateColumnWidths(
             settings.parameterTableColumns || state.settings.parameterTableColumns
           ),
+          parameterTableColumnOrder: normalizeColumnOrder(
+            settings.parameterTableColumnOrder || state.settings.parameterTableColumnOrder,
+            state.settings.parameterTableColumnOrder
+          ),
           unitCategoryState: {
             ...DEFAULT_UNIT_CATEGORY_STATE,
             ...state.settings.unitCategoryState,
@@ -10847,6 +11156,7 @@
         applyTextTunerSidebarVisibility();
         renderUnitPicker();
         if (!deferColumnLayout) {
+          renderTableHeaders();
           applyColumnWidths();
         }
         refreshBatchActionBar();
@@ -14721,6 +15031,10 @@
       });
 
       document.querySelector(".table-wrap thead").addEventListener("click", (event) => {
+        if (state.suppressNextHeaderSortClick) {
+          state.suppressNextHeaderSortClick = false;
+          return;
+        }
         if (event.target.closest(".column-resizer")) {
           return;
         }
@@ -14730,6 +15044,24 @@
         }
         const sortColumn = sortableHeader.getAttribute("data-sort-col") || "";
         toggleTableSortForColumn(sortColumn);
+      });
+
+      document.querySelector(".table-wrap thead").addEventListener("mousedown", (event) => {
+        if (event.button !== 0) {
+          return;
+        }
+        if (event.target.closest(".column-resizer")) {
+          return;
+        }
+        const header = event.target.closest("th[data-col-key]");
+        if (!header) {
+          return;
+        }
+        state.pendingColumnHeaderDragStart = {
+          header,
+          startX: event.clientX,
+          startY: event.clientY
+        };
       });
 
       parameterRows.addEventListener("click", (event) => {
@@ -15862,6 +16194,19 @@
       });
 
       document.addEventListener("mousemove", (event) => {
+        if (!state.activeColumnHeaderDrag && state.pendingColumnHeaderDragStart) {
+          const dx = Math.abs(event.clientX - Number(state.pendingColumnHeaderDragStart.startX || 0));
+          const dy = Math.abs(event.clientY - Number(state.pendingColumnHeaderDragStart.startY || 0));
+          if (dx >= 4 || dy >= 4) {
+            startColumnHeaderDrag(event, state.pendingColumnHeaderDragStart.header);
+            state.pendingColumnHeaderDragStart = null;
+          }
+        }
+        if (state.activeColumnHeaderDrag) {
+          updateColumnHeaderDrag(event.clientX, event.clientY);
+          event.preventDefault();
+          return;
+        }
         if (!state.activeRowDrag) {
           if (!state.activeGroupDrag) {
             return;
@@ -15876,6 +16221,12 @@
       });
 
       document.addEventListener("mouseup", () => {
+        if (state.pendingColumnHeaderDragStart) {
+          state.pendingColumnHeaderDragStart = null;
+        }
+        if (state.activeColumnHeaderDrag) {
+          void finishColumnHeaderDrag();
+        }
         state.pendingFieldDiscardRowKey = "";
         if (state.activeRowDrag) {
           finishRowDrag();
@@ -15887,6 +16238,10 @@
       });
 
       window.addEventListener("blur", () => {
+        state.pendingColumnHeaderDragStart = null;
+        if (state.activeColumnHeaderDrag) {
+          void finishColumnHeaderDrag({ cancelled: true });
+        }
         if (state.activeRowDrag) {
           finishRowDrag();
         }

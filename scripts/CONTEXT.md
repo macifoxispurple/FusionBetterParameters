@@ -3348,3 +3348,59 @@ Legend:
     - `VERIFY OK palette.html`
 - Remaining risk / next check:
   - In-Fusion smoke: rapid repeated favorite toggles on same row and across multiple rows; verify no duplicate-request glitches and proper rollback on simulated backend error.
+
+## 2026-05-08 - Clean reimplementation from 3353563: minimal column reorder + persistence
+- What changed:
+  - Reverted working tree to commit `3353563` and reimplemented feature in one clean pass with minimal scope.
+  - `BetterParameters/BetterParameters.py`
+    - Added settings schema key: `parameterTableColumnOrder`.
+    - Added normalization helper `_normalize_parameter_table_column_order(...)`.
+    - Hooked sanitized load/save validation in `_load_settings()` and `_save_settings()`.
+  - `BetterParameters/palette.html`
+    - Added FE canonical order model:
+      - `ALL_TABLE_COLUMN_KEYS`, `DEFAULT_TABLE_COLUMN_ORDER`
+      - `state.settings.parameterTableColumnOrder`
+      - `normalizeColumnOrder(...)`, `getEffectiveColumnOrder(...)`.
+    - Switched header rendering to dynamic ordered header row (`parameterHeaderRow` + `renderTableHeaders()`).
+    - Added post-render row cell reorder pass (`applyColumnOrderToBodyRows()`) so body follows header order.
+    - Added lightweight custom pointer drag for desktop header reorder:
+      - thresholded mousedown/mousemove activation (does not steal normal click sort)
+      - chip ghost + header transform preview
+      - commit on mouseup only, persisted via existing `saveSettingsPartial({ parameterTableColumnOrder })`
+      - cancellation on blur, rollback on save failure.
+    - Refactored `applyColumnWidths()` header targeting from positional indices to `data-col-key` mapping.
+    - Replaced one mobile `nth-child(6)` selector with class-based comment-column selector.
+  - `tests/test_settings_persistence.py`
+    - Added tests for column-order persistence, non-array rejection, and sanitization.
+- Why:
+  - User requested restarting from `3353563` and implementing the feature cleanly with minimal changes to avoid trial-and-error regressions.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 423 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion UX check still recommended for final feel tuning (drag hysteresis/animation smoothness) under large tables.
+
+## 2026-05-08 - Durable stabilization: no header rebuild during reorder commit; stable node reordering
+- What changed:
+  - `BetterParameters/palette.html`
+    - `renderTableHeaders()` now preserves and reorders existing `<th>` nodes instead of replacing header DOM via `innerHTML` every render.
+    - Added `applyColumnOrderToHeaderRow(...)` and updated reorder commit path to reorder existing header nodes + existing row cells in-place.
+    - `saveColumnOrderPreference(...)` no longer triggers full table rerender during commit; it applies in-place DOM order + width pass + settings save.
+    - Drag preview transform helper now clears only transforms (not classes/state) during frame updates; class cleanup is handled separately.
+    - Added class-only cleanup helper `clearColumnDragHeaderClasses()` to avoid transform thrash in hover updates.
+- Why:
+  - Addresses repeated equal-width fallback during reorder by eliminating transient header node replacement in drag/commit path.
+  - Improves maintainability by cleanly separating preview (visual transforms) from commit (in-place DOM order + persistence).
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 423 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion UX smoke for drag + resize interplay on very wide/narrow palettes; tune drag threshold/hysteresis only if needed.
