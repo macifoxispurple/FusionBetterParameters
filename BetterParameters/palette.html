@@ -1849,6 +1849,8 @@
         display: flex;
         gap: 3px;
         align-items: center;
+        min-width: 47px;
+        flex-shrink: 0;
       }
 
       .native-icon-btn {
@@ -1945,7 +1947,7 @@
 
       .native-search {
         max-width: 700px;
-        min-width: 0;
+        min-width: 120px;
         width: 100%;
       }
 
@@ -1953,6 +1955,8 @@
         display: flex;
         align-items: center;
         gap: 3px;
+        min-width: 128px;
+        flex-shrink: 0;
       }
 
       .selection-chip {
@@ -3180,6 +3184,9 @@
         background: var(--btn-bg);
         color: var(--muted);
         white-space: nowrap;
+        max-width: 128px;
+        overflow: hidden;
+        text-overflow: ellipsis;
         position: relative;
         transition: background 120ms ease, color 120ms ease;
       }
@@ -3360,6 +3367,42 @@
         th:nth-child(6),
         td:nth-child(6) {
           display: none;
+        }
+      }
+
+      @media (max-width: 360px) {
+        .toolbar {
+          padding: 0 5px;
+          gap: 2px;
+        }
+
+        .toolbar-doc {
+          display: none;
+        }
+
+        #updatePill {
+          display: none !important;
+        }
+
+        .parameter-rail {
+          gap: 4px;
+          padding: 3px 5px;
+        }
+
+        .native-search {
+          min-width: 84px;
+        }
+
+        .rail-actions {
+          min-width: 72px;
+          gap: 2px;
+        }
+
+        #selectionCountChip,
+        #copySelectedButton,
+        #deleteSelectedButton,
+        #timelineSortButton {
+          display: none !important;
         }
       }
     </style>

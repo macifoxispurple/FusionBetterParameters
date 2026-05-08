@@ -2834,3 +2834,27 @@ Legend:
 - Remaining risk / next check:
   - In-Fusion smoke: retest shrink drag across the previous boundary; expected behavior is continuous drag with mode transition deferred until resize settle.
   - Tradeoff: while dragging, display mode may stay in previous layout until release/settle, then snap once.
+
+## 2026-05-07 - Windows tiny-width overlap mitigation (micro-width fallback + targeted mins)
+- What changed:
+  - `BetterParameters/palette.html`
+    - Reintroduced targeted structural minimums for top controls:
+      - `.rail-icons` now has `min-width: 47px; flex-shrink: 0;`
+      - `.native-search` now has `min-width: 120px;`
+      - `.rail-actions` now has `min-width: 128px; flex-shrink: 0;`
+      - `.update-pill` now has `max-width: 128px; overflow hidden; text-overflow ellipsis;`
+    - Added micro-width fallback at `@media (max-width: 360px)`:
+      - hide doc title and update pill in top toolbar.
+      - reduce toolbar/rail spacing and padding.
+      - shrink search minimum to `84px`.
+      - hide secondary rail actions (`selection chip`, `copy`, `delete`, `timeline sort`) to prevent header/rail overlap.
+- Why:
+  - User reported that on Windows the window can shrink until header/rail elements overlap and break visually.
+  - Goal was targeted protection and responsive degradation, without restoring broad/global min constraints.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 413 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed runtime file only: `BetterParameters/palette.html` -> `~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - Windows in-Fusion smoke needed: verify tiny-width overlap is resolved and that hidden micro-width actions are acceptable UX tradeoff.
