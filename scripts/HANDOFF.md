@@ -405,6 +405,7 @@ Release notes responsibility (required at ship start):
 - Release notes style is mandatory for every release:
   - dense, high-level, end-user readable summary of actual fixes/features
   - avoid internal implementation detail, test logs, or tool/process narration
+  - never include secrets or environment-specific operational details (API keys, SSH keys, tokens, auth identities, local usernames, machine names, local filesystem paths, or private infrastructure hostnames/IPs)
   - maximum 3 non-empty lines total (typically: 1 header + up to 2 bullets)
   - prefer plain language outcomes (what changed for users and why it matters)
 - Recommended command when curated notes are prepared:
@@ -515,6 +516,7 @@ Do not pass release notes as one-line text with literal `\n`.
 That causes broken formatting and rework.
 
 Always write real multiline notes and pass with `--notes-file`.
+Release notes must be privacy-safe and portable: never publish dev-environment specifics, secret material, key/credential details, or machine-local operational instructions.
 
 Safe PowerShell pattern:
 

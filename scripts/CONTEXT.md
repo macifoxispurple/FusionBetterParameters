@@ -1,4 +1,4 @@
-﻿# BetterParameters - Active Context Log
+# BetterParameters - Active Context Log
 
 Purpose: fast resume after interruption/context reset. Keep this file current during active work.
 Canonical location: `scripts/CONTEXT.md` (repo root copies are deprecated/removed).
@@ -3116,3 +3116,12 @@ Legend:
     - Comment Off/Revert On
     - Comment On/Revert Off
     - Comment Off/Revert Off
+
+## 2026-05-08 - Corrected published v0.9.1 release notes to HANDOFF-compliant user-facing summary
+- What changed:
+  - Updated GitHub release body for tag `v0.9.1` using `gh release edit --notes-file`.
+  - New notes are 3 lines total, high-level, user-facing, and exclude dev-environment/key details.
+- Validation run + pass/fail counts:
+  - Not run (release metadata update only).
+- Verification:
+  - `gh release view v0.9.1 --json body,...` confirms updated body now matches intended content.
