@@ -2858,3 +2858,19 @@ Legend:
   - Hash verification: `VERIFY OK palette.html`.
 - Remaining risk / next check:
   - Windows in-Fusion smoke needed: verify tiny-width overlap is resolved and that hidden micro-width actions are acceptable UX tradeoff.
+
+## 2026-05-07 - Micro-width toolbar tweak: keep doc name visible, keep right buttons pinned
+- What changed:
+  - `BetterParameters/palette.html`
+    - Updated `@media (max-width: 360px)` toolbar rules:
+      - `toolbar-doc` is now kept visible (`display: block`) with truncation-friendly sizing (`min-width: 44px; flex: 1 1 auto`).
+      - `toolbar-spacer` now expands (`flex: 1 1 auto; min-width: 0`) so help/settings remain pinned to the right edge.
+- Why:
+  - User requested keeping the model/document name visible at extremely narrow widths while preserving right alignment of reference/settings buttons.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 413 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed runtime file only: `BetterParameters/palette.html` -> `~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - Windows in-Fusion smoke: confirm doc name truncates cleanly and right-side toolbar buttons remain anchored right at minimum practical widths.
