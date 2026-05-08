@@ -1067,6 +1067,14 @@
         color: var(--ink);
       }
 
+      .revert-button:disabled {
+        opacity: 0.45;
+        color: color-mix(in srgb, var(--muted) 78%, var(--line));
+        background: color-mix(in srgb, var(--btn-bg) 86%, var(--line-subtle));
+        border-color: color-mix(in srgb, var(--line) 82%, var(--line-subtle));
+        cursor: not-allowed;
+      }
+
       .name-cell {
         min-width: 0;
         position: relative;
@@ -1516,25 +1524,25 @@
         font-size: 12px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td:nth-child(4) {
+      body.narrow-stack #parameterRows tr.parameter-row td.expression-cell {
         display: block;
         margin-top: 6px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td:nth-child(4) .field-shell {
+      body.narrow-stack #parameterRows tr.parameter-row td.expression-cell .field-shell {
         border: 1px solid var(--line);
         border-radius: 4px;
         background: color-mix(in srgb, var(--panel-raised) 96%, var(--panel));
         padding: 5px 6px 4px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td:nth-child(4) .expression-input {
+      body.narrow-stack #parameterRows tr.parameter-row td.expression-cell .expression-input {
         border-color: color-mix(in srgb, var(--line) 75%, transparent);
         background: var(--input-bg);
         border-radius: 3px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td:nth-child(4) .expression-field-error {
+      body.narrow-stack #parameterRows tr.parameter-row td.expression-cell .expression-field-error {
         margin-top: 4px;
       }
 
@@ -1647,14 +1655,15 @@
 
       body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row {
         display: grid;
-        grid-template-columns: minmax(96px, 0.9fr) minmax(0, 1.6fr);
+        grid-template-columns: minmax(96px, 0.9fr) minmax(0, 1.6fr) 24px;
         align-items: center;
         gap: 8px;
         padding: 3px 8px;
       }
 
       body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.name-cell,
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td:nth-child(4) {
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell,
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.revert-cell {
         display: block;
         margin-top: 0;
       }
@@ -1664,8 +1673,15 @@
         order: 0;
       }
 
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td:nth-child(4) {
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell {
         order: 1;
+      }
+
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.revert-cell {
+        order: 2;
+        justify-self: end;
+        width: 24px;
+        min-width: 24px;
       }
 
       body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row .narrow-summary {
@@ -1693,21 +1709,34 @@
         display: none !important;
       }
 
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td:nth-child(4) .field-shell {
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell .field-shell {
         border: 0;
         border-radius: 0;
         background: transparent;
         padding: 0;
       }
 
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td:nth-child(4) .expression-input {
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell .expression-input {
         min-height: 22px;
         height: 22px;
         padding: 1px 6px;
       }
 
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td:nth-child(4) .expression-field-error {
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell .expression-field-error {
         display: none;
+      }
+
+      body.narrow-stack.ultralight-narrow-ui:not(.hide-revert) #parameterRows tr.parameter-row td.revert-cell .revert-button {
+        width: 22px;
+        min-width: 22px;
+        max-width: 22px;
+        height: 22px;
+        min-height: 22px;
+        padding: 0;
+        border-radius: 4px;
+        font-size: 11px !important;
+        line-height: 1 !important;
+        text-align: center;
       }
 
       #parameterRows tr {
@@ -5943,6 +5972,12 @@
 
       function getEffectiveColumnOrder() {
         if (document.body.classList.contains("narrow-stack")) {
+          if (
+            document.body.classList.contains("ultralight-narrow-ui")
+            && !document.body.classList.contains("hide-revert")
+          ) {
+            return ["parameter", "expression", "revert", "name", "unit", "value", "comment"];
+          }
           return DEFAULT_TABLE_COLUMN_ORDER.slice();
         }
         return normalizeColumnOrder(state.settings.parameterTableColumnOrder, DEFAULT_TABLE_COLUMN_ORDER);
@@ -6107,6 +6142,8 @@
         }, 110);
 
         const containerWidth = getTableWrapInnerWidth() || 600;
+        const revertVisible = !document.body.classList.contains("hide-revert");
+        const layoutWidth = Math.max(0, containerWidth - (revertVisible ? REVERT_COL_WIDTH_PX : 0));
         if (containerWidth < NARROW_NAME_EXPRESSION_ONLY_PX) {
           const snugNamePx = Math.max(
             COLUMN_MIN_PX.name,
@@ -6127,7 +6164,7 @@
 
         const showComments = !document.body.classList.contains("hide-comment");
         const fixedPx = namePx + expressionPx + previewPx + actionsPx;
-        const remaining = Math.max(0, containerWidth - fixedPx);
+        const remaining = Math.max(0, layoutWidth - fixedPx);
         const expressionColPx = showComments
           ? Math.max(COLUMN_MIN_PX.expression, Math.round(remaining * 2 / 3))
           : Math.max(COLUMN_MIN_PX.expression, remaining);
@@ -6209,6 +6246,10 @@
           ? state.resizeNarrowLayoutModeLatch
           : resolvedNarrowMode;
         document.body.classList.toggle("narrow-stack", isNarrowMode);
+        const revertVisible = !document.body.classList.contains("hide-revert");
+        const layoutWidth = isNarrowMode
+          ? containerWidth
+          : Math.max(0, containerWidth - (revertVisible ? REVERT_COL_WIDTH_PX : 0));
         const userShowsComments = !document.body.classList.contains("hide-comment");
         const columnPx = {};
         COLUMN_KEYS.forEach((key) => {
@@ -6219,8 +6260,8 @@
           // Clamp them to the current container so explicit header widths cannot
           // force horizontal overflow when persisted/autofit widths are too large.
           let requiredTotal = (columnPx.name || 0) + (columnPx.expression || 0);
-          if (requiredTotal > containerWidth) {
-            let deficit = requiredTotal - containerWidth;
+          if (requiredTotal > layoutWidth) {
+            let deficit = requiredTotal - layoutWidth;
             const expressionHeadroom = Math.max(0, (columnPx.expression || 0) - COLUMN_MIN_PX.expression);
             const expressionTrim = Math.min(deficit, expressionHeadroom);
             if (expressionTrim > 0) {
@@ -6249,7 +6290,7 @@
         if (!isNarrowMode) {
           optionalKeysByPriority.forEach((key) => {
             const nextPx = columnPx[key] || 0;
-            if ((visibleMainPx + nextPx) <= containerWidth) {
+            if ((visibleMainPx + nextPx) <= layoutWidth) {
               visibleMainKeys.push(key);
               visibleMainPx += nextPx;
             }
@@ -6259,7 +6300,7 @@
         const autoHideParameter = !isNarrowMode && !visibleMainKeys.includes("parameter");
         const autoHideUnit = !isNarrowMode && !visibleMainKeys.includes("unit");
         const autoHideValue = !isNarrowMode && !visibleMainKeys.includes("value");
-        const autoHideComments = !isNarrowMode && (userShowsComments && ((visibleMainPx + COMMENTS_MIN_WIDTH_PX) > containerWidth));
+        const autoHideComments = !isNarrowMode && (userShowsComments && ((visibleMainPx + COMMENTS_MIN_WIDTH_PX) > layoutWidth));
         document.body.classList.toggle("auto-hide-comments", autoHideComments);
         document.body.classList.toggle("auto-hide-unit", autoHideUnit);
         document.body.classList.toggle("auto-hide-parameter", autoHideParameter);
@@ -6285,7 +6326,6 @@
         }
 
         const commentsVisible = userShowsComments && !autoHideComments;
-        const revertVisible = !document.body.classList.contains("hide-revert");
         const adjustedMainPx = { ...columnPx };
         if (autoHideParameter) adjustedMainPx.parameter = 0;
         if (autoHideUnit) adjustedMainPx.unit = 0;
@@ -6330,6 +6370,7 @@
             table.style.width = fluidResizeWidth ? "100%" : `${containerWidth}px`;
             if (headerByKey.comment) headerByKey.comment.style.width = "";
             if (headerByKey.revert) headerByKey.revert.style.width = "";
+            syncVisibleRevertButtonLabels();
             scheduleLayoutDebugPanelUpdate();
             return;
           }
@@ -6342,6 +6383,7 @@
           if (headerByKey.revert) headerByKey.revert.style.width = revertVisible ? `${REVERT_COL_WIDTH_PX}px` : "0px";
           table.style.width = fluidResizeWidth ? "100%" : `${containerWidth}px`;
         }
+        syncVisibleRevertButtonLabels();
         scheduleLayoutDebugPanelUpdate();
       }
 
@@ -6583,6 +6625,18 @@
           button.textContent = `Ultralight Narrow UI: ${isOn ? "On" : "Off"}`;
         }
         document.body.classList.toggle("ultralight-narrow-ui", isOn);
+      }
+
+      function shouldUseCompactRevertLabel() {
+        return state.settings.ultralightNarrowUi === true
+          && document.body.classList.contains("narrow-stack");
+      }
+
+      function syncVisibleRevertButtonLabels() {
+        const label = shouldUseCompactRevertLabel() ? "R" : "Revert";
+        document.querySelectorAll("#parameterRows td.revert-cell .revert-button").forEach((button) => {
+          button.textContent = label;
+        });
       }
 
       function renderTextTunerSidebarToggle() {
@@ -9688,15 +9742,16 @@
             const compactPreviousValue = previousValue.replace(/\s+/g, " ").trim();
             const isNarrowExpanded = !!state.expandedRows[rowStateKey];
             const hasRevert = !!previousExpression;
+            const useCompactRevertLabel = shouldUseCompactRevertLabel();
+            const revertLabel = useCompactRevertLabel ? "R" : "Revert";
             const revertTitle = previousExpression
-              ? `Revert to: ${escapeHtml(previousExpression)}${compactPreviousValue ? ` (${escapeHtml(compactPreviousValue)})` : ""}`
-              : (
-                compactPreviousValue
-                  ? `Revert to: ${escapeHtml(compactPreviousValue)}`
-                  : "No previous value"
-              );
+              ? `Revert to: ${escapeHtml(previousExpression)}`
+              : "No previous value";
             const revertButton = (showRevert && hasRevert)
-              ? `<button class="revert-button is-ready" type="button" data-previous-expression="${safePreviousExpression}" title="${revertTitle}">Revert</button>`
+              ? `<button class="revert-button is-ready" type="button" data-previous-expression="${safePreviousExpression}" title="${revertTitle}">${revertLabel}</button>`
+              : "";
+            const ultralightRevertFallback = (showRevert && !hasRevert && !isModelRow)
+              ? `<button class="revert-button" type="button" disabled title="No previous value">${revertLabel}</button>`
               : "";
             // Hybrid striping:
             // - Non-favorites rows keep a stable continuous phase.
@@ -9775,7 +9830,7 @@
                     title="Unit is set at parameter creation and cannot be changed. To use a different unit in an expression, type it directly - e.g. 5 ft on a mm parameter is valid and converts automatically."
                   >${unitLabel}</span>
                 </td>
-                <td>
+                <td class="expression-cell">
                   <div class="field-shell">
                     <div class="dirty-field-shell expression-input-shell">
                       <input id="expressionRow${renderRowCounter}" class="mono expression-input" data-parameter-name="${safeName}" data-parameter-unit="${escapeHtml(param.unit || "")}" data-saved-expression="${safeExpression}" value="${safeExpression}" autocomplete="off" />
@@ -9808,7 +9863,7 @@
                   </div>
                 </td>
                 <td class="revert-cell">
-                  ${revertButton}
+                  ${revertButton || ultralightRevertFallback}
                 </td>
               </tr>
             `);

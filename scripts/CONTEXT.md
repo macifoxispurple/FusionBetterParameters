@@ -3404,3 +3404,59 @@ Legend:
     - `VERIFY OK palette.html`
 - Remaining risk / next check:
   - In-Fusion UX smoke for drag + resize interplay on very wide/narrow palettes; tune drag threshold/hysteresis only if needed.
+
+## 2026-05-08 - Ultralight narrow: optional compact Revert column + forced Name/Expression/Revert ordering
+- What changed:
+  - `BetterParameters/palette.html`
+    - In narrow+ultralight mode, when Revert is enabled (not `hide-revert`), effective column order is now forced to:
+      - `parameter` (Name), `expression`, `revert` (left-to-right), followed by hidden/non-primary columns.
+    - Added explicit expression-cell class to row template (`<td class="expression-cell">`) and replaced narrow CSS selectors that previously depended on `td:nth-child(4)`.
+    - Updated ultralight narrow grid to include a third compact column for revert (`24px`) and display `revert-cell` in that mode.
+    - Styled ultralight revert action as a tiny square showing only `R`.
+    - Added disabled fallback revert button in ultralight rows with no previous value, so layout remains stable.
+- Why:
+  - Requested UX: show Revert in ultralight when setting is enabled, compact single-letter square style, and enforce Name→Expression→Revert ordering.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 423 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion visual pass for row density and hit-target comfort on very small palette widths.
+
+## 2026-05-08 - Fixed full-view auto-fit/auto-hide budget to reserve Revert width
+- What changed:
+  - `BetterParameters/palette.html`
+    - `buildAutoFitColumnWidths()` now reserves Revert width (`REVERT_COL_WIDTH_PX`) from container budget when Revert is visible before allocating main-column widths.
+    - `applyColumnWidths()` now computes a non-narrow `layoutWidth = containerWidth - revertWidthIfVisible` and uses that consistently for:
+      - Name/Expression clamp,
+      - optional main-column fit visibility decisions,
+      - auto-hide-comments threshold.
+- Why:
+  - User reported Revert being pushed beyond viewport with horizontal scrolling because auto-fit/auto-hide math did not consistently account for visible Revert column width.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 423 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - Manual full-view check with comments on/off and Revert on/off across narrow-to-wide resize transitions to confirm no residual horizontal overflow.
+
+## 2026-05-08 - Show disabled Revert button when unavailable
+- What changed:
+  - `BetterParameters/palette.html`
+    - Revert fallback button is now rendered for all non-model user parameter rows when Revert is shown but unavailable (no previous value), not only in ultralight mode.
+    - This makes unavailable Revert appear as a grayed/disabled control instead of an empty cell.
+- Why:
+  - Requested UX: unavailable Revert should be visibly disabled per parameter.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 423 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
