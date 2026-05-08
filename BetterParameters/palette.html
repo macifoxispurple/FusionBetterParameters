@@ -12236,8 +12236,6 @@
             return;
           }
           queue.inFlight = true;
-          const statusLabel = nextHint === "full" ? "Refreshing full state..." : "Refreshing dependent values...";
-          setGlobalStatus(statusLabel, "warning");
           refreshParameters({ silentStatus: true }).finally(() => {
             queue.inFlight = false;
             if (queue.pendingHint !== "none") {

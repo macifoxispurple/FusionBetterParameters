@@ -3277,3 +3277,22 @@ Legend:
 - Remaining risk / next check:
   - In-place row patch path intentionally falls back to full render for structural changes (name/group/favorite) to avoid DOM regroup/reorder edge-case regressions.
   - In-Fusion smoke recommended for rapid mixed edits under large parameter sets to tune thresholds and ensure no stale UI edge cases.
+
+## 2026-05-08 - Remove transient incremental follow-up refresh status messaging
+- What changed:
+  - `BetterParameters/palette.html`
+    - In `queueIncrementalFollowupRefresh(...)`, removed transient warning status updates:
+      - no longer calls `setGlobalStatus("Refreshing dependent values...", "warning")`
+      - no longer calls `setGlobalStatus("Refreshing full state...", "warning")`
+    - Follow-up refresh still executes via `refreshParameters({ silentStatus: true })`; errors remain surfaced through existing error paths.
+- Why:
+  - Requested UX behavior: status area should avoid expected-operation transient notices and focus on actionable errors.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 420 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed runtime file only:
+    - `BetterParameters/palette.html`
+  - Hash verification:
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - Manual in-Fusion smoke: confirm no transient refresh status text appears after normal edits/reverts while errors still surface as before.
