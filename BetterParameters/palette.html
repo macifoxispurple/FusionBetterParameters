@@ -3825,7 +3825,10 @@
                 <h2>Updates</h2>
                 <p id="updateCardDesc"></p>
               </div>
-              <button id="checkUpdatesButton" class="ghost" type="button">Check for Updates</button>
+              <div class="stack" style="align-items:flex-end">
+                <button id="checkUpdatesButton" class="ghost" type="button">Check for Updates</button>
+                <button id="updateCardReinstallButton" class="ghost" type="button" style="display:none">Reinstall Current Version</button>
+              </div>
             </div>
             <div class="toggle-row">
               <span class="toggle-label">Check for Updates Automatically</span>
@@ -4158,6 +4161,7 @@
         OPEN_HELP_URL: "openHelpUrl",
         CHECK_FOR_UPDATES: "checkForUpdates",
         DOWNLOAD_AND_STAGE_UPDATE: "downloadAndStageUpdate",
+        REINSTALL_CURRENT_VERSION: "reinstallCurrentVersion",
         SYNC_METADATA_JSON_TO_FUSION: "syncMetadataJsonToFusion",
         SYNC_METADATA_FUSION_TO_JSON: "syncMetadataFusionToJson",
         REPAIR_METADATA: "repairMetadata"
@@ -4175,7 +4179,7 @@
         ACTION.EXPORT_PARAMETERS_PACKAGE, ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, ACTION.IMPORT_PARAMETERS_PACKAGE,
         ACTION.COPY_TO_CLIPBOARD,
         ACTION.OPEN_HELP_URL,
-        ACTION.CHECK_FOR_UPDATES, ACTION.DOWNLOAD_AND_STAGE_UPDATE,
+        ACTION.CHECK_FOR_UPDATES, ACTION.DOWNLOAD_AND_STAGE_UPDATE, ACTION.REINSTALL_CURRENT_VERSION,
         ACTION.SYNC_METADATA_JSON_TO_FUSION, ACTION.SYNC_METADATA_FUSION_TO_JSON, ACTION.REPAIR_METADATA
       ]);
       const MUTATING_ACTIONS = new Set([
@@ -4185,7 +4189,7 @@
         ACTION.RENAME_PARAMETER, ACTION.UPDATE_MODEL_PARAMETER, ACTION.BATCH_UPDATE_PARAMETERS, ACTION.COPY_PARAMETER, ACTION.DELETE_PARAMETERS, ACTION.SORT_BY_TIMELINE_ORDER,
         ACTION.SEED_TEST_PARAMETERS, ACTION.RESET_TEST_STATE,
         ACTION.IMPORT_PARAMETERS, ACTION.IMPORT_PARAMETERS_FROM_DATA_PANEL, ACTION.RETRY_IMPORT_PARAMETERS_FROM_DATA_PANEL, ACTION.IMPORT_PARAMETERS_PACKAGE,
-        ACTION.SAVE_TEXT_TUNER_STATE, ACTION.CHECK_FOR_UPDATES, ACTION.DOWNLOAD_AND_STAGE_UPDATE,
+        ACTION.SAVE_TEXT_TUNER_STATE, ACTION.CHECK_FOR_UPDATES, ACTION.DOWNLOAD_AND_STAGE_UPDATE, ACTION.REINSTALL_CURRENT_VERSION,
         ACTION.SYNC_METADATA_JSON_TO_FUSION, ACTION.SYNC_METADATA_FUSION_TO_JSON, ACTION.REPAIR_METADATA
       ]);
       const READ_ONLY_OR_VALIDATION_ACTIONS = new Set([
@@ -16697,6 +16701,31 @@
         }
       }
 
+      async function handleReinstallCurrentVersion() {
+        const pill = document.getElementById("updatePill");
+        pill.className = "update-pill is-staged";
+        pill.innerHTML = `<span class="pill-label">Downloading reinstall package\u2026</span>`;
+        pill.onclick = null;
+        const btn = document.getElementById("updateCardReinstallButton");
+        if (btn) { btn.disabled = true; btn.textContent = "Downloading\u2026"; }
+        try {
+          const response = await sendToFusion(ACTION.REINSTALL_CURRENT_VERSION);
+          if (response.ok !== false) {
+            applyStateFromFusion(response);
+          } else {
+            setGlobalStatus(response.message || "Reinstall failed.", "error");
+            renderUpdatePill();
+            renderUpdateCard();
+          }
+        } catch (error) {
+          setGlobalStatus(error.message, "error");
+          renderUpdatePill();
+          renderUpdateCard();
+        } finally {
+          if (btn) { btn.disabled = false; btn.textContent = "Reinstall Current Version"; }
+        }
+      }
+
       function renderUpdateCard() {
         const info = state.updateInfo;
         const desc = document.getElementById("updateCardDesc");
@@ -16709,6 +16738,7 @@
         renderToggle("autoUpdateToggle", info.autoCheckUpdates !== false);
 
         const installBtn = document.getElementById("updateCardInstallButton");
+        const reinstallBtn = document.getElementById("updateCardReinstallButton");
 
         if (info.updateState === "staged") {
           const fromVer = info.installedVersion || info.currentVersion;
@@ -16722,6 +16752,7 @@
             releaseNotes.style.display = "none";
           }
           if (installBtn) installBtn.style.display = "none";
+          if (reinstallBtn) reinstallBtn.style.display = "none";
           return;
         }
 
@@ -16736,19 +16767,26 @@
             releaseNotes.style.display = "none";
           }
           if (installBtn) installBtn.style.display = "";
+          if (reinstallBtn) reinstallBtn.style.display = "none";
           return;
         }
 
         if (info.latestVersion) {
-          desc.innerHTML = `Running <strong>v${escapeHtml(info.currentVersion)}</strong> \u2014 <span class="update-card-status is-good">you\u2019re up to date.</span>`;
+          desc.innerHTML = `Running <strong>v${escapeHtml(info.currentVersion)}</strong> \u2014 <span class="update-card-status is-good">up to date.</span>`;
         } else {
           desc.innerHTML = `Running <strong>v${escapeHtml(info.currentVersion || "\u2026")}</strong>.`;
         }
         if (releaseNotes) releaseNotes.style.display = "none";
+        if (installBtn) installBtn.style.display = "none";
+        if (reinstallBtn) {
+          reinstallBtn.style.display = "";
+          reinstallBtn.textContent = `Reinstall v${info.currentVersion}`;
+        }
       }
 
       document.getElementById("checkUpdatesButton").addEventListener("click", () => handleCheckForUpdates());
       document.getElementById("updateCardInstallButton").addEventListener("click", () => handleInstallUpdate());
+      document.getElementById("updateCardReinstallButton").addEventListener("click", () => handleReinstallCurrentVersion());
 
       document.addEventListener("keydown", (event) => {
         const keyLower = String(event.key || "").toLowerCase();

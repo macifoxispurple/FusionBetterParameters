@@ -197,7 +197,7 @@ _MUTATING_ACTIONS = [
     "deleteParameter", "deleteParameters", "renameParameter",
     "updateModelParameter", "copyParameter", "sortByTimelineOrder",
     "importParameters", "saveSettings", "savePaletteGeometry",
-    "saveTextTunerState", "downloadAndStageUpdate",
+    "saveTextTunerState", "downloadAndStageUpdate", "reinstallCurrentVersion",
     "syncMetadataJsonToFusion", "syncMetadataFusionToJson", "repairMetadata",
     "importParametersPackage", "seedTestParameters", "resetTestState",
     "batchUpdateParameters", "importParametersFromDataPanel", "retryImportParametersFromDataPanel",
@@ -810,6 +810,12 @@ def _handle_palette_action(action, data):
 
     if action == "downloadAndStageUpdate":
         release_info = _latest_release_info(force_refresh=True, allow_cached_on_error=False)
+        _stage_update_payload(release_info)
+        return _ok_state(_current_state_payload())
+
+    if action == "reinstallCurrentVersion":
+        current_version = _current_addin_version()
+        release_info = _release_info_for_version(current_version)
         _stage_update_payload(release_info)
         return _ok_state(_current_state_payload())
 
@@ -6733,6 +6739,10 @@ def _fetch_latest_release_info():
     with urllib.request.urlopen(request, timeout=4) as response:
         payload = json.loads(response.read().decode('utf-8'))
 
+    return _release_info_from_payload(payload, checked_at=time.time())
+
+
+def _release_info_from_payload(payload, checked_at=None):
     latest_version = str(payload.get('tag_name') or payload.get('name') or '').strip()
     if latest_version.lower().startswith('v'):
         latest_version = latest_version[1:]
@@ -6746,7 +6756,7 @@ def _fetch_latest_release_info():
         raise ValueError('GitHub did not return a release version.')
 
     return {
-        'checked_at': time.time(),
+        'checked_at': float(time.time() if checked_at is None else checked_at),
         'latest_version': latest_version,
         'latest_url': latest_url,
         'latest_asset_url': latest_asset_url,
@@ -6754,6 +6764,26 @@ def _fetch_latest_release_info():
         'latest_notes': latest_notes,
         'error': ''
     }
+
+
+def _release_info_for_version(version_text):
+    normalized_version = str(version_text or '').strip()
+    if not normalized_version:
+        raise ValueError('Current add-in version is unavailable.')
+    request = urllib.request.Request(
+        "https://api.github.com/repos/macifoxispurple/FusionBetterParameters/releases/tags/v{}".format(normalized_version),
+        headers={
+            'Accept': 'application/vnd.github+json',
+            'User-Agent': 'BetterParameters',
+            'Cache-Control': 'no-cache'
+        }
+    )
+    with urllib.request.urlopen(request, timeout=8) as response:
+        payload = json.loads(response.read().decode('utf-8'))
+    release_info = _release_info_from_payload(payload, checked_at=time.time())
+    if _version_parts(release_info.get('latest_version', '')) != _version_parts(normalized_version):
+        raise ValueError('The release tag for v{} did not match the current version.'.format(normalized_version))
+    return release_info
 
 
 def _latest_release_info(force_refresh=False, allow_cached_on_error=True):
@@ -7171,11 +7201,13 @@ def _apply_pending_update_if_needed():
             raise RuntimeError('Could not load the update helper.')
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        module.apply_update(
+        _copied, _skipped, errors = module.apply_update(
             staged_addin_dir,
             ADDIN_DIR,
             {'settings.json', os.path.basename(UPDATE_HELPER_PATH), os.path.basename(PENDING_UPDATE_DIR)}
         )
+        if errors:
+            raise RuntimeError('Staged update copy failed for {} file(s).'.format(errors))
 
         pycache_dir = os.path.join(ADDIN_DIR, '__pycache__')
         if os.path.isdir(pycache_dir):

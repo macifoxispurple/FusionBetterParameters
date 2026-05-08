@@ -2927,3 +2927,60 @@ Legend:
   - Optional smoke run suggestion:
     - `python3 ./scripts/ship.py --reship-in-place-tag v0.8.10 --fusion-tested --notes-file <notes.md> --plan`
     - then one real non-destructive trial with `--skip-push` in a safe context.
+
+## 2026-05-07 - Updates panel: safe current-version reinstall + apply error hardening
+- What changed:
+  - `BetterParameters/BetterParameters.py`
+    - Added new mutating action: `reinstallCurrentVersion`.
+    - Added handler branch in `_handle_palette_action(...)` for `reinstallCurrentVersion`:
+      - resolves current manifest version via `_current_addin_version()`
+      - fetches release payload specifically by tag `v<currentVersion>`
+      - stages payload through existing `_stage_update_payload(...)` path.
+    - Refactored release payload normalization into `_release_info_from_payload(...)` and reused it from `_fetch_latest_release_info(...)`.
+    - Added `_release_info_for_version(version_text)` to fetch/tag-validate a specific release version.
+    - Hardened staged-apply path in `_apply_pending_update_if_needed()`:
+      - captures `(copied, skipped, errors)` from `module.apply_update(...)`
+      - now raises runtime failure when `errors > 0` so partial-copy update attempts are marked failed instead of applied.
+  - `BetterParameters/palette.html`
+    - Added new action constant: `REINSTALL_CURRENT_VERSION`.
+    - Added new Updates panel button: `#updateCardReinstallButton` (ghost style).
+    - Added `handleReinstallCurrentVersion()` that calls `reinstallCurrentVersion`, shows progress state, and reuses existing staged-update UI refresh path.
+    - Wired button visibility/state in `renderUpdateCard()`:
+      - hidden while staged
+      - hidden when a newer update exists
+      - shown when up-to-date, labeled `Reinstall v<currentVersion>`.
+    - Registered click listener for the new reinstall button.
+- Why:
+  - Enables intentional reinstall of the currently running version without abusing "newer-only" UI signals.
+  - Avoids equal-version ambiguity by explicitly targeting release tag for the installed version.
+  - Reduces risk of false-success update state after partial file-copy failures during apply.
+- Validation run + pass/fail counts:
+  - `python -m pytest` => 416 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Command used `update_helper.py` with skips including `BetterParameters.manifest`.
+  - `VERIFY OK BetterParameters.py`
+  - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion smoke test recommended for new Updates panel reinstall button UX:
+    - up-to-date state shows reinstall button
+    - clicking stages reinstall and presents restart message
+    - restart applies staged files cleanly.
+
+## 2026-05-07 - Updates UI tweak: move reinstall button under check button + copy text tighten
+- What changed:
+  - `BetterParameters/palette.html`
+    - Moved `#updateCardReinstallButton` from lower Updates section action row to the right side of the Updates header, directly below `Check for Updates` in a vertical stack.
+    - Removed old lower action-row reinstall button markup.
+    - Updated up-to-date status copy:
+      - from: `Running vX.Y.Z — you’re up to date.`
+      - to: `Running vX.Y.Z — up to date.`
+- Why:
+  - Requested UI placement: reinstall action immediately below check-for-updates on the right side.
+  - Requested text change: remove `you’re` from up-to-date message.
+- Validation run + pass/fail counts:
+  - `python -m pytest` => 416 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload with manifest excluded.
+  - Hash verification: `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion visual smoke: confirm right-side stacked button alignment in Updates header at narrow and wide palette widths.

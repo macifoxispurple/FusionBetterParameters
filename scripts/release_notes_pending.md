@@ -1,3 +1,3 @@
-Patch highlights:
-- Improved parameter editing UX with smarter autocomplete, live create-value preview, and better expression input ergonomics.
-- Fixed revert workflow so first expression change is immediately revertable and revert-available rows remain visibly actionable.
+BetterParameters v0.8.11
+- Added a Reinstall current version action in Updates so you can re-stage the same release when needed.
+- Hardened self-update apply to fail cleanly on partial copy errors, plus Updates panel button placement and status text polish.
