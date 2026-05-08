@@ -149,7 +149,7 @@ DEFAULT_SETTINGS = {
     "customUnits": [],
     "showRevertButtons": True,
     "showCommentColumn": False,
-    "ultralightNarrowUi": False,
+    "ultralightNarrowUi": True,
     "showTextTunerSidebar": False,
     "autoFitColumns": True,
     "pinnedUnits": [],

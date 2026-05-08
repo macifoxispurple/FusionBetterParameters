@@ -2984,3 +2984,17 @@ Legend:
   - Hash verification: `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
 - Remaining risk / next check:
   - In-Fusion visual smoke: confirm right-side stacked button alignment in Updates header at narrow and wide palette widths.
+
+## 2026-05-07 - Default setting change: Ultralight UI enabled by default
+- What changed:
+  - `BetterParameters/BetterParameters.py`
+    - In `DEFAULT_SETTINGS`, changed `"ultralightNarrowUi"` default from `False` to `True`.
+- Why:
+  - Requested to make Ultralight UI default ON for new/default settings state.
+- Validation run + pass/fail counts:
+  - `python -m pytest` => 416 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload using `update_helper.py` with manifest excluded.
+  - Hash verification: `VERIFY OK BetterParameters.py`, `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - Existing users with persisted settings keep their saved value; this change affects default/new settings hydration only.
