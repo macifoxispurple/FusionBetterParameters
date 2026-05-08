@@ -2874,3 +2874,20 @@ Legend:
   - Hash verification: `VERIFY OK palette.html`.
 - Remaining risk / next check:
   - Windows in-Fusion smoke: confirm doc name truncates cleanly and right-side toolbar buttons remain anchored right at minimum practical widths.
+
+## 2026-05-07 - Fix staged update-pill text clipping in header
+- What changed:
+  - `BetterParameters/palette.html`
+    - Removed global truncation cap on `.update-pill`:
+      - removed `max-width: 128px`
+      - removed `overflow: hidden`
+      - removed `text-overflow: ellipsis`
+- Why:
+  - Staged update state text (for example `Restart to apply v#.#.#`) was being clipped on the right.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => 413 passed, 6 skipped, 0 failed.
+- Live Fusion AddIns sync (manifest untouched):
+  - Copied changed runtime file only: `BetterParameters/palette.html` -> `~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters/palette.html`
+  - Hash verification: `VERIFY OK palette.html`.
+- Remaining risk / next check:
+  - In-Fusion smoke: verify staged update-pill text now renders fully while tiny-width micro-mode behavior remains acceptable.
