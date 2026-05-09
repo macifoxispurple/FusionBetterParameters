@@ -4847,7 +4847,8 @@
           lastCommittedText: "",
           liveExpressionMessage: "",
           liveExpressionKind: "",
-          computedByRowKey: {}
+          computedByRowKey: {},
+          rowFingerprintByKey: {}
         },
         unitMenuContext: {
           mode: "create",
@@ -4885,6 +4886,8 @@
       let rapidExpressionValidationNonce = 0;
       let rapidComputeAllRowsTimer = null;
       let rapidComputeAllRowsNonce = 0;
+      let rapidDirtyRowKeys = new Set();
+      let rapidComputeFullSweepPending = false;
       let dataPanelImportSession = null;
       let parameterFileImportSession = null;
       let pendingConfirmVariant = "";
@@ -4961,6 +4964,27 @@
           || current.comment !== String(baseline.comment || "")
           || current.unit !== String(baseline.unit || "")
         );
+      }
+
+      function getRapidRowFingerprint(row) {
+        return [
+          String(row?.name || ""),
+          String(row?.expression || ""),
+          String(row?.detectedUnit || ""),
+          String(row?.comment || ""),
+          String(row?.severity || ""),
+          String(row?.status || "")
+        ].join("\u241f");
+      }
+
+      function markRapidRowsDirty(rowKeys = []) {
+        (Array.isArray(rowKeys) ? rowKeys : []).forEach((rowKey) => {
+          const key = String(rowKey || "");
+          if (!key) {
+            return;
+          }
+          rapidDirtyRowKeys.add(key);
+        });
       }
 
       function getRapidLiveDraftByRowKey(rowKey) {
@@ -5171,6 +5195,12 @@
         if (!editor) {
           return;
         }
+        const previousRows = Array.isArray(state.rapidCreate.rows) ? state.rapidCreate.rows.slice() : [];
+        const previousFingerprints = {
+          ...(state.rapidCreate.rowFingerprintByKey && typeof state.rapidCreate.rowFingerprintByKey === "object"
+            ? state.rapidCreate.rowFingerprintByKey
+            : {})
+        };
         const mode = options.mode === "commit" ? "commit" : "live";
         const parseNonce = String(++rapidCreateParseNonce);
         const lines = String(editor.value || "").split(/\r?\n/);
@@ -5334,8 +5364,37 @@
         if (String(parseNonce) !== String(rapidCreateParseNonce)) {
           return;
         }
+        const nextFingerprints = {};
+        const nextRowKeys = new Set();
+        const dirtyKeys = [];
+        baseRows.forEach((row) => {
+          const key = String(row?.rowKey || "");
+          if (!key) {
+            return;
+          }
+          nextRowKeys.add(key);
+          const fp = getRapidRowFingerprint(row);
+          nextFingerprints[key] = fp;
+          if (previousFingerprints[key] !== fp) {
+            dirtyKeys.push(key);
+          }
+        });
+        previousRows.forEach((row) => {
+          const key = String(row?.rowKey || "");
+          if (!key || nextRowKeys.has(key)) {
+            return;
+          }
+          delete state.rapidCreate.computedByRowKey[key];
+          delete nextFingerprints[key];
+          rapidDirtyRowKeys.delete(key);
+        });
+        markRapidRowsDirty(dirtyKeys);
+        if (options.bulk === true || lines.length >= 25) {
+          rapidComputeFullSweepPending = true;
+        }
         state.rapidCreate.rows = baseRows;
         state.rapidCreate.unitOverridesByRowKey = nextOverrideMap;
+        state.rapidCreate.rowFingerprintByKey = nextFingerprints;
         state.rapidCreate.counts.ready = baseRows.filter((row) => row.severity === "ready").length;
         state.rapidCreate.counts.warnings = baseRows.filter((row) => row.severity === "warning").length;
         state.rapidCreate.counts.errors = baseRows.filter((row) => row.severity === "error").length;
@@ -5354,12 +5413,19 @@
         rapidComputeAllRowsTimer = window.setTimeout(async () => {
           rapidComputeAllRowsTimer = null;
           const snapshot = Array.isArray(state.rapidCreate.rows) ? state.rapidCreate.rows.slice() : [];
+          const fullSweep = rapidComputeFullSweepPending === true;
+          rapidComputeFullSweepPending = false;
+          const dirtyKeysSnapshot = new Set(Array.from(rapidDirtyRowKeys || []));
           let changed = false;
-          for (const row of snapshot) {
+          const rowsToProcess = fullSweep
+            ? snapshot
+            : snapshot.filter((row) => dirtyKeysSnapshot.has(String(row?.rowKey || "")));
+          for (const row of rowsToProcess) {
             if (computeNonce !== rapidComputeAllRowsNonce) {
               return;
             }
             if (!row || row.severity === "draft" || !row.rowKey || !String(row.expression || "").trim()) {
+              rapidDirtyRowKeys.delete(String(row?.rowKey || ""));
               continue;
             }
             // Only backend-preflight rows that passed local parse/name/unit checks.
@@ -5429,6 +5495,7 @@
             }
             const existing = state.rapidCreate.computedByRowKey[row.rowKey];
             if (existing && String(existing.expression || "") === String(row.expression || "")) {
+              rapidDirtyRowKeys.delete(String(row.rowKey || ""));
               continue;
             }
             try {
@@ -5459,6 +5526,7 @@
                 return;
               }
             }
+            rapidDirtyRowKeys.delete(String(row.rowKey || ""));
           }
           if (changed) {
             const liveRows = Array.isArray(state.rapidCreate.rows) ? state.rapidCreate.rows : [];
@@ -5592,6 +5660,7 @@
             state.rapidCreate.counts = { ready: 0, warnings: 0, errors: 0, created: 0, failed: 0 };
             state.rapidCreate.unitOverridesByRowKey = {};
             state.rapidCreate.computedByRowKey = {};
+            state.rapidCreate.rowFingerprintByKey = {};
             state.rapidCreate.liveExpressionMessage = "";
             state.rapidCreate.liveExpressionKind = "";
             if (editor) {
@@ -5600,6 +5669,8 @@
             state.rapidCreate.lastLineCount = 0;
             state.rapidCreate.lastCommittedText = "";
             renderRapidCreatePreview();
+            rapidDirtyRowKeys.clear();
+            rapidComputeFullSweepPending = false;
           }
           requestAnimationFrame(() => editor?.focus());
           return;
@@ -5615,6 +5686,7 @@
           state.rapidCreate.counts = { ready: 0, warnings: 0, errors: 0, created: 0, failed: 0 };
           state.rapidCreate.unitOverridesByRowKey = {};
           state.rapidCreate.computedByRowKey = {};
+          state.rapidCreate.rowFingerprintByKey = {};
           state.rapidCreate.lastCommittedText = "";
           state.rapidCreate.liveExpressionMessage = "";
           state.rapidCreate.liveExpressionKind = "";
@@ -5622,6 +5694,8 @@
             editor.value = "";
           }
           state.rapidCreate.lastLineCount = 0;
+          rapidDirtyRowKeys.clear();
+          rapidComputeFullSweepPending = false;
         }
         if (rapidExpressionValidationTimer) {
           window.clearTimeout(rapidExpressionValidationTimer);
@@ -5638,11 +5712,17 @@
         if (state.functionHelper.activeInputId === "rapidCreateEditor") {
           closeFunctionHelper();
         }
+        flushQueuedRenderPushIfReady(true);
       }
 
       function getRapidCreateEditorValue() {
         const editor = document.getElementById("rapidCreateEditor");
         return String(editor?.value || "");
+      }
+
+      function isRapidCreateModalOpen() {
+        const modal = document.getElementById("rapidCreateModal");
+        return !!(modal && !modal.hidden);
       }
 
       function isRapidCreateDirty() {
@@ -9357,49 +9437,8 @@
         selectedActionInFlight = true;
         renderSelectedActionButtons();
         setGlobalStatus(`Deleting ${count} selected parameter${count === 1 ? "" : "s"}...`);
-        const selectedKeys = targets.map((item) => String(item.key || "")).filter(Boolean);
-        const selectedNames = targets.map((item) => String(item.name || "")).filter(Boolean);
         try {
-          const response = await sendToFusion(ACTION.DELETE_PARAMETERS, {
-            keys: selectedKeys,
-            names: selectedNames
-          });
-          if (!response.ok) {
-            throw new Error(response.message || "Delete failed.");
-          }
-
-          const failedDetails = Array.isArray(response.failedDetails) ? response.failedDetails : [];
-          const failedKeys = new Set(
-            failedDetails
-              .map((detail) => String(detail?.key || ""))
-              .filter(Boolean)
-          );
-          const deletedKeys = selectedKeys.filter((key) => !failedKeys.has(key));
-          clearLocalCachesForParameterKeys(deletedKeys);
-          state.selectedRowKeys = getSelectedParameterKeys().filter((key) => !deletedKeys.includes(key));
-          if (state.selectedRow && deletedKeys.includes(String(state.selectedRow.key || ""))) {
-            state.selectedRow = null;
-          }
-          if (state.selectionAnchorKey && deletedKeys.includes(String(state.selectionAnchorKey || ""))) {
-            state.selectionAnchorKey = "";
-          }
-
-          applyStateFromFusion(response, { source: "response", action: ACTION.DELETE_PARAMETERS });
-
-          const deletedCount = Number(response.deletedCount || 0);
-          const failedCount = Number(response.failedCount || 0);
-          if (failedCount > 0) {
-            const first = failedDetails[0];
-            const firstName = String(first?.name || "").trim();
-            const firstMessage = String(first?.message || "").trim();
-            setGlobalStatus(
-              `Deleted ${deletedCount}, failed ${failedCount}.${firstMessage ? ` ${firstName ? `${firstName}: ` : ""}${firstMessage}` : ""}`,
-              deletedCount > 0 ? "warning" : "error"
-            );
-            await showDeleteFailureReport(count, deletedCount, failedDetails);
-          } else {
-            setGlobalStatus(`Deleted ${deletedCount} parameter${deletedCount === 1 ? "" : "s"}.`, "success");
-          }
+          await performBatchDeleteTargets(targets, { closeMenuOnSuccess: false });
         } catch (error) {
           setGlobalStatus(error.message || "Delete failed.", "error");
         } finally {
@@ -10734,6 +10773,84 @@
             };
           })
           .filter(Boolean);
+      }
+
+      function sortTargetsForBottomUpDelete(targets = []) {
+        const list = Array.isArray(targets) ? targets.slice() : [];
+        const orderedKeys = getCurrentParameterRowOrder();
+        const indexByKey = new Map();
+        orderedKeys.forEach((key, index) => {
+          indexByKey.set(String(key || ""), index);
+        });
+        list.sort((left, right) => {
+          const leftKey = String(left?.key || "");
+          const rightKey = String(right?.key || "");
+          const leftIndex = indexByKey.has(leftKey) ? Number(indexByKey.get(leftKey)) : -1;
+          const rightIndex = indexByKey.has(rightKey) ? Number(indexByKey.get(rightKey)) : -1;
+          if (leftIndex >= 0 && rightIndex >= 0 && leftIndex !== rightIndex) {
+            return rightIndex - leftIndex;
+          }
+          if (leftIndex >= 0 && rightIndex < 0) return -1;
+          if (leftIndex < 0 && rightIndex >= 0) return 1;
+          return String(left?.name || "").localeCompare(String(right?.name || ""), undefined, { sensitivity: "base" });
+        });
+        return list;
+      }
+
+      async function performBatchDeleteTargets(targets, options = {}) {
+        const closeMenuOnSuccess = options.closeMenuOnSuccess === true;
+        const sortedTargets = sortTargetsForBottomUpDelete(targets);
+        const count = sortedTargets.length;
+        const selectedKeys = sortedTargets.map((item) => String(item.key || "")).filter(Boolean);
+        const selectedNames = sortedTargets.map((item) => String(item.name || "")).filter(Boolean);
+        const busyToken = beginBusyOverlay("Deleting selected parameters...");
+        try {
+          const response = await sendToFusion(ACTION.DELETE_PARAMETERS, {
+            keys: selectedKeys,
+            names: selectedNames
+          });
+          if (!response.ok) {
+            throw new Error(response.message || "Delete failed.");
+          }
+
+          const failedDetails = Array.isArray(response.failedDetails) ? response.failedDetails : [];
+          const failedKeys = new Set(
+            failedDetails
+              .map((detail) => String(detail?.key || ""))
+              .filter(Boolean)
+          );
+          const deletedKeys = selectedKeys.filter((key) => !failedKeys.has(key));
+          clearLocalCachesForParameterKeys(deletedKeys);
+          state.selectedRowKeys = getSelectedParameterKeys().filter((key) => !deletedKeys.includes(key));
+          if (state.selectedRow && deletedKeys.includes(String(state.selectedRow.key || ""))) {
+            state.selectedRow = null;
+          }
+          if (state.selectionAnchorKey && deletedKeys.includes(String(state.selectionAnchorKey || ""))) {
+            state.selectionAnchorKey = "";
+          }
+
+          applyStateFromFusion(response, { source: "response", action: ACTION.DELETE_PARAMETERS });
+          if (closeMenuOnSuccess) {
+            closeReorderMenu();
+          }
+
+          const deletedCount = Number(response.deletedCount || 0);
+          const failedCount = Number(response.failedCount || 0);
+          if (failedCount > 0) {
+            const first = failedDetails[0];
+            const firstName = String(first?.name || "").trim();
+            const firstMessage = String(first?.message || "").trim();
+            setGlobalStatus(
+              `Deleted ${deletedCount}, failed ${failedCount}.${firstMessage ? ` ${firstName ? `${firstName}: ` : ""}${firstMessage}` : ""}`,
+              deletedCount > 0 ? "warning" : "error"
+            );
+            await showDeleteFailureReport(count, deletedCount, failedDetails);
+          } else {
+            setGlobalStatus(`Deleted ${deletedCount} parameter${deletedCount === 1 ? "" : "s"}.`, "success");
+          }
+        } finally {
+          await endBusyOverlay(busyToken);
+        }
       }
 
       function clearLocalCachesForParameterKeys(keys = []) {
@@ -12741,6 +12858,15 @@
           if (state.debugMetadataSnapshot) {
             renderMetadataDebug(state.debugMetadataSnapshot, state.lastSyncResult);
           }
+          return envelope;
+        }
+
+        if (envelope.state && typeof envelope.state === "object" && isRapidCreateModalOpen()) {
+          queuePendingStateEnvelope(envelope, context.action || "renderState", { suppressNotice: true });
+          appendRawTrace("state.queued.rapid-create-open", {
+            source: context.source || "response",
+            action: context.action || "renderState"
+          });
           return envelope;
         }
 
@@ -15141,7 +15267,9 @@
         }
         rapidCreateReparseTimer = window.setTimeout(() => {
           rapidCreateReparseTimer = null;
-          void buildRapidCreateRowsFromEditor();
+          const useBulk = state.rapidCreate.pendingBulkSync === true;
+          state.rapidCreate.pendingBulkSync = false;
+          void buildRapidCreateRowsFromEditor({ bulk: useBulk });
         }, 140);
         if (rapidExpressionValidationTimer) {
           window.clearTimeout(rapidExpressionValidationTimer);
@@ -16146,50 +16274,8 @@
         selectedActionInFlight = true;
         renderSelectedActionButtons();
         setGlobalStatus(`Deleting ${count} selected parameter${count === 1 ? "" : "s"}...`);
-        const selectedKeys = targets.map((item) => String(item.key || "")).filter(Boolean);
-        const selectedNames = targets.map((item) => String(item.name || "")).filter(Boolean);
         try {
-          const response = await sendToFusion(ACTION.DELETE_PARAMETERS, {
-            keys: selectedKeys,
-            names: selectedNames
-          });
-          if (!response.ok) {
-            throw new Error(response.message || "Delete failed.");
-          }
-
-          const failedDetails = Array.isArray(response.failedDetails) ? response.failedDetails : [];
-          const failedKeys = new Set(
-            failedDetails
-              .map((detail) => String(detail?.key || ""))
-              .filter(Boolean)
-          );
-          const deletedKeys = selectedKeys.filter((key) => !failedKeys.has(key));
-          clearLocalCachesForParameterKeys(deletedKeys);
-          state.selectedRowKeys = getSelectedParameterKeys().filter((key) => !deletedKeys.includes(key));
-          if (state.selectedRow && deletedKeys.includes(String(state.selectedRow.key || ""))) {
-            state.selectedRow = null;
-          }
-          if (state.selectionAnchorKey && deletedKeys.includes(String(state.selectionAnchorKey || ""))) {
-            state.selectionAnchorKey = "";
-          }
-
-          applyStateFromFusion(response, { source: "response", action: ACTION.DELETE_PARAMETERS });
-          closeReorderMenu();
-
-          const deletedCount = Number(response.deletedCount || 0);
-          const failedCount = Number(response.failedCount || 0);
-          if (failedCount > 0) {
-            const first = failedDetails[0];
-            const firstName = String(first?.name || "").trim();
-            const firstMessage = String(first?.message || "").trim();
-            setGlobalStatus(
-              `Deleted ${deletedCount}, failed ${failedCount}.${firstMessage ? ` ${firstName ? `${firstName}: ` : ""}${firstMessage}` : ""}`,
-              deletedCount > 0 ? "warning" : "error"
-            );
-            await showDeleteFailureReport(count, deletedCount, failedDetails);
-          } else {
-            setGlobalStatus(`Deleted ${deletedCount} parameter${deletedCount === 1 ? "" : "s"}.`, "success");
-          }
+          await performBatchDeleteTargets(targets, { closeMenuOnSuccess: true });
         } catch (error) {
           setGlobalStatus(error.message || "Delete failed.", "error");
         } finally {

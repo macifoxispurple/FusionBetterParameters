@@ -3886,3 +3886,89 @@ Legend:
     - create row -> no self-collision warning,
     - rename live draft -> keep typing same new name no false collision,
     - true collision against another existing param still errors.
+
+## 2026-05-09 - Bulk delete optimization: bottom-up ordering + single-path batched delete
+- What changed:
+  - `BetterParameters/palette.html`
+    - Added `sortTargetsForBottomUpDelete(...)` to order selected delete targets by current visible table order descending (bottom-up), with name fallback for off-screen/unordered items.
+    - Added shared `performBatchDeleteTargets(...)` path used by both:
+      - main toolbar selected-delete,
+      - row-menu selected-delete.
+    - Shared delete path now:
+      - performs one batched `deleteParameters` backend call,
+      - applies state once via `applyStateFromFusion(...)`,
+      - clears local caches/selection once,
+      - reports failures once,
+      - wraps operation in blocking busy overlay (`Deleting selected parameters...`).
+    - Removed duplicated per-entry-point delete logic to prevent drift.
+- Why:
+  - Implements requested items 1/2/3: bottom-up delete ordering, single backend batch deletion path, and suppression of intermediate UI churn until one final state apply.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `432 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion performance smoke:
+    - delete top-N rows from large list (e.g., first 5 of 100),
+    - compare elapsed time and interaction lock duration vs prior behavior,
+    - verify failure report still accurate when one row cannot be deleted due dependency.
+
+## 2026-05-09 - Rapid Create perf fix: dirty-row incremental recompute (avoid whole-grid reevaluation)
+- What changed:
+  - `BetterParameters/palette.html`
+    - Added rapid-create incremental recompute tracking:
+      - row fingerprint cache (`rowFingerprintByKey`),
+      - dirty row set (`rapidDirtyRowKeys`),
+      - full-sweep gate (`rapidComputeFullSweepPending`).
+    - Added row fingerprint helpers and dirty-marking utilities.
+    - `buildRapidCreateRowsFromEditor(...)` now diffs previous/new row fingerprints:
+      - marks only changed/new rows dirty,
+      - removes cached computed/dirty state for deleted rows,
+      - requests full sweep only for explicit bulk parse contexts.
+    - `scheduleRapidComputeForMissingRows()` now processes:
+      - full snapshot only when `full-sweep` flag is set,
+      - otherwise only dirty rows.
+    - Added cleanup/reset of fingerprint+dirty state when rapid modal opens/discards.
+    - Rapid editor input reparse now forwards bulk hint to parse (`{ bulk: true }`) when large line-count jumps are detected.
+- Why:
+  - Fixes observed inefficiency where any single row add/edit caused backend preview/validate work to run across all rapid rows.
+  - Reduces per-edit compute from whole-grid to changed-row scope in normal operation.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `432 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion perf smoke:
+    - add one row at bottom of medium/large rapid grid and verify no visible full-grid recompute lag,
+    - edit one existing row and verify only local row status/preview updates,
+    - bulk paste still performs expected batch full sweep once per parse cycle.
+
+## 2026-05-09 - Pause main table state rendering while Rapid Create modal is open
+- What changed:
+  - `BetterParameters/palette.html`
+    - Added helper `isRapidCreateModalOpen()`.
+    - In `applyStateFromFusion(...)`, when a valid envelope carries `state` and Rapid Create modal is open:
+      - queue state via `queuePendingStateEnvelope(..., { suppressNotice: true })`
+      - skip immediate main-table apply/render for that envelope.
+    - In `setRapidCreateModalOpen(false, ...)` close path:
+      - force flush of queued state once via `flushQueuedRenderPushIfReady(true)`.
+- Why:
+  - Requested optimization: pause heavyweight main table UI renders during Rapid Create to improve Rapid Create responsiveness under frequent updates.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `432 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion smoke with large table:
+    - open Rapid Create and run Create All; verify modal stays responsive,
+    - close Rapid Create; verify table catches up in one apply,
+    - ensure queued updates still apply correctly when modal closes via X/backdrop/Esc.
