@@ -232,6 +232,7 @@ _MUTATING_ACTIONS = [
     "updateModelParameter", "promoteModelParameterToUserParameter", "copyParameter", "sortByTimelineOrder",
     "importParameters", "saveSettings", "savePaletteGeometry",
     "resetSettings",
+    "cleanupAndDisable",
     "saveTextTunerState", "downloadAndStageUpdate", "reinstallCurrentVersion",
     "syncMetadataJsonToFusion", "syncMetadataFusionToJson", "repairMetadata",
     "importParametersPackage", "seedTestParameters", "resetTestState",
@@ -840,6 +841,7 @@ def _handle_palette_action(action, data):
             settings=_save_settings({k: payload[k] for k in ("paletteSize", "palettePosition", "paletteDockingState") if k in payload}),
             action="savePaletteGeometry",
         ),
+        "cleanupAndDisable": lambda _payload: (lambda details: _ok_data(cleanup=details, runtimeDisabled=True))(_cleanup_and_disable_addin()),
         "resetSettings": lambda _payload: _ok_state(_current_state_payload(settings=_reset_settings_to_defaults())),
         "syncMetadataJsonToFusion": lambda _payload: (lambda sync_result: {
             **_ok_state(_current_state_payload()),
@@ -1974,6 +1976,116 @@ def _reset_settings_to_defaults():
         temp_path.write_text(json.dumps(DEFAULT_SETTINGS, indent=2), encoding="utf-8")
         temp_path.replace(settings_path)
     return _load_settings()
+
+
+def _set_manifest_run_on_startup(enabled):
+    with open(MANIFEST_PATH, 'r', encoding='utf-8-sig') as handle:
+        manifest = json.load(handle)
+    manifest['runOnStartup'] = bool(enabled)
+    with open(MANIFEST_PATH, 'w', encoding='utf-8') as handle:
+        json.dump(manifest, handle, indent=2)
+
+
+def _safe_delete_path(path):
+    if not path:
+        return False
+    try:
+        target = Path(path)
+    except Exception:
+        return False
+    if not target.exists():
+        return False
+    try:
+        if target.is_dir():
+            shutil.rmtree(str(target), ignore_errors=True)
+        else:
+            target.unlink()
+        return True
+    except Exception:
+        return False
+
+
+def _remove_command_controls_and_panel():
+    removed = 0
+    for panel_id in TARGET_PANEL_IDS:
+        panel = _panel_by_id(panel_id)
+        if not panel:
+            continue
+        for control_id in (CMD_ID, RESTORE_WINDOW_POSITION_CMD_ID):
+            try:
+                control = panel.controls.itemById(control_id)
+                if control:
+                    control.deleteMe()
+                    removed += 1
+            except Exception:
+                pass
+    # Remove dedicated panel if it still exists.
+    try:
+        panel = _toolbar_panel()
+        if panel:
+            panel.deleteMe()
+            removed += 1
+    except Exception:
+        pass
+    # Remove command definitions.
+    for cmd_id in (CMD_ID, RESTORE_WINDOW_POSITION_CMD_ID):
+        try:
+            cmd_def = ui.commandDefinitions.itemById(cmd_id) if ui else None
+            if cmd_def:
+                cmd_def.deleteMe()
+                removed += 1
+        except Exception:
+            pass
+    return removed
+
+
+def _cleanup_and_disable_addin():
+    details = {
+        "removedUiItems": 0,
+        "deletedPaths": [],
+        "disabledStartup": False,
+        "disabledManifestStartup": False,
+    }
+    # Disable startup in Fusion add-in registry state.
+    try:
+        _set_run_on_startup(False)
+        details["disabledStartup"] = True
+    except Exception:
+        details["disabledStartup"] = False
+    # Disable startup in manifest file.
+    try:
+        _set_manifest_run_on_startup(False)
+        details["disabledManifestStartup"] = True
+    except Exception:
+        details["disabledManifestStartup"] = False
+    # Remove UI controls/definitions for this session.
+    details["removedUiItems"] = _remove_command_controls_and_panel()
+    # Close and remove palette UI.
+    try:
+        palette = _palette()
+        if palette:
+            _save_palette_geometry(palette)
+            palette.deleteMe()
+    except Exception:
+        pass
+    # Remove Better Parameters local artifacts.
+    artifact_paths = [
+        _settings_path(),
+        Path(UPDATE_STATE_PATH),
+        Path(PENDING_UPDATE_DIR),
+        _text_tuner_state_path(),
+        _document_order_root(),
+        _app_support_root(),
+    ]
+    for artifact in artifact_paths:
+        if _safe_delete_path(artifact):
+            details["deletedPaths"].append(str(artifact))
+    # Ensure update state file is cleared if still present after directory cleanup.
+    try:
+        clear_update_state(UPDATE_STATE_PATH)
+    except Exception:
+        pass
+    return details
 
 
 def _format_parameter_value(param, units_manager):

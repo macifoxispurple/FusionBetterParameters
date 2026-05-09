@@ -3885,6 +3885,7 @@
               <button id="computeModeButton" class="ghost" type="button">Compute: Auto</button>
               <button id="autoFitColumnsButton" class="ghost" type="button">Auto Fit</button>
               <button id="resetSettingsButton" class="ghost" type="button">Reset Settings</button>
+              <button id="cleanupDisableButton" class="ghost" type="button">Cleanup + Disable Add-In</button>
             </div>
           </section>
 
@@ -4209,6 +4210,7 @@
         SAVE_PARAMETER_ORDER: "saveParameterOrder",
         SAVE_GROUP_UI_STATE: "saveGroupUiState",
         SAVE_SETTINGS: "saveSettings",
+        CLEANUP_AND_DISABLE: "cleanupAndDisable",
         RESET_SETTINGS: "resetSettings",
         SAVE_PALETTE_GEOMETRY: "savePaletteGeometry",
         GET_TEXT_TUNER_STATE: "getTextTunerState",
@@ -4261,6 +4263,7 @@
         [ACTION.SAVE_PARAMETER_ORDER]: { mutating: true },
         [ACTION.SAVE_GROUP_UI_STATE]: { mutating: true },
         [ACTION.SAVE_SETTINGS]: { mutating: true },
+        [ACTION.CLEANUP_AND_DISABLE]: { mutating: true, stateOptional: true },
         [ACTION.RESET_SETTINGS]: { mutating: true },
         [ACTION.SAVE_PALETTE_GEOMETRY]: { mutating: true },
         [ACTION.GET_TEXT_TUNER_STATE]: { readOnly: true },
@@ -16573,6 +16576,41 @@
           window.location.reload();
         } catch (error) {
           setGlobalStatus(String(error?.message || "Failed to reset settings."), "error");
+        } finally {
+          await endBusyOverlay(overlayToken);
+        }
+      });
+
+      document.getElementById("cleanupDisableButton").addEventListener("click", async () => {
+        const typed = await requestTextInput(
+          "This will remove Better Parameters UI controls, clear local Better Parameters files, disable run-on-startup, and disable this add-in session. Type DISABLE to continue.",
+          {
+            title: "Cleanup + Disable Better Parameters",
+            confirmLabel: "Disable",
+            cancelLabel: "Cancel",
+            initialValue: "",
+            preserveLineBreaks: false,
+          }
+        );
+        if (typed === null) {
+          return;
+        }
+        if (String(typed || "").trim().toUpperCase() !== "DISABLE") {
+          setGlobalStatus('Cleanup cancelled: type "DISABLE" exactly to confirm.', "warning");
+          return;
+        }
+
+        const overlayToken = beginBusyOverlay("Cleaning up and disabling Better Parameters...");
+        await yieldForBusyOverlayPaint();
+        try {
+          const response = await sendToFusion(ACTION.CLEANUP_AND_DISABLE, {});
+          if (!response || response.ok === false) {
+            throw new Error(response?.message || "Cleanup and disable failed.");
+          }
+          setGlobalStatus("Cleanup complete. Better Parameters is disabled for startup and this session UI has been removed.", "success");
+          setSettingsPanelOpen(false);
+        } catch (error) {
+          setGlobalStatus(String(error?.message || "Cleanup and disable failed."), "error");
         } finally {
           await endBusyOverlay(overlayToken);
         }

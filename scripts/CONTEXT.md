@@ -3668,3 +3668,43 @@ Legend:
     - `VERIFY OK palette.html`
 - Remaining risk / next check:
   - In-Fusion manual smoke: click `Reset Settings`, confirm palette reloads and appearance/layout toggles return to defaults.
+
+## 2026-05-09 - Feature: Cleanup + Disable Better Parameters
+- What changed:
+  - `BetterParameters/BetterParameters.py`
+    - Added mutating action `cleanupAndDisable`.
+    - Added `_set_manifest_run_on_startup(enabled)` to write `runOnStartup` in `BetterParameters.manifest`.
+    - Added cleanup helpers:
+      - `_safe_delete_path(path)`
+      - `_remove_command_controls_and_panel()` to delete Better Parameters command controls/definitions/panel in current Fusion session.
+      - `_cleanup_and_disable_addin()` to:
+        - disable Fusion startup state (`_set_run_on_startup(False)`),
+        - set manifest `runOnStartup` to false,
+        - remove Better Parameters UI controls/definitions/panel and palette,
+        - delete Better Parameters local artifacts (`settings.json`, `update_state.json`, `_pending_update`, text tuner file, document order dir, app-support root),
+        - clear update-state marker.
+    - Wired action handler return envelope: `_ok_data(cleanup=details, runtimeDisabled=True)`.
+  - `BetterParameters/palette.html`
+    - Added Settings button `Cleanup + Disable Add-In` (`#cleanupDisableButton`).
+    - Added FE action constant/metadata for `cleanupAndDisable` (mutating, `stateOptional`).
+    - Added guarded click workflow:
+      - typed confirmation prompt requiring exact `DISABLE`,
+      - busy overlay,
+      - calls backend cleanup action,
+      - shows completion status + closes settings panel.
+- Why:
+  - Requested uninstall-prep workflow to remove Better Parameters UI/artifacts, disable startup, and disable active add-in UI for current session.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `430 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion destructive smoke (single run):
+    - confirm typed-gate blocks anything except `DISABLE`,
+    - on success, verify toolbar/context controls disappear in-session,
+    - verify `runOnStartup` becomes false in manifest,
+    - restart Fusion and confirm Better Parameters does not auto-load,
+    - verify local Better Parameters artifact directories/files were removed.
