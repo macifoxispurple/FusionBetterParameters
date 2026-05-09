@@ -5509,6 +5509,16 @@
         return current.trim().length > 0 && current !== baseline;
       }
 
+      function isCreateModalDirty() {
+        const nameInput = document.getElementById("newName");
+        const expressionInput = document.getElementById("newExpression");
+        const commentInput = document.getElementById("newComment");
+        const name = String(nameInput?.value || "").trim();
+        const expression = String(expressionInput?.value || "").trim();
+        const comment = String(commentInput?.value || "").trim();
+        return !!(name || expression || comment);
+      }
+
       function getRapidActiveExpressionContext(editor) {
         if (!editor) {
           return null;
@@ -5698,6 +5708,22 @@
         });
         if (shouldDiscard) {
           setRapidCreateModalOpen(false, { discard: true });
+        }
+      }
+
+      async function requestCreateModalClose(options = {}) {
+        const restoreFocus = options.restoreFocus !== false;
+        if (!isCreateModalDirty()) {
+          setCreateModalOpen(false, { restoreFocus });
+          return;
+        }
+        const shouldDiscard = await requestConfirmation("Discard unsaved new parameter inputs?", {
+          confirmLabel: "Discard",
+          cancelLabel: "Keep Editing",
+          variant: "discard"
+        });
+        if (shouldDiscard) {
+          setCreateModalOpen(false, { restoreFocus, discard: true });
         }
       }
 
@@ -14543,6 +14569,22 @@
           return;
         }
 
+        if (options.discard === true) {
+          const nameInput = document.getElementById("newName");
+          const expressionInput = document.getElementById("newExpression");
+          const commentInput = document.getElementById("newComment");
+          if (nameInput) {
+            nameInput.value = "";
+          }
+          if (expressionInput) {
+            expressionInput.value = "";
+            autoSizeTextarea(expressionInput, { minHeight: 22, maxHeight: 160 });
+          }
+          if (commentInput) {
+            commentInput.value = "";
+          }
+        }
+
         setNameError("");
         setExpressionError("");
         setCreateExpressionValue("");
@@ -14720,11 +14762,11 @@
       });
 
       document.getElementById("createModalCloseButton").addEventListener("click", () => {
-        setCreateModalOpen(false);
+        void requestCreateModalClose();
       });
 
       document.getElementById("createModalBackdrop").addEventListener("click", () => {
-        setCreateModalOpen(false);
+        void requestCreateModalClose();
       });
 
       document.getElementById("rapidCreateModalCloseButton").addEventListener("click", () => {
@@ -17885,7 +17927,7 @@
           }
           const createModal = document.getElementById("createModal");
           if (createModal && !createModal.hidden) {
-            setCreateModalOpen(false, { restoreFocus: false });
+            void requestCreateModalClose({ restoreFocus: false });
           }
           setRapidCreateModalOpen(true);
           return;
@@ -17900,7 +17942,7 @@
         }
         const createModal = document.getElementById("createModal");
         if (createModal && !createModal.hidden) {
-          setCreateModalOpen(false);
+          void requestCreateModalClose();
           return;
         }
         const rapidCreateModal = document.getElementById("rapidCreateModal");

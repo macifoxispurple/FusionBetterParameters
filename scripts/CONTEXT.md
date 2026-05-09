@@ -3764,3 +3764,52 @@ Legend:
   - In-Fusion smoke:
     - table rename: clear field then type replacement name; no transient required-error during typing, immediate invalid-char/leading-digit still shown,
     - Rapid Create: `name<TAB>` active line shows draft guidance, not hard error, while commit still blocks missing expression.
+
+## 2026-05-09 - New Parameter modal safe-dismiss dirty gate
+- What changed:
+  - `BetterParameters/palette.html`
+    - Added `isCreateModalDirty()` to detect unsaved inputs in New Parameter modal (`newName`, `newExpression`, `newComment`).
+    - Added `requestCreateModalClose(...)` confirm flow mirroring Rapid Create dirty-dismiss behavior.
+    - If dirty, closing New Parameter modal now prompts:
+      - message: `Discard unsaved new parameter inputs?`
+      - actions: `Discard` / `Keep Editing`
+      - discard variant styling reused from existing confirm modal.
+    - Routed all modal-dismiss paths through safe gate:
+      - create modal close button
+      - create modal backdrop click
+      - Escape key when create modal open
+      - Rapid Create shortcut path when create modal is open (before switching modals)
+    - Successful create-submit close path remains direct (`setCreateModalOpen(false, { restoreFocus: false })`).
+- Why:
+  - Requested parity with Rapid Create dirty dismiss gate to prevent accidental loss of unsaved New Parameter modal input.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `430 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion smoke:
+    - open New Parameter modal, type any field, hit Esc/backdrop/X, verify discard prompt appears,
+    - choose Keep Editing preserves input,
+    - choose Discard closes modal and clears transient state,
+    - switching to Rapid Create via shortcut from dirty create modal triggers the same guard.
+
+## 2026-05-09 - New Parameter modal: clear inputs on dirty dismiss/discard
+- What changed:
+  - `BetterParameters/palette.html`
+    - `requestCreateModalClose(...)` discard-confirm path now closes with `{ discard: true }`.
+    - `setCreateModalOpen(false, options)` now clears `newName`, `newExpression`, and `newComment` when `options.discard === true`.
+    - Expression textarea auto-size is reset after discard clear.
+- Why:
+  - Requested behavior: if New Parameter modal is dismissed while dirty and user confirms discard, name/expression/comment should be cleared.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `430 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion smoke: type all three fields, dismiss via X/backdrop/Esc and confirm discard, reopen modal and verify fields are empty.
