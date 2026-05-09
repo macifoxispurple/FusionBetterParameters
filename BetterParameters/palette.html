@@ -2617,6 +2617,15 @@
         pointer-events: none;
       }
 
+      .rapid-create-warning-marker {
+        position: absolute;
+        left: 0;
+        color: #8a6d00 !important;
+        font-weight: 700 !important;
+        line-height: 1;
+        pointer-events: none;
+      }
+
       .rapid-create-editor {
         width: 100%;
         min-height: 140px;
@@ -2711,6 +2720,10 @@
 
       .rapid-create-status-error {
         color: var(--error) !important;
+      }
+
+      .rapid-create-status-warning {
+        color: #8a6d00 !important;
       }
 
       .rapid-create-preview td:last-child {
@@ -4887,7 +4900,9 @@
       let rapidComputeAllRowsTimer = null;
       let rapidComputeAllRowsNonce = 0;
       let rapidDirtyRowKeys = new Set();
+      let rapidDirtyLiveOpsRowKeys = new Set();
       let rapidComputeFullSweepPending = false;
+      let rapidDraftRefreshTimer = null;
       let dataPanelImportSession = null;
       let parameterFileImportSession = null;
       let pendingConfirmVariant = "";
@@ -4984,7 +4999,18 @@
             return;
           }
           rapidDirtyRowKeys.add(key);
+          rapidDirtyLiveOpsRowKeys.add(key);
         });
+      }
+
+      function scheduleRapidDraftStateRefresh(delayMs = 180) {
+        if (rapidDraftRefreshTimer) {
+          window.clearTimeout(rapidDraftRefreshTimer);
+        }
+        rapidDraftRefreshTimer = window.setTimeout(() => {
+          rapidDraftRefreshTimer = null;
+          void refreshParameters();
+        }, Math.max(40, Number(delayMs || 180)));
       }
 
       function getRapidLiveDraftByRowKey(rowKey) {
@@ -5389,7 +5415,7 @@
           rapidDirtyRowKeys.delete(key);
         });
         markRapidRowsDirty(dirtyKeys);
-        if (options.bulk === true || lines.length >= 25) {
+        if (options.bulk === true) {
           rapidComputeFullSweepPending = true;
         }
         state.rapidCreate.rows = baseRows;
@@ -5588,7 +5614,9 @@
           const statusText = `${row.isManualUnitOverride ? "(MANUAL) " : ""}${baseStatus.toUpperCase()}`;
           const isError = row.severity === "error";
           const isWarning = row.severity === "warning";
-          const statusClass = isError ? "rapid-create-status-error" : (isWarning ? "" : "rapid-create-status-ok");
+          const statusClass = isError
+            ? "rapid-create-status-error"
+            : (isWarning ? "rapid-create-status-warning" : "rapid-create-status-ok");
           const selectedUnit = String(row.detectedUnit || "");
           const unitDisplayLabel = selectedUnit ? getUnitDisplayLabel(selectedUnit) : "No Units";
           const unitSelect = `<button class="unit-picker-button rapid-row-unit-button" type="button" data-rapid-row-unit-button="${escapeRapidHtml(row.rowKey || String(row.lineNumber || ""))}" aria-haspopup="true" aria-expanded="false" title="${escapeRapidHtml(unitDisplayLabel)}">${escapeRapidHtml(unitDisplayLabel)}</button>`;
@@ -5621,14 +5649,15 @@
         const visibleBottom = scrollTop + Number(editor.clientHeight || 0);
         const markers = [];
         rows
-          .filter((row) => row && row.severity === "error" && Number(row.lineNumber || 0) > 0)
+          .filter((row) => row && (row.severity === "error" || row.severity === "warning") && Number(row.lineNumber || 0) > 0)
           .forEach((row) => {
             const top = paddingTop + ((Number(row.lineNumber) - 1) * lineHeight);
             if (top + lineHeight < scrollTop || top > visibleBottom) {
               return;
             }
             const markerTop = Math.max(0, top - scrollTop + (lineHeight / 2) - 6);
-            markers.push(`<div class="rapid-create-error-marker" style="top:${markerTop}px;">&gt;</div>`);
+            const markerClass = row.severity === "warning" ? "rapid-create-warning-marker" : "rapid-create-error-marker";
+            markers.push(`<div class="${markerClass}" style="top:${markerTop}px;">&gt;</div>`);
           });
         gutter.innerHTML = markers.join("");
       }
@@ -5670,7 +5699,12 @@
             state.rapidCreate.lastCommittedText = "";
             renderRapidCreatePreview();
             rapidDirtyRowKeys.clear();
+            rapidDirtyLiveOpsRowKeys.clear();
             rapidComputeFullSweepPending = false;
+            if (rapidDraftRefreshTimer) {
+              window.clearTimeout(rapidDraftRefreshTimer);
+              rapidDraftRefreshTimer = null;
+            }
           }
           requestAnimationFrame(() => editor?.focus());
           return;
@@ -5695,7 +5729,12 @@
           }
           state.rapidCreate.lastLineCount = 0;
           rapidDirtyRowKeys.clear();
+          rapidDirtyLiveOpsRowKeys.clear();
           rapidComputeFullSweepPending = false;
+          if (rapidDraftRefreshTimer) {
+            window.clearTimeout(rapidDraftRefreshTimer);
+            rapidDraftRefreshTimer = null;
+          }
         }
         if (rapidExpressionValidationTimer) {
           window.clearTimeout(rapidExpressionValidationTimer);
@@ -5972,6 +6011,9 @@
           if (Number(state.rapidCreate.queueVersion || 0) !== targetVersion) {
             return;
           }
+          if (!state.rapidCreate.pendingBulkSync && rapidDirtyLiveOpsRowKeys.size <= 0) {
+            return;
+          }
           void runRapidDraftSyncQueue();
         }, isBulk ? 20 : 140);
       }
@@ -5987,6 +6029,11 @@
         try {
           ensureRapidCreateSession();
           const rows = Array.isArray(state.rapidCreate.rows) ? state.rapidCreate.rows.slice() : [];
+          const dirtyOpsSnapshot = new Set(Array.from(rapidDirtyLiveOpsRowKeys || []));
+          if (!isBulk && dirtyOpsSnapshot.size <= 0) {
+            return;
+          }
+          let mutatedState = false;
           const currentKeys = new Set(rows.map((row) => String(row?.rowKey || "")).filter(Boolean));
           const removedEntries = Object.entries(state.rapidCreate.liveDraftByRowKey || {})
             .filter(([rowKey]) => !currentKeys.has(String(rowKey || "")));
@@ -6001,17 +6048,23 @@
               }
               applyStateFromFusion(deleteResponse, { source: "response", action: ACTION.DELETE_PARAMETER });
               setRapidLiveDraftForRow(rowKey, null);
+              mutatedState = true;
             } catch (_error) {
               // Keep orphan entry for user-facing discard retry path.
             }
+            rapidDirtyLiveOpsRowKeys.delete(String(rowKey || ""));
           }
           let processed = 0;
-          for (const row of rows) {
+          const rowsToProcess = isBulk
+            ? rows
+            : rows.filter((row) => dirtyOpsSnapshot.has(String(row?.rowKey || "")));
+          for (const row of rowsToProcess) {
             const liveRow = findRapidRowByKey(row?.rowKey);
             if (!liveRow) {
               continue;
             }
             if (liveRow.severity !== "ready") {
+              rapidDirtyLiveOpsRowKeys.delete(String(liveRow?.rowKey || ""));
               continue;
             }
             const existingLive = getRapidLiveDraftByRowKey(liveRow.rowKey);
@@ -6030,6 +6083,7 @@
                   throw new Error(createResponse?.message || "Create failed.");
                 }
                 applyStateFromFusion(createResponse, { source: "response", action: ACTION.CREATE_PARAMETER });
+                mutatedState = true;
                 const createdParam = findUserParameterByNameFromState(liveRow.name);
                 setRapidLiveDraftForRow(liveRow.rowKey, {
                   key: String(createdParam?.key || ""),
@@ -6056,9 +6110,10 @@
                 liveRow.message = String(error?.message || "Create failed.");
               }
               processed += 1;
-              if (isBulk && processed % 25 === 0) {
-                await refreshParameters();
+              if (isBulk && processed % 25 === 0 && mutatedState) {
+                scheduleRapidDraftStateRefresh(80);
               }
+              rapidDirtyLiveOpsRowKeys.delete(String(liveRow.rowKey || ""));
               renderRapidCreatePreview();
               continue;
             }
@@ -6074,6 +6129,7 @@
               liveRow.createState = "live";
               liveRow.status = "live";
               liveRow.message = "Live draft up to date.";
+              rapidDirtyLiveOpsRowKeys.delete(String(liveRow.rowKey || ""));
               continue;
             }
 
@@ -6095,6 +6151,7 @@
                   throw new Error(renameResponse?.message || "Rename failed.");
                 }
                 applyStateFromFusion(renameResponse, { source: "response", action: ACTION.RENAME_PARAMETER });
+                mutatedState = true;
                 existingLive.name = String(liveRow.name || "");
               }
               const updateResponse = await withRapidTimeout(sendToFusion(ACTION.UPDATE_PARAMETER, {
@@ -6107,6 +6164,7 @@
                 throw new Error(updateResponse?.message || "Update failed.");
               }
               applyStateFromFusion(updateResponse, { source: "response", action: ACTION.UPDATE_PARAMETER });
+              mutatedState = true;
               existingLive.lastCommitted = getRapidRowLiveSnapshot(liveRow);
               existingLive.liveState = "live";
               setRapidLiveDraftForRow(liveRow.rowKey, existingLive);
@@ -6124,12 +6182,19 @@
               liveRow.message = String(error?.message || "Update failed.");
             }
             processed += 1;
-            if (isBulk && processed % 25 === 0) {
-              await refreshParameters();
+            if (isBulk && processed % 25 === 0 && mutatedState) {
+              scheduleRapidDraftStateRefresh(80);
             }
+            rapidDirtyLiveOpsRowKeys.delete(String(liveRow.rowKey || ""));
             renderRapidCreatePreview();
           }
-          await refreshParameters();
+          if (mutatedState) {
+            if (isBulk) {
+              scheduleRapidDraftStateRefresh(120);
+            } else {
+              scheduleRapidDraftStateRefresh(180);
+            }
+          }
         } finally {
           if (overlayToken) {
             await endBusyOverlay(overlayToken);
@@ -6139,32 +6204,48 @@
         }
       }
 
-      async function deleteRapidSessionDraftsBestEffort() {
-        const drafts = Object.entries(state.rapidCreate.liveDraftByRowKey || {});
-        if (!drafts.length) {
-          return [];
+      function snapshotRapidSessionDraftDeleteTargets() {
+        const byKey = new Map();
+        const drafts = Object.values(state.rapidCreate.liveDraftByRowKey || {});
+        for (const draft of drafts) {
+          const key = String(draft?.key || "").trim();
+          const name = String(draft?.name || "").trim();
+          if (!key && !name) {
+            continue;
+          }
+          const dedupeKey = key || `name:${name.toLowerCase()}`;
+          if (!byKey.has(dedupeKey)) {
+            byKey.set(dedupeKey, { key, name });
+          }
         }
-        const failures = [];
+        return Array.from(byKey.values());
+      }
+
+      async function deleteRapidSessionDraftsBestEffort(deleteTargets = []) {
+        const targets = Array.isArray(deleteTargets) ? deleteTargets.filter(Boolean) : [];
+        if (!targets.length) {
+          return { deletedCount: 0, failedCount: 0, failedDetails: [] };
+        }
+        const keys = targets.map((item) => String(item?.key || "").trim()).filter(Boolean);
+        const names = targets.map((item) => String(item?.name || "").trim()).filter(Boolean);
         const overlayToken = beginBusyOverlay("Discarding live drafts...");
         try {
-          for (const [, liveDraft] of drafts) {
-            try {
-              const response = await withRapidTimeout(sendToFusion(ACTION.DELETE_PARAMETER, {
-                key: String(liveDraft?.key || ""),
-                name: String(liveDraft?.name || "")
-              }), 8000);
-              if (!response?.ok) {
-                throw new Error(response?.message || "Delete failed.");
-              }
-              applyStateFromFusion(response, { source: "response", action: ACTION.DELETE_PARAMETER });
-            } catch (error) {
-              failures.push(String(error?.message || "Delete failed."));
-            }
+          const response = await withRapidTimeout(sendToFusion(ACTION.DELETE_PARAMETERS, {
+            keys,
+            names
+          }), 8000);
+          if (!response?.ok) {
+            throw new Error(response?.message || "Delete failed.");
           }
+          applyStateFromFusion(response, { source: "response", action: ACTION.DELETE_PARAMETERS });
+          return {
+            deletedCount: Number(response.deletedCount || 0),
+            failedCount: Number(response.failedCount || 0),
+            failedDetails: Array.isArray(response.failedDetails) ? response.failedDetails : []
+          };
         } finally {
           await endBusyOverlay(overlayToken);
         }
-        return failures;
       }
 
       async function requestRapidCreateClose() {
@@ -6179,11 +6260,18 @@
           variant: "discard"
         });
         if (shouldDiscard) {
-          const failures = await deleteRapidSessionDraftsBestEffort();
-          if (failures.length) {
-            setGlobalStatus(`Discard completed with ${failures.length} delete warning(s).`, "warning");
-          }
+          const deleteTargets = snapshotRapidSessionDraftDeleteTargets();
           setRapidCreateModalOpen(false, { discard: true });
+          const result = await deleteRapidSessionDraftsBestEffort(deleteTargets);
+          if (result.failedCount > 0) {
+            const first = result.failedDetails[0];
+            const firstName = String(first?.name || "").trim();
+            const firstMessage = String(first?.message || "").trim();
+            setGlobalStatus(
+              `Discarded ${result.deletedCount}, failed ${result.failedCount}.${firstMessage ? ` ${firstName ? `${firstName}: ` : ""}${firstMessage}` : ""}`,
+              result.deletedCount > 0 ? "warning" : "error"
+            );
+          }
         }
       }
 
@@ -15270,7 +15358,7 @@
           const useBulk = state.rapidCreate.pendingBulkSync === true;
           state.rapidCreate.pendingBulkSync = false;
           void buildRapidCreateRowsFromEditor({ bulk: useBulk });
-        }, 140);
+        }, 240);
         if (rapidExpressionValidationTimer) {
           window.clearTimeout(rapidExpressionValidationTimer);
         }
@@ -15408,8 +15496,26 @@
       });
 
       document.getElementById("rapidCreateEditor").addEventListener("blur", () => {
+        if (rapidCreateReparseTimer) {
+          window.clearTimeout(rapidCreateReparseTimer);
+          rapidCreateReparseTimer = null;
+        }
+        void buildRapidCreateRowsFromEditor({ bulk: false });
         window.setTimeout(() => closeExpressionSuggestions(), FIELD_HELPER_CLOSE_DELAY_MS);
         window.setTimeout(() => closeFunctionHelper(), FIELD_HELPER_CLOSE_DELAY_MS);
+      });
+
+      document.getElementById("rapidCreateEditor").addEventListener("paste", () => {
+        state.rapidCreate.pendingBulkSync = true;
+        if (rapidCreateReparseTimer) {
+          window.clearTimeout(rapidCreateReparseTimer);
+          rapidCreateReparseTimer = null;
+        }
+        window.setTimeout(() => {
+          const useBulk = state.rapidCreate.pendingBulkSync === true;
+          state.rapidCreate.pendingBulkSync = false;
+          void buildRapidCreateRowsFromEditor({ bulk: useBulk });
+        }, 0);
       });
 
       document.getElementById("rapidCreateEditor").addEventListener("scroll", () => {

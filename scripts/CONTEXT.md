@@ -3972,3 +3972,89 @@ Legend:
     - open Rapid Create and run Create All; verify modal stays responsive,
     - close Rapid Create; verify table catches up in one apply,
     - ensure queued updates still apply correctly when modal closes via X/backdrop/Esc.
+
+## 2026-05-09 - Rapid Create perf pass: reduce full-grid work on single-row changes
+- What changed:
+  - `BetterParameters/palette.html`
+    - Implemented dirty live-op queueing (`rapidDirtyLiveOpsRowKeys`) separate from display dirty rows.
+    - `scheduleRapidDraftSync(...)` now skips queue execution when there are no pending bulk ops and no dirty live-op keys.
+    - `runRapidDraftSyncQueue()` now:
+      - processes only dirty live-op rows in non-bulk mode,
+      - processes full row set only in bulk mode,
+      - tracks whether mutations occurred and avoids unconditional `refreshParameters()`,
+      - schedules debounced refresh instead of immediate per-op refresh,
+      - still supports checkpoint refresh cadence for bulk progress.
+    - Added debounced rapid refresh helper (`scheduleRapidDraftStateRefresh`) to coalesce repeated refreshes.
+    - Removed over-eager full-sweep trigger tied to row count (`lines.length >= 25`);
+      full sweep is now only explicit bulk context.
+    - Rapid editor input cadence tuned:
+      - typing reparse debounce increased to 240ms,
+      - blur forces immediate parse,
+      - paste forces immediate bulk parse.
+    - Added cleanup for new dirty-op queue + refresh timer in rapid modal reset/discard paths.
+- Why:
+  - Addresses observed issue where any rapid row add/edit (including blank bottom rows) still caused broad reevaluation and full state refresh churn.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `432 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion perf smoke:
+    - add/edit one bottom row in large rapid set and verify no broad UI stall,
+    - paste large block and verify one bulk processing path with expected overlay,
+    - ensure rapid close still flushes queued main-table state once.
+
+## 2026-05-09 - Rapid Create warning visibility polish (dark yellow status + gutter caret)
+- What changed:
+  - `BetterParameters/palette.html`
+    - Added `.rapid-create-status-warning` style (dark yellow `#8a6d00`).
+    - Added `.rapid-create-warning-marker` style (dark yellow caret marker).
+    - Rapid preview status class mapping now assigns warning rows to `rapid-create-status-warning` (instead of default white/neutral text).
+    - Rapid editor gutter markers now render for both error and warning rows:
+      - error rows => red caret (`rapid-create-error-marker`)
+      - warning rows => dark yellow caret (`rapid-create-warning-marker`)
+- Why:
+  - Requested UX: warnings should be visually distinct from neutral rows and have warning-level caret markers, similar to error rows.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `432 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion visual smoke in both light/dark themes to confirm warning yellow contrast is readable and distinct from success/error colors.
+
+## 2026-05-09 - Rapid Create discard optimization: close-first + bulk delete from snapshot
+- What changed:
+  - `BetterParameters/palette.html`
+    - Reworked Rapid Create discard flow to avoid live interaction with editor rows during deletion.
+    - Added `snapshotRapidSessionDraftDeleteTargets()`:
+      - captures live draft `{key,name}` targets from `state.rapidCreate.liveDraftByRowKey`,
+      - de-duplicates by key (fallback name token),
+      - holds targets in memory for post-close deletion.
+    - Replaced per-row discard deletes with one bulk action call:
+      - `deleteRapidSessionDraftsBestEffort(deleteTargets)` now calls `ACTION.DELETE_PARAMETERS` once (with timeout) and applies returned state envelope once.
+    - Updated `requestRapidCreateClose()` discard path:
+      - snapshot targets first,
+      - immediately close/discard Rapid Create modal,
+      - then run bulk draft deletion using snapshot targets,
+      - report warning/error only when bulk delete returns failures.
+- Why:
+  - Requested perf/reliability change: remove heavy recalculation churn from row-by-row delete while Rapid Create modal remains active.
+  - New flow minimizes recompute/UI churn by clearing modal state first and reducing delete operations to a single backend transaction.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `432 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion smoke: discard large rapid draft session (e.g., 50-100 created rows) and confirm:
+    - modal dismisses immediately,
+    - bulk delete finishes faster than prior row-by-row flow,
+    - failure summary remains actionable when dependency-protected rows cannot be deleted.
