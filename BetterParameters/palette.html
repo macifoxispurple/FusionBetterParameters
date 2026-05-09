@@ -3884,6 +3884,7 @@
               <button id="ultralightNarrowUiButton" class="ghost" type="button">Ultralight Narrow UI: Off</button>
               <button id="computeModeButton" class="ghost" type="button">Compute: Auto</button>
               <button id="autoFitColumnsButton" class="ghost" type="button">Auto Fit</button>
+              <button id="resetSettingsButton" class="ghost" type="button">Reset Settings</button>
             </div>
           </section>
 
@@ -4208,6 +4209,7 @@
         SAVE_PARAMETER_ORDER: "saveParameterOrder",
         SAVE_GROUP_UI_STATE: "saveGroupUiState",
         SAVE_SETTINGS: "saveSettings",
+        RESET_SETTINGS: "resetSettings",
         SAVE_PALETTE_GEOMETRY: "savePaletteGeometry",
         GET_TEXT_TUNER_STATE: "getTextTunerState",
         SAVE_TEXT_TUNER_STATE: "saveTextTunerState",
@@ -4259,6 +4261,7 @@
         [ACTION.SAVE_PARAMETER_ORDER]: { mutating: true },
         [ACTION.SAVE_GROUP_UI_STATE]: { mutating: true },
         [ACTION.SAVE_SETTINGS]: { mutating: true },
+        [ACTION.RESET_SETTINGS]: { mutating: true },
         [ACTION.SAVE_PALETTE_GEOMETRY]: { mutating: true },
         [ACTION.GET_TEXT_TUNER_STATE]: { readOnly: true },
         [ACTION.SAVE_TEXT_TUNER_STATE]: { mutating: true },
@@ -16547,6 +16550,31 @@
           renderParameters(state.parameters);
           applyColumnWidths();
           setGlobalStatus(error.message, "error");
+        }
+      });
+
+      document.getElementById("resetSettingsButton").addEventListener("click", async () => {
+        const confirmed = await requestConfirmation(
+          "Reset all Better Parameters settings to defaults and reinitialize now?",
+          { title: "Reset Settings", confirmLabel: "Reset", cancelLabel: "Cancel" }
+        );
+        if (!confirmed) {
+          return;
+        }
+        const overlayToken = beginBusyOverlay("Resetting settings...");
+        await yieldForBusyOverlayPaint();
+        try {
+          const response = await sendToFusion(ACTION.RESET_SETTINGS, {});
+          if (!response || response.ok === false) {
+            throw new Error(response?.message || "Failed to reset settings.");
+          }
+          applyStateFromFusion(response, { source: "response", action: ACTION.RESET_SETTINGS });
+          setGlobalStatus("Settings reset. Reinitializing...");
+          window.location.reload();
+        } catch (error) {
+          setGlobalStatus(String(error?.message || "Failed to reset settings."), "error");
+        } finally {
+          await endBusyOverlay(overlayToken);
         }
       });
 

@@ -3634,3 +3634,37 @@ Legend:
 - Remaining risk / next check:
   - In-Fusion rapid-create check across mixed units:
     - `5/16in`, `5/16 in`, `5 mm`, `45deg`, and manual unit overrides.
+
+## 2026-05-09 - Feature: Reset Settings button (clear settings.json + reinitialize)
+- What changed:
+  - `BetterParameters/BetterParameters.py`
+    - Added mutating action `resetSettings` to contract action list.
+    - Added `_reset_settings_to_defaults()` helper:
+      - attempts to delete `settings.json` if present,
+      - falls back to writing defaults if deletion is blocked,
+      - returns fresh settings via `_load_settings()`.
+    - Wired action handler: `resetSettings` now returns `_ok_state(_current_state_payload(settings=...))`.
+  - `BetterParameters/palette.html`
+    - Added Settings menu button: `Reset Settings` (`#resetSettingsButton`).
+    - Added FE action constant/metadata: `ACTION.RESET_SETTINGS` as mutating action.
+    - Added click workflow:
+      - confirmation modal,
+      - busy overlay,
+      - send `resetSettings` to backend,
+      - apply returned state,
+      - trigger `window.location.reload()` to reinitialize add-in UI lifecycle.
+  - `tests/test_settings_persistence.py`
+    - Added coverage for `_reset_settings_to_defaults()`:
+      - resets customized settings back to defaults and removes settings file,
+      - returns defaults when file is missing.
+- Why:
+  - Requested feature: one-click reset of persisted settings with immediate add-in reinitialization.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `430 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion manual smoke: click `Reset Settings`, confirm palette reloads and appearance/layout toggles return to defaults.

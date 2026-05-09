@@ -231,6 +231,7 @@ _MUTATING_ACTIONS = [
     "deleteParameter", "deleteParameters", "renameParameter",
     "updateModelParameter", "promoteModelParameterToUserParameter", "copyParameter", "sortByTimelineOrder",
     "importParameters", "saveSettings", "savePaletteGeometry",
+    "resetSettings",
     "saveTextTunerState", "downloadAndStageUpdate", "reinstallCurrentVersion",
     "syncMetadataJsonToFusion", "syncMetadataFusionToJson", "repairMetadata",
     "importParametersPackage", "seedTestParameters", "resetTestState",
@@ -839,6 +840,7 @@ def _handle_palette_action(action, data):
             settings=_save_settings({k: payload[k] for k in ("paletteSize", "palettePosition", "paletteDockingState") if k in payload}),
             action="savePaletteGeometry",
         ),
+        "resetSettings": lambda _payload: _ok_state(_current_state_payload(settings=_reset_settings_to_defaults())),
         "syncMetadataJsonToFusion": lambda _payload: (lambda sync_result: {
             **_ok_state(_current_state_payload()),
             "syncResult": sync_result,
@@ -1959,6 +1961,19 @@ def _save_settings(data):
     temp_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
     temp_path.replace(settings_path)
     return settings
+
+
+def _reset_settings_to_defaults():
+    settings_path = _settings_path()
+    try:
+        if settings_path.exists():
+            settings_path.unlink()
+    except Exception:
+        # Fall back to writing defaults if delete is blocked.
+        temp_path = settings_path.with_suffix(".tmp")
+        temp_path.write_text(json.dumps(DEFAULT_SETTINGS, indent=2), encoding="utf-8")
+        temp_path.replace(settings_path)
+    return _load_settings()
 
 
 def _format_parameter_value(param, units_manager):
