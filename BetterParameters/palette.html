@@ -7211,7 +7211,7 @@
         state.pendingRenderPushAction = action;
         if (!suppressNotice && !state.pendingRenderPushNoticeShown) {
           state.pendingRenderPushNoticeShown = true;
-          setGlobalStatus("Background update queued while editing. It will apply after edits are saved or discarded.", "warning");
+          appendStatusHistory("Background state update queued while editing; it will auto-apply after edits are saved/discarded.", "warning");
         }
       }
 
@@ -13778,6 +13778,7 @@
             }
             applyStateFromFusion(renameResponse, { source: "response", action: ACTION.RENAME_PARAMETER });
             await ensureModelParametersForCurrentQuery(true);
+            await refreshParameters({ silentStatus: true });
             currentName = nextName;
             if (parameterKey) {
               const refreshedRow = getParameterRowByKey(parameterKey);
@@ -14070,6 +14071,7 @@
 
           if (modelRefreshNeededAfterRename) {
             await ensureModelParametersForCurrentQuery(true);
+            await refreshParameters({ silentStatus: true });
           }
 
           if (!stoppedByTransportFailure) {
@@ -17408,6 +17410,7 @@
           setCreateExpressionValue("");
           syncDefaultUnit(true);
           applyStateFromFusion(response);
+          await refreshParameters({ silentStatus: true });
           setCreateModalOpen(false, { restoreFocus: false });
           setGlobalStatus(`Created ${data.name}.`, "success");
         } catch (error) {

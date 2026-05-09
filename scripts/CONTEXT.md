@@ -3708,3 +3708,38 @@ Legend:
     - verify `runOnStartup` becomes false in manifest,
     - restart Fusion and confirm Better Parameters does not auto-load,
     - verify local Better Parameters artifact directories/files were removed.
+
+## 2026-05-09 - Bugfix: enforce refresh after create and rename flows
+- What changed:
+  - `BetterParameters/palette.html`
+    - Create modal submit path now performs `await refreshParameters({ silentStatus: true })` immediately after successful `createParameter` state apply.
+    - Single-row rename path in `applyRowEdits(...)` now performs `await refreshParameters({ silentStatus: true })` after successful rename + model query refresh.
+    - Apply-all rename flow now performs `await refreshParameters({ silentStatus: true })` once after rename batch phase when any rename occurred.
+- Why:
+  - Requested reliability fix: ensure table values/state refreshes after parameter creation from modal and after name changes in the table.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `430 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion smoke: create param from modal, rename a row, and rename multiple rows via Apply All; confirm value/preview/dependent rows reflect updated state without manual refresh.
+
+## 2026-05-09 - UX polish: suppress warning-style queued-background-edit toast
+- What changed:
+  - `BetterParameters/palette.html`
+    - In `queuePendingStateEnvelope(...)`, replaced user-facing `setGlobalStatus(..., "warning")` with `appendStatusHistory(...)` log-only entry.
+    - Routine queued background-state updates while editing no longer show warning/error-looking toast in normal UI.
+- Why:
+  - Requested UX behavior: this routine, expected, quick operation should not present as an error-like warning to users.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `430 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion smoke while editing a row and receiving background updates; verify no warning toast appears and queued state still applies after save/discard.
