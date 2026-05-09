@@ -278,11 +278,10 @@ class TestValidateExpressionLiterals:
         assert "Unclosed" in result["message"]
         assert result.get("isIncomplete") is False
 
-    def test_unclosed_double_quote_error(self):
+    def test_non_text_unclosed_double_quote_not_treated_as_text_literal_error(self):
         with _patched_validate() as validate:
             result = validate('"unclosed')
-        assert result["ok"] is False
-        assert "Unclosed" in result["message"]
+        assert "unclosed text literal" not in str(result.get("message", "")).lower()
 
     def test_normal_numeric_expression_unchanged(self):
         with _patched_validate(("width", "height")) as validate:
@@ -332,6 +331,19 @@ class TestValidateExpressionLiterals:
             result = validate("'hello world'", units="text")
         assert result["ok"] is True, result.get("message")
 
+    def test_non_text_inch_quote_marker_not_treated_as_unclosed_literal(self):
+        with _patched_validate() as validate:
+            result = validate('5/16"', units="mm")
+        assert result["ok"] is True, result.get("message")
+        assert "unclosed text literal" not in str(result.get("message", "")).lower()
+
+    def test_non_text_foot_quote_marker_not_treated_as_unclosed_literal(self):
+        with _patched_validate() as validate:
+            result = validate("1' + 2 mm", units="mm")
+        assert result["ok"] is True, result.get("message")
+        assert "unclosed text literal" not in str(result.get("message", "")).lower()
+
+
 
 def test_preview_expression_text_unit_returns_unwrapped_preview():
     with _patched_validate():
@@ -345,3 +357,8 @@ def test_text_expression_translation_roundtrip():
     assert fusion_text == "'O''Hare'"
     ui_text = bp._normalize_text_expression_for_ui(fusion_text, "text")
     assert ui_text == "`O'Hare`"
+
+
+def test_normalize_expression_for_fusion_passes_non_text_through():
+    assert bp._normalize_expression_for_fusion("5/16in", "in") == "5/16in"
+    assert bp._normalize_expression_for_fusion(" 5/16 in ", "") == "5/16 in"

@@ -2245,9 +2245,7 @@ def _update_parameter(data):
     if not parameter:
         raise ValueError("User parameter was not found.")
 
-    expression_for_fusion = expression
-    if str(parameter.unit or "").strip().lower() == "text":
-        expression_for_fusion = _normalize_text_expression_for_fusion(expression)
+    expression_for_fusion = _normalize_expression_for_fusion(expression, str(parameter.unit or ""))
     parameter.expression = expression_for_fusion
     parameter.comment = comment
 
@@ -2294,9 +2292,7 @@ def _batch_update_parameters(data):
             })
             continue
 
-        expression_for_fusion = expression
-        if str(param.unit or "").strip().lower() == "text":
-            expression_for_fusion = _normalize_text_expression_for_fusion(expression)
+        expression_for_fusion = _normalize_expression_for_fusion(expression, str(param.unit or ""))
         try:
             value_input = adsk.core.ValueInput.createByString(expression_for_fusion)
         except Exception as exc:
@@ -2708,9 +2704,7 @@ def _create_parameter(data):
     if not validation["ok"]:
         raise ValueError(validation["message"])
 
-    expression_for_fusion = expression
-    if str(units or "").strip().lower() == "text":
-        expression_for_fusion = _normalize_text_expression_for_fusion(expression)
+    expression_for_fusion = _normalize_expression_for_fusion(expression, units)
     expression_validation = _validate_expression_response(expression_for_fusion, name, units)
     if not expression_validation["ok"]:
         raise ValueError(expression_validation["message"])
@@ -2956,7 +2950,8 @@ def _update_parameter_unit(data):
         raise ValueError(unit_result["message"])
     normalized_unit = unit_result["unit"]
 
-    expr_result = _validate_expression_response(new_expression, str(parameter.name or ""), normalized_unit)
+    expression_for_fusion = _normalize_expression_for_fusion(new_expression, normalized_unit)
+    expr_result = _validate_expression_response(expression_for_fusion, str(parameter.name or ""), normalized_unit)
     if not expr_result["ok"]:
         raise ValueError(expr_result["message"])
 
@@ -2979,7 +2974,7 @@ def _update_parameter_unit(data):
     except Exception as exc:
         raise ValueError(f"Fusion could not change unit for '{param_name}' because it is in use: {exc}")
 
-    value_input = adsk.core.ValueInput.createByString(new_expression)
+    value_input = adsk.core.ValueInput.createByString(expression_for_fusion)
     created = design.userParameters.add(param_name, value_input, normalized_unit, param_comment)
     if not created:
         raise ValueError("Fusion could not recreate the parameter with the new unit.")
@@ -4806,6 +4801,39 @@ def _mask_expression_literals(text):
     return ''.join(result), None
 
 
+def _mask_backtick_literals_only(text):
+    """Mask only backtick-delimited literals for non-text expression token scans.
+
+    In non-text expressions, single/double quotes can be valid unit markers
+    (e.g. 5/16", 1') and must not be treated as string delimiters.
+    """
+    if text is None:
+        text = ""
+    text = str(text)
+    result = []
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch == '`':
+            i += 1
+            closed = False
+            while i < n:
+                c = text[i]
+                if c == '`':
+                    i += 1
+                    closed = True
+                    break
+                i += 1
+            if not closed:
+                return None, 'Unclosed text literal.'
+            result.append('0')
+        else:
+            result.append(ch)
+            i += 1
+    return ''.join(result), None
+
+
 def _validate_expression_response(expression, current_parameter_name="", units=""):
     text = (expression or "").strip()
     if not text:
@@ -4829,9 +4857,9 @@ def _validate_expression_response(expression, current_parameter_name="", units="
             return {"ok": False, "message": "Unclosed text literal.", "isIncomplete": False}
         return {"ok": True, "message": "", "isIncomplete": False}
 
-    # Mask literal regions before token scanning so content inside "..." or `...`
-    # is never misidentified as parameter references.
-    masked, literal_error = _mask_expression_literals(text)
+    # For non-text expressions, only backticks are treated as text literal
+    # delimiters. Single/double quotes are valid unit markers (ft/in).
+    masked, literal_error = _mask_backtick_literals_only(text)
     if literal_error:
         return {"ok": False, "message": literal_error, "isIncomplete": False}
 
@@ -4927,6 +4955,13 @@ def _normalize_text_expression_for_fusion(expression):
         inner = text[1:-1].replace("'", "''")
         return f"'{inner}'"
     return text
+
+
+def _normalize_expression_for_fusion(expression, units=""):
+    normalized_units = str(units or "").strip().lower()
+    if normalized_units == "text":
+        return _normalize_text_expression_for_fusion(expression)
+    return str(expression or "").strip()
 
 
 def _normalize_text_expression_for_ui(expression, units=""):

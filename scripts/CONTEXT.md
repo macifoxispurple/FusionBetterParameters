@@ -3509,3 +3509,128 @@ Legend:
     - `VERIFY OK palette.html`
 - Remaining risk / next check:
   - Manual FE smoke in Fusion: select unit/token suggestions repeatedly in row editor + rapid create editor; confirm single trailing space insertion and expected caret position.
+
+## 2026-05-09 - Bugfix: accept leading fractional-inch style expressions without required leading zero
+- What changed:
+  - `BetterParameters/BetterParameters.py`
+    - Added `_normalize_leading_fraction_unit_expression(expression)` to normalize leading mixed-fraction shorthand at expression start:
+      - `5/16in` -> `0 5/16in`
+      - `5/16 in` -> `0 5/16 in`
+    - Applied normalization in `_validate_expression_response(...)` so validator no longer rejects these forms.
+    - Applied normalization in `_normalize_text_expression_for_fusion(...)` for non-text expressions so update/create paths stay consistent with validator behavior.
+    - Applied normalization in `_preview_expression_response(...)` before evaluateExpression for preview parity.
+  - `tests/test_literal_masking.py`
+    - Added direct helper tests for normalization behavior.
+    - Added validation test proving `5/16in` succeeds via normalized form.
+- Why:
+  - Reported bug: validator required leading integer (`0 5/16in`) though shorthand fractional inches (`5/16in`) should be accepted.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `427 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion manual check on row expression edit and rapid create with forms:
+    - `5/16in`, `-3/8 in`, `5/16in + 1/8in`.
+
+## 2026-05-09 - Follow-up fix: unify fractional-inch normalization across validate + apply paths
+- What changed:
+  - `BetterParameters/BetterParameters.py`
+    - Added `_normalize_expression_for_fusion(expression, units)` and routed all key mutation paths through it.
+    - Updated:
+      - `_update_parameter(...)`
+      - `_batch_update_parameters(...)`
+      - `_create_parameter(...)`
+      - `_update_parameter_unit(...)` (validation input and createByString input)
+    - This ensures shorthand fractions like `5/16in` are normalized consistently for both validation and execution (not validation-only).
+  - `tests/test_literal_masking.py`
+    - Added helper coverage for `_normalize_expression_for_fusion(...)` non-text fractional behavior.
+- Why:
+  - Regression report showed validation pass but execution mismatch across entry points (Rapid Create failure and row edit invalidation).
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `428 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion checks for parity across all entry points:
+    - row edit save with `5/16in`,
+    - new parameter modal create with `5/16in`,
+    - Rapid Create create with `5/16in`,
+    - unit-change flow with same shorthand.
+
+## 2026-05-09 - Fusion-parity revert: remove non-text fraction normalization and pass raw expression through
+- What changed:
+  - `BetterParameters/BetterParameters.py`
+    - Reverted non-text expression normalization behavior introduced for leading fractions.
+    - `_validate_expression_response(...)` now validates raw trimmed expression text again.
+    - `_preview_expression_response(...)` now evaluates raw trimmed expression text again.
+    - `_normalize_expression_for_fusion(expression, units)` now:
+      - keeps text-unit normalization (`_normalize_text_expression_for_fusion`) only,
+      - returns raw trimmed expression for all non-text units.
+    - Removed `_normalize_leading_fraction_unit_expression(...)` helper and all call sites.
+  - `tests/test_literal_masking.py`
+    - Removed tests asserting forced non-text fraction rewrite.
+    - Added assertion that non-text expressions pass through unchanged in `_normalize_expression_for_fusion`.
+- Why:
+  - User confirmed desired behavior is parity with native Fusion parser/canonicalizer, including distinct canonical outputs for `5/16` vs `5/16"` in inch contexts.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `426 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion parity smoke across all entry paths (table/new/rapid):
+    - `5/16` should canonicalize per Fusion,
+    - `5/16"` should canonicalize per Fusion,
+    - behavior should now match native parameter dialog semantics.
+
+## 2026-05-09 - Quote-marker validation durability: non-text path no longer treats ' and " as text literals
+- What changed:
+  - `BetterParameters/BetterParameters.py`
+    - Added `_mask_backtick_literals_only(text)` for non-text expression token scans.
+    - Updated `_validate_expression_response(...)` non-text path to use backtick-only masking.
+    - This prevents inch/foot quote markers (`"`, `'`) from triggering `Unclosed text literal.` in non-text units.
+    - Text-unit validation behavior remains unchanged (full quote/backtick literal handling still applies for `units == text`).
+  - `tests/test_literal_masking.py`
+    - Added non-text regression coverage:
+      - `5/16"` valid path does not emit unclosed-literal message.
+      - `1' + 2 mm` valid path does not emit unclosed-literal message.
+    - Updated prior test expecting non-text `"unclosed` literal failure to reflect new intended behavior.
+- Why:
+  - Need graceful/durable handling for inch/foot markers in expressions across all unit contexts, including metric parameters.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `428 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion smoke for non-text expressions using quote unit markers in table/new/rapid paths (`5/16"`, `1'`, `3' + 5/16"`) and ensure no literal-error surfacing.
+
+## 2026-05-09 - Rapid create unit submission parity refinement (all units)
+- What changed:
+  - `BetterParameters/palette.html`
+    - Updated `normalizeRapidExpressionForFusion(expression, units)` non-text branch to apply detected/manual unit submission semantics generically for all units.
+    - If a row has a detected/manual unit and expression ends with the same unit token, rapid path strips the trailing duplicate unit token before Fusion validate/preview/create calls.
+      - Example: `5/16in` + unit `in` -> expression payload `5/16`, unit payload `in`.
+    - Behavior is unit-agnostic (`in`, `mm`, `deg`, etc.), not limited to imperial markers.
+- Why:
+  - Requested parity: Rapid should submit with displayed detected/manual unit like New modal, consistently across all unit systems.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `428 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion rapid-create check across mixed units:
+    - `5/16in`, `5/16 in`, `5 mm`, `45deg`, and manual unit overrides.

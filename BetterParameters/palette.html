@@ -5571,6 +5571,17 @@
           }
           return `\`${body}\``;
         }
+        // For non-text units, rapid-create rows should behave like New modal:
+        // when unit is supplied separately, avoid duplicate trailing unit token
+        // inside expression (e.g. "5/16in" + unit "in" -> "5/16").
+        if (normalizedUnits) {
+          const escapedUnit = normalizedUnits.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const trailingUnitPattern = new RegExp(`^(.*?)(?:\\s*)${escapedUnit}\\s*$`, "i");
+          const unitMatch = raw.match(trailingUnitPattern);
+          if (unitMatch && unitMatch[1] && unitMatch[1].trim()) {
+            raw = unitMatch[1].trimEnd();
+          }
+        }
         // For non-text units, submit exactly what the user authored and let
         // backend/Fusion validation handle literal semantics.
         return raw;
