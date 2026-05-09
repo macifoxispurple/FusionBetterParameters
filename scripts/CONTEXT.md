@@ -3813,3 +3813,76 @@ Legend:
     - `VERIFY OK palette.html`
 - Remaining risk / next check:
   - In-Fusion smoke: type all three fields, dismiss via X/backdrop/Esc and confirm discard, reopen modal and verify fields are empty.
+
+## 2026-05-09 - Rapid Create live-draft workflow (Fusion-real create/update/delete with sequential processing)
+- What changed:
+  - `BetterParameters/palette.html`
+    - Rapid Create state expanded for live-draft lifecycle + session tracking:
+      - `processing`, `queueVersion`, `pendingBulkSync`, `sessionId`, `sessionCreatedKeys`, `sessionCreatedNames`, `liveDraftByRowKey`, `lastLineCount`.
+    - Added helper primitives for live draft sync:
+      - session id generation, row snapshot/diff, row->liveDraft map getters/setters.
+      - async timeout wrapper (`withRapidTimeout`, default 8000ms).
+      - live-draft sync scheduler + sequential ack-driven processor (`scheduleRapidDraftSync`, `runRapidDraftSyncQueue`).
+    - Live create/update behavior:
+      - ready rows auto-create as real Fusion params when parsed in live mode.
+      - existing live rows auto-update only when row snapshot differs from last committed values.
+      - rename path executed only when row name changed.
+      - removed rows from rapid editor trigger best-effort deletion of linked live drafts.
+    - Bulk/paste handling:
+      - line-count delta heuristic marks bulk sync mode.
+      - bulk mode uses blocking `Processing...` overlay and sequential row processing.
+      - checkpoint refresh every 25 processed rows + final refresh.
+    - UI lifecycle semantics:
+      - preview status now reflects processing/live states.
+      - Rapid editor is disabled while processing/validating to prevent races.
+      - `Create All` now flushes/settles live draft queue and only reports success when no errors/pending/in-flight rows remain.
+      - discard-close now deletes live drafts from this session best-effort before modal reset.
+    - modal reset/cleanup expanded to clear new rapid session/queue/live-draft state.
+- Why:
+  - Implement live-draft Rapid Create so expressions/autocomplete/validation/calculation use real Fusion-created params, while preserving current Rapid Create UX and adding safe sequential processing and discard cleanup.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `430 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion smoke required for new rapid live-draft semantics:
+    - single-row live create/update/delete,
+    - dependent-row expression references (newly created row used by later row),
+    - bulk paste with overlay lock and checkpoint/final refresh behavior,
+    - discard-close best-effort delete warnings path.
+
+## 2026-05-09 - Live-draft name-collision self-ignore fix (Rapid Create)
+- What changed:
+  - `BetterParameters/BetterParameters.py`
+    - Extended `validateParameterName` backend path to accept optional:
+      - `currentParameterName`
+      - `currentParameterKey`
+    - Updated `_validate_parameter_name_response(...)` to treat self-name as valid when the requested name matches the current parameter identity (by name and/or resolved key token).
+    - Collision rejection behavior for non-self parameters is unchanged.
+  - `BetterParameters/palette.html`
+    - Rapid live validation now sends self context with name checks for live drafts:
+      - `currentParameterName`, `currentParameterKey`.
+    - Added local FE guard to avoid false duplicate on rapid rows when duplicate is the same linked live draft parameter.
+    - Updated standard row-name validation request to also pass current row identity for backend consistency.
+    - Live rename flow already updates `existingLive.name` baseline after successful rename; retained as canonical baseline source.
+  - `tests/test_parameter_name.py`
+    - Added regression tests for self-ignore behavior:
+      - collision ignored when `currentParameterName` matches,
+      - collision ignored when `currentParameterKey` resolves to same parameter.
+- Why:
+  - Fixes oversight where live-draft Rapid Create rows falsely report duplicate-name collisions against themselves after successful creation.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `432 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion smoke for rapid live draft naming:
+    - create row -> no self-collision warning,
+    - rename live draft -> keep typing same new name no false collision,
+    - true collision against another existing param still errors.

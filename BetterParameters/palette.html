@@ -4834,6 +4834,14 @@
           rows: [],
           counts: { ready: 0, warnings: 0, errors: 0, created: 0, failed: 0 },
           validating: false,
+          processing: false,
+          queueVersion: 0,
+          pendingBulkSync: false,
+          sessionId: "",
+          sessionCreatedKeys: [],
+          sessionCreatedNames: [],
+          liveDraftByRowKey: {},
+          lastLineCount: 0,
           activeLineNumber: 1,
           unitOverridesByRowKey: {},
           lastCommittedText: "",
@@ -4923,6 +4931,82 @@
           message: "",
           createState: ""
         };
+      }
+
+      function ensureRapidCreateSession() {
+        if (state.rapidCreate.sessionId) {
+          return state.rapidCreate.sessionId;
+        }
+        state.rapidCreate.sessionId = `rc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+        return state.rapidCreate.sessionId;
+      }
+
+      function getRapidRowSnapshot(row) {
+        return {
+          name: String(row?.name || ""),
+          expression: String(row?.expression || ""),
+          comment: String(row?.comment || ""),
+          unit: String(row?.detectedUnit || "")
+        };
+      }
+
+      function hasRapidRowChanges(row, baseline) {
+        if (!row || !baseline) {
+          return true;
+        }
+        const current = getRapidRowSnapshot(row);
+        return (
+          current.name !== String(baseline.name || "")
+          || current.expression !== String(baseline.expression || "")
+          || current.comment !== String(baseline.comment || "")
+          || current.unit !== String(baseline.unit || "")
+        );
+      }
+
+      function getRapidLiveDraftByRowKey(rowKey) {
+        const key = String(rowKey || "");
+        if (!key) {
+          return null;
+        }
+        return state.rapidCreate.liveDraftByRowKey[key] || null;
+      }
+
+      function rapidRowHasSelfNameCollisionOnly(row) {
+        if (!row || !row.name) {
+          return false;
+        }
+        const liveDraft = getRapidLiveDraftByRowKey(row.rowKey);
+        if (!liveDraft) {
+          return false;
+        }
+        const rowName = String(row.name || "").trim().toLowerCase();
+        const liveName = String(liveDraft.name || "").trim().toLowerCase();
+        if (!rowName || !liveName || rowName !== liveName) {
+          return false;
+        }
+        const rowKey = String(liveDraft.key || "");
+        return (state.parameters || []).some((param) => {
+          const paramName = String(param?.name || "").trim().toLowerCase();
+          if (paramName !== rowName) {
+            return false;
+          }
+          if (rowKey && String(param?.key || "") === rowKey) {
+            return true;
+          }
+          return false;
+        });
+      }
+
+      function setRapidLiveDraftForRow(rowKey, value) {
+        const key = String(rowKey || "");
+        if (!key) {
+          return;
+        }
+        if (!value) {
+          delete state.rapidCreate.liveDraftByRowKey[key];
+          return;
+        }
+        state.rapidCreate.liveDraftByRowKey[key] = value;
       }
 
       function parseRapidCreateLine(rawLine, lineNumber, options = {}) {
@@ -5096,6 +5180,24 @@
           const parsed = parseRapidCreateLine(line, index + 1, { mode, activeLineNumber });
           if (parsed) {
             parsed.rowKey = getRapidRowKey(parsed);
+            const liveDraft = getRapidLiveDraftByRowKey(parsed.rowKey);
+            if (liveDraft) {
+              parsed.liveState = String(liveDraft.liveState || "live");
+              parsed.liveKey = String(liveDraft.key || "");
+              parsed.liveName = String(liveDraft.name || "");
+              parsed.lastCommitted = {
+                name: String(liveDraft.lastCommitted?.name || ""),
+                expression: String(liveDraft.lastCommitted?.expression || ""),
+                comment: String(liveDraft.lastCommitted?.comment || ""),
+                unit: String(liveDraft.lastCommitted?.unit || "")
+              };
+              parsed.createState = parsed.liveState;
+            } else {
+              parsed.liveState = "draft";
+              parsed.liveKey = "";
+              parsed.liveName = "";
+              parsed.lastCommitted = null;
+            }
             baseRows.push(parsed);
           }
         });
@@ -5113,7 +5215,7 @@
           }
           if (row.name) {
             const localNameError = validateParameterNameLocallyForRow(row.name, null);
-            if (localNameError) {
+            if (localNameError && !rapidRowHasSelfNameCollisionOnly(row)) {
               row.nameErrors.push(localNameError);
             }
           }
@@ -5240,6 +5342,7 @@
         renderRapidCreatePreview();
         if (mode === "live") {
           scheduleRapidComputeForMissingRows();
+          scheduleRapidDraftSync({ bulk: baseRows.length >= 8 });
         }
       }
 
@@ -5262,12 +5365,29 @@
             // Only backend-preflight rows that passed local parse/name/unit checks.
             if (row.severity === "ready") {
               try {
-                const nameValidation = await sendToFusion(ACTION.VALIDATE_PARAMETER_NAME, { name: row.name || "" });
+                const liveDraft = getRapidLiveDraftByRowKey(row.rowKey);
+                const nameValidation = await sendToFusion(ACTION.VALIDATE_PARAMETER_NAME, {
+                  name: row.name || "",
+                  currentParameterName: String(liveDraft?.name || ""),
+                  currentParameterKey: String(liveDraft?.key || "")
+                });
                 if (computeNonce !== rapidComputeAllRowsNonce) {
                   return;
                 }
                 const liveRow = (state.rapidCreate.rows || []).find((item) => String(item.rowKey || "") === String(row.rowKey || ""));
                 if (!nameValidation.ok) {
+                  const liveDraft = getRapidLiveDraftByRowKey(row.rowKey);
+                  const isSelfName = !!liveDraft
+                    && String(liveDraft.name || "").trim().toLowerCase() === String(row.name || "").trim().toLowerCase();
+                  if (isSelfName) {
+                    if (liveRow && liveRow.severity !== "ready") {
+                      liveRow.severity = "ready";
+                      liveRow.status = "ready";
+                      liveRow.message = "Ready";
+                      changed = true;
+                    }
+                    continue;
+                  }
                   if (liveRow) {
                     liveRow.nameErrors = [String(nameValidation.message || "Invalid parameter name.")];
                     liveRow.severity = "error";
@@ -5355,6 +5475,7 @@
         const body = document.getElementById("rapidCreatePreviewBody");
         const activeStatus = document.getElementById("rapidCreateActiveStatus");
         const createAllButton = document.getElementById("rapidCreateCreateAllButton");
+        const editor = document.getElementById("rapidCreateEditor");
         if (!summary || !body) {
           return;
         }
@@ -5375,21 +5496,28 @@
             ? `${activeRow.isManualUnitOverride ? "(MANUAL) " : ""}${String(activeRow.status || "draft").toUpperCase()}: ${String(activeRow.message || "Continue typing.")}`
             : "";
           const liveMessage = String(state.rapidCreate.liveExpressionMessage || "");
-          activeStatus.textContent = liveMessage ? `${baseMessage} | ${liveMessage}` : baseMessage;
+          const processingMessage = state.rapidCreate.processing === true ? "Processing..." : "";
+          const merged = [baseMessage, liveMessage, processingMessage].filter(Boolean).join(" | ");
+          activeStatus.textContent = merged;
         }
         const hardErrors = rows.filter((row) => row.severity === "error").length;
         const commitEligible = rows.filter((row) => row.severity === "ready").length;
         if (createAllButton) {
-          const disabled = state.rapidCreate.validating === true || hardErrors > 0 || commitEligible <= 0;
+          const inFlightRows = rows.filter((row) => row.createState === "creating" || row.createState === "updating").length;
+          const disabled = state.rapidCreate.validating === true || state.rapidCreate.processing === true || hardErrors > 0 || inFlightRows > 0 || commitEligible <= 0;
           createAllButton.disabled = disabled;
           createAllButton.classList.toggle("is-disabled", disabled);
+        }
+        if (editor) {
+          editor.disabled = state.rapidCreate.processing === true || state.rapidCreate.validating === true;
         }
         if (!rows.length) {
           body.innerHTML = `<tr><td colspan="5" class="muted">No rows yet.</td></tr>`;
           return;
         }
         body.innerHTML = rows.map((row) => {
-          const statusText = `${row.isManualUnitOverride ? "(MANUAL) " : ""}${String(row.status || "draft").toUpperCase()}`;
+          const baseStatus = String(row.status || row.createState || "draft");
+          const statusText = `${row.isManualUnitOverride ? "(MANUAL) " : ""}${baseStatus.toUpperCase()}`;
           const isError = row.severity === "error";
           const isWarning = row.severity === "warning";
           const statusClass = isError ? "rapid-create-status-error" : (isWarning ? "" : "rapid-create-status-ok");
@@ -5454,6 +5582,12 @@
         if (isOpen) {
           setSettingsPanelOpen(false);
           if (options.reset !== false) {
+            state.rapidCreate.sessionId = "";
+            state.rapidCreate.sessionCreatedKeys = [];
+            state.rapidCreate.sessionCreatedNames = [];
+            state.rapidCreate.liveDraftByRowKey = {};
+            state.rapidCreate.processing = false;
+            state.rapidCreate.pendingBulkSync = false;
             state.rapidCreate.rows = [];
             state.rapidCreate.counts = { ready: 0, warnings: 0, errors: 0, created: 0, failed: 0 };
             state.rapidCreate.unitOverridesByRowKey = {};
@@ -5463,6 +5597,7 @@
             if (editor) {
               editor.value = "";
             }
+            state.rapidCreate.lastLineCount = 0;
             state.rapidCreate.lastCommittedText = "";
             renderRapidCreatePreview();
           }
@@ -5470,6 +5605,12 @@
           return;
         }
         if (options.discard === true) {
+          state.rapidCreate.sessionId = "";
+          state.rapidCreate.sessionCreatedKeys = [];
+          state.rapidCreate.sessionCreatedNames = [];
+          state.rapidCreate.liveDraftByRowKey = {};
+          state.rapidCreate.processing = false;
+          state.rapidCreate.pendingBulkSync = false;
           state.rapidCreate.rows = [];
           state.rapidCreate.counts = { ready: 0, warnings: 0, errors: 0, created: 0, failed: 0 };
           state.rapidCreate.unitOverridesByRowKey = {};
@@ -5480,6 +5621,7 @@
           if (editor) {
             editor.value = "";
           }
+          state.rapidCreate.lastLineCount = 0;
         }
         if (rapidExpressionValidationTimer) {
           window.clearTimeout(rapidExpressionValidationTimer);
@@ -5696,8 +5838,258 @@
         renderRapidCreatePreview();
       }
 
+      function getRapidRowLiveSnapshot(row) {
+        return {
+          name: String(row?.name || ""),
+          expression: normalizeRapidExpressionForFusion(row?.expression || "", row?.detectedUnit || ""),
+          comment: String(row?.comment || ""),
+          unit: String(row?.detectedUnit || "")
+        };
+      }
+
+      function withRapidTimeout(promise, timeoutMs = 8000) {
+        return new Promise((resolve, reject) => {
+          let settled = false;
+          const timer = window.setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            reject(new Error(`Timed out after ${timeoutMs}ms while waiting for Fusion.`));
+          }, timeoutMs);
+          Promise.resolve(promise).then((value) => {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timer);
+            resolve(value);
+          }).catch((error) => {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timer);
+            reject(error);
+          });
+        });
+      }
+
+      function findUserParameterByNameFromState(name) {
+        const target = String(name || "").trim().toLowerCase();
+        if (!target) {
+          return null;
+        }
+        return (state.parameters || []).find((param) => String(param?.name || "").trim().toLowerCase() === target) || null;
+      }
+
+      function scheduleRapidDraftSync(options = {}) {
+        if (state.rapidCreate.validating === true) {
+          return;
+        }
+        if (!document.getElementById("rapidCreateModal") || document.getElementById("rapidCreateModal").hidden) {
+          return;
+        }
+        const isBulk = options.bulk === true;
+        state.rapidCreate.pendingBulkSync = state.rapidCreate.pendingBulkSync || isBulk;
+        state.rapidCreate.queueVersion = Number(state.rapidCreate.queueVersion || 0) + 1;
+        const targetVersion = state.rapidCreate.queueVersion;
+        window.setTimeout(() => {
+          if (Number(state.rapidCreate.queueVersion || 0) !== targetVersion) {
+            return;
+          }
+          void runRapidDraftSyncQueue();
+        }, isBulk ? 20 : 140);
+      }
+
+      async function runRapidDraftSyncQueue() {
+        if (state.rapidCreate.processing === true) {
+          return;
+        }
+        state.rapidCreate.processing = true;
+        const isBulk = state.rapidCreate.pendingBulkSync === true;
+        state.rapidCreate.pendingBulkSync = false;
+        const overlayToken = isBulk ? beginBusyOverlay("Processing...") : "";
+        try {
+          ensureRapidCreateSession();
+          const rows = Array.isArray(state.rapidCreate.rows) ? state.rapidCreate.rows.slice() : [];
+          const currentKeys = new Set(rows.map((row) => String(row?.rowKey || "")).filter(Boolean));
+          const removedEntries = Object.entries(state.rapidCreate.liveDraftByRowKey || {})
+            .filter(([rowKey]) => !currentKeys.has(String(rowKey || "")));
+          for (const [rowKey, removedLive] of removedEntries) {
+            try {
+              const deleteResponse = await withRapidTimeout(sendToFusion(ACTION.DELETE_PARAMETER, {
+                key: String(removedLive?.key || ""),
+                name: String(removedLive?.name || "")
+              }), 8000);
+              if (!deleteResponse?.ok) {
+                throw new Error(deleteResponse?.message || "Delete failed.");
+              }
+              applyStateFromFusion(deleteResponse, { source: "response", action: ACTION.DELETE_PARAMETER });
+              setRapidLiveDraftForRow(rowKey, null);
+            } catch (_error) {
+              // Keep orphan entry for user-facing discard retry path.
+            }
+          }
+          let processed = 0;
+          for (const row of rows) {
+            const liveRow = findRapidRowByKey(row?.rowKey);
+            if (!liveRow) {
+              continue;
+            }
+            if (liveRow.severity !== "ready") {
+              continue;
+            }
+            const existingLive = getRapidLiveDraftByRowKey(liveRow.rowKey);
+            if (!existingLive) {
+              liveRow.liveState = "creating";
+              liveRow.createState = "creating";
+              renderRapidCreatePreview();
+              try {
+                const createResponse = await withRapidTimeout(sendToFusion(ACTION.CREATE_PARAMETER, {
+                  name: liveRow.name,
+                  unit: String(liveRow.detectedUnit || ""),
+                  expression: normalizeRapidExpressionForFusion(liveRow.expression, liveRow.detectedUnit || ""),
+                  comment: String(liveRow.comment || "")
+                }), 8000);
+                if (!createResponse?.ok) {
+                  throw new Error(createResponse?.message || "Create failed.");
+                }
+                applyStateFromFusion(createResponse, { source: "response", action: ACTION.CREATE_PARAMETER });
+                const createdParam = findUserParameterByNameFromState(liveRow.name);
+                setRapidLiveDraftForRow(liveRow.rowKey, {
+                  key: String(createdParam?.key || ""),
+                  name: String(liveRow.name || ""),
+                  liveState: "live",
+                  lastCommitted: getRapidRowLiveSnapshot(liveRow),
+                  sessionId: state.rapidCreate.sessionId
+                });
+                if (!state.rapidCreate.sessionCreatedNames.includes(String(liveRow.name || ""))) {
+                  state.rapidCreate.sessionCreatedNames.push(String(liveRow.name || ""));
+                }
+                if (createdParam?.key && !state.rapidCreate.sessionCreatedKeys.includes(String(createdParam.key))) {
+                  state.rapidCreate.sessionCreatedKeys.push(String(createdParam.key));
+                }
+                liveRow.liveState = "live";
+                liveRow.createState = "live";
+                liveRow.status = "live";
+                liveRow.message = "Live draft created.";
+              } catch (error) {
+                liveRow.liveState = "error";
+                liveRow.createState = "error";
+                liveRow.status = "error";
+                liveRow.severity = "error";
+                liveRow.message = String(error?.message || "Create failed.");
+              }
+              processed += 1;
+              if (isBulk && processed % 25 === 0) {
+                await refreshParameters();
+              }
+              renderRapidCreatePreview();
+              continue;
+            }
+
+            const baseline = existingLive.lastCommitted || null;
+            if (!hasRapidRowChanges({
+              name: liveRow.name,
+              expression: normalizeRapidExpressionForFusion(liveRow.expression, liveRow.detectedUnit || ""),
+              comment: liveRow.comment,
+              detectedUnit: liveRow.detectedUnit
+            }, baseline)) {
+              liveRow.liveState = "live";
+              liveRow.createState = "live";
+              liveRow.status = "live";
+              liveRow.message = "Live draft up to date.";
+              continue;
+            }
+
+            liveRow.liveState = "updating";
+            liveRow.createState = "updating";
+            liveRow.status = "updating";
+            liveRow.message = "Updating live draft...";
+            renderRapidCreatePreview();
+            try {
+              const targetKey = String(existingLive.key || "");
+              const targetName = String(existingLive.name || liveRow.name || "");
+              if (targetName && targetName !== String(liveRow.name || "")) {
+                const renameResponse = await withRapidTimeout(sendToFusion(ACTION.RENAME_PARAMETER, {
+                  key: targetKey,
+                  name: targetName,
+                  newName: String(liveRow.name || "")
+                }), 8000);
+                if (!renameResponse?.ok) {
+                  throw new Error(renameResponse?.message || "Rename failed.");
+                }
+                applyStateFromFusion(renameResponse, { source: "response", action: ACTION.RENAME_PARAMETER });
+                existingLive.name = String(liveRow.name || "");
+              }
+              const updateResponse = await withRapidTimeout(sendToFusion(ACTION.UPDATE_PARAMETER, {
+                key: targetKey,
+                name: String(existingLive.name || liveRow.name || ""),
+                expression: normalizeRapidExpressionForFusion(liveRow.expression, liveRow.detectedUnit || ""),
+                comment: String(liveRow.comment || "")
+              }), 8000);
+              if (!updateResponse?.ok) {
+                throw new Error(updateResponse?.message || "Update failed.");
+              }
+              applyStateFromFusion(updateResponse, { source: "response", action: ACTION.UPDATE_PARAMETER });
+              existingLive.lastCommitted = getRapidRowLiveSnapshot(liveRow);
+              existingLive.liveState = "live";
+              setRapidLiveDraftForRow(liveRow.rowKey, existingLive);
+              liveRow.liveState = "live";
+              liveRow.createState = "live";
+              liveRow.status = "live";
+              liveRow.message = "Live draft updated.";
+            } catch (error) {
+              existingLive.liveState = "error";
+              setRapidLiveDraftForRow(liveRow.rowKey, existingLive);
+              liveRow.liveState = "error";
+              liveRow.createState = "error";
+              liveRow.status = "error";
+              liveRow.severity = "error";
+              liveRow.message = String(error?.message || "Update failed.");
+            }
+            processed += 1;
+            if (isBulk && processed % 25 === 0) {
+              await refreshParameters();
+            }
+            renderRapidCreatePreview();
+          }
+          await refreshParameters();
+        } finally {
+          if (overlayToken) {
+            await endBusyOverlay(overlayToken);
+          }
+          state.rapidCreate.processing = false;
+          renderRapidCreatePreview();
+        }
+      }
+
+      async function deleteRapidSessionDraftsBestEffort() {
+        const drafts = Object.entries(state.rapidCreate.liveDraftByRowKey || {});
+        if (!drafts.length) {
+          return [];
+        }
+        const failures = [];
+        const overlayToken = beginBusyOverlay("Discarding live drafts...");
+        try {
+          for (const [, liveDraft] of drafts) {
+            try {
+              const response = await withRapidTimeout(sendToFusion(ACTION.DELETE_PARAMETER, {
+                key: String(liveDraft?.key || ""),
+                name: String(liveDraft?.name || "")
+              }), 8000);
+              if (!response?.ok) {
+                throw new Error(response?.message || "Delete failed.");
+              }
+              applyStateFromFusion(response, { source: "response", action: ACTION.DELETE_PARAMETER });
+            } catch (error) {
+              failures.push(String(error?.message || "Delete failed."));
+            }
+          }
+        } finally {
+          await endBusyOverlay(overlayToken);
+        }
+        return failures;
+      }
+
       async function requestRapidCreateClose() {
         if (!isRapidCreateDirty()) {
+          await runRapidDraftSyncQueue();
           setRapidCreateModalOpen(false);
           return;
         }
@@ -5707,6 +6099,10 @@
           variant: "discard"
         });
         if (shouldDiscard) {
+          const failures = await deleteRapidSessionDraftsBestEffort();
+          if (failures.length) {
+            setGlobalStatus(`Discard completed with ${failures.length} delete warning(s).`, "warning");
+          }
           setRapidCreateModalOpen(false, { discard: true });
         }
       }
@@ -5738,99 +6134,36 @@
       async function runRapidCreateAllAndMaybeClose() {
         await runRapidCreateAll();
         const rows = Array.isArray(state.rapidCreate.rows) ? state.rapidCreate.rows : [];
-        const hasRemainingChanges = rows.some((row) => String(row?.createState || "") !== "created");
+        const hasBlocking = rows.some((row) => (
+          row.severity === "error"
+          || row.createState === "creating"
+          || row.createState === "updating"
+        ));
+        const hasUncreatedReady = rows.some((row) => row.severity === "ready" && !getRapidLiveDraftByRowKey(row.rowKey));
+        const hasRemainingChanges = hasBlocking || hasUncreatedReady;
         if (!hasRemainingChanges) {
           setRapidCreateModalOpen(false, { discard: true });
         }
       }
 
       async function runRapidCreateAll() {
-        if (state.rapidCreate.validating) {
+        if (state.rapidCreate.validating || state.rapidCreate.processing) {
           return;
         }
-        state.rapidCreate.validating = true;
-        renderRapidCreatePreview();
-        state.rapidCreate.counts.created = 0;
-        state.rapidCreate.counts.failed = 0;
         try {
-          await buildRapidCreateRowsFromEditor({ mode: "commit" });
-          const rows = Array.isArray(state.rapidCreate.rows) ? state.rapidCreate.rows : [];
-          for (const row of rows) {
-            if (row.severity !== "ready") {
-              row.status = row.severity === "draft" ? "skipped" : row.status;
-              if (row.status !== "failed" && row.status !== "created") {
-                row.status = "skipped";
-              }
-              row.message = row.message || "Skipped.";
-              row.createState = "skipped";
-              continue;
-            }
-            const nameValidation = await sendToFusion(ACTION.VALIDATE_PARAMETER_NAME, { name: row.name });
-            if (!nameValidation.ok) {
-              row.status = "error";
-              row.severity = "error";
-              row.nameErrors.push(nameValidation.message || "Invalid parameter name.");
-              row.message = row.nameErrors[0];
-              row.createState = "skipped";
-              continue;
-            }
-            const units = row.detectedUnit || "";
-            const expressionValidation = await sendToFusion(ACTION.VALIDATE_EXPRESSION, {
-              expression: normalizeRapidExpressionForFusion(row.expression, units),
-              currentParameterName: "",
-              units
-            });
-            if (!expressionValidation.ok) {
-              row.status = "error";
-              row.severity = "error";
-              row.expressionErrors.push(expressionValidation.message || "Invalid expression.");
-              row.message = row.expressionErrors[0];
-              row.createState = "skipped";
-              continue;
-            }
-            try {
-              const createResponse = await sendToFusion(ACTION.CREATE_PARAMETER, {
-                name: row.name,
-                unit: units,
-                expression: normalizeRapidExpressionForFusion(row.expression, units),
-                comment: String(row.comment || "")
-              });
-              if (!createResponse.ok) {
-                throw new Error(createResponse.message || "Create failed.");
-              }
-              row.status = "created";
-              row.severity = "ready";
-              row.message = "Created";
-              row.createState = "created";
-              state.rapidCreate.counts.created += 1;
-              applyStateFromFusion(createResponse);
-            } catch (error) {
-              row.status = "failed";
-              row.severity = "error";
-              row.message = String(error?.message || "Backend create failed.");
-              row.createState = "failed";
-              state.rapidCreate.counts.failed += 1;
-            }
-          }
-          state.rapidCreate.counts.ready = rows.filter((row) => row.severity === "ready" && row.createState !== "created").length;
-          state.rapidCreate.counts.warnings = rows.filter((row) => row.severity === "warning").length;
-          state.rapidCreate.counts.errors = rows.filter((row) => row.severity === "error").length;
-          renderRapidCreatePreview();
-          const skippedCount = rows.filter((row) => row.createState === "skipped").length;
-          const editor = document.getElementById("rapidCreateEditor");
-          if (editor) {
-            const remainingLines = rows
-              .filter((row) => row.createState !== "created")
-              .map((row) => String(row.rawLine || "").trimEnd());
-            editor.value = remainingLines.join("\n");
-          }
-          if (state.rapidCreate.counts.failed === 0 && skippedCount === 0) {
-            state.rapidCreate.lastCommittedText = getRapidCreateEditorValue();
-          }
-          setGlobalStatus(`Rapid create done. Created ${state.rapidCreate.counts.created}, failed ${state.rapidCreate.counts.failed}, skipped ${skippedCount}.`, state.rapidCreate.counts.failed > 0 ? "warning" : "success");
-        } finally {
-          state.rapidCreate.validating = false;
           await buildRapidCreateRowsFromEditor({ mode: "live" });
+          await runRapidDraftSyncQueue();
+          const rows = Array.isArray(state.rapidCreate.rows) ? state.rapidCreate.rows : [];
+          const errors = rows.filter((row) => row.severity === "error").length;
+          const pending = rows.filter((row) => row.severity === "ready" && !getRapidLiveDraftByRowKey(row.rowKey)).length;
+          const inFlight = rows.filter((row) => row.createState === "creating" || row.createState === "updating").length;
+          if (errors > 0 || pending > 0 || inFlight > 0) {
+            setGlobalStatus(`Rapid create pending: errors=${errors}, pending=${pending}, in-flight=${inFlight}.`, "warning");
+            return;
+          }
+          state.rapidCreate.lastCommittedText = getRapidCreateEditorValue();
+          setGlobalStatus("Rapid create rows are live and up to date.", "success");
+        } finally {
           renderRapidCreatePreview();
         }
       }
@@ -7346,7 +7679,11 @@
         const nonce = String(state.rowValidationRequestNonce);
         input.setAttribute("data-name-validation-request-nonce", nonce);
         try {
-          const response = await sendToFusion(ACTION.VALIDATE_PARAMETER_NAME, { name: value });
+          const response = await sendToFusion(ACTION.VALIDATE_PARAMETER_NAME, {
+            name: value,
+            currentParameterName: savedName,
+            currentParameterKey: rowKey
+          });
           if (input.getAttribute("data-name-validation-request-nonce") !== nonce) {
             return false;
           }
@@ -14787,6 +15124,14 @@
 
       document.getElementById("rapidCreateEditor").addEventListener("input", () => {
         const editor = document.getElementById("rapidCreateEditor");
+        if (editor) {
+          const nextLineCount = String(editor.value || "").split(/\r?\n/).length;
+          const previousLineCount = Number(state.rapidCreate.lastLineCount || 0);
+          if (Math.abs(nextLineCount - previousLineCount) >= 2) {
+            state.rapidCreate.pendingBulkSync = true;
+          }
+          state.rapidCreate.lastLineCount = nextLineCount;
+        }
         if (editor) {
           state.rapidCreate.activeLineNumber = getRapidEditorActiveLineNumber(editor.value, editor.selectionStart);
           updateRapidCreateExpressionAssist(editor);

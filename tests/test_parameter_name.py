@@ -152,3 +152,26 @@ def test_collision_with_existing_parameter_fails():
 def test_no_collision_with_no_design():
     result = validate("brand_new_param")
     assert result["ok"] is True
+
+
+def test_collision_ignored_for_matching_current_parameter_name():
+    from unittest.mock import MagicMock
+    mock_design = MagicMock()
+    existing = MagicMock()
+    existing.name = "width"
+    mock_design.allParameters.itemByName.return_value = existing
+    with patch.object(bp, "_design", return_value=mock_design):
+        result = bp._validate_parameter_name_response("width", current_parameter_name="width")
+    assert result["ok"] is True
+
+
+def test_collision_ignored_for_matching_current_parameter_key():
+    from unittest.mock import MagicMock
+    mock_design = MagicMock()
+    existing = MagicMock()
+    existing.name = "width"
+    mock_design.allParameters.itemByName.return_value = existing
+    with patch.object(bp, "_design", return_value=mock_design), \
+         patch.object(bp, "_find_user_parameter_by_token", return_value=existing):
+        result = bp._validate_parameter_name_response("width", current_parameter_key="tok_width")
+    assert result["ok"] is True

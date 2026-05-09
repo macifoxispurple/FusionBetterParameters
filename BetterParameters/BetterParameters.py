@@ -870,7 +870,14 @@ def _handle_palette_action(action, data):
 
     readonly_handlers = {
         "getTextTunerState": lambda _payload: _ok_data(values=_load_text_tuner_state()),
-        "validateParameterName": lambda payload: {**_validate_parameter_name_response(payload.get("name", "")), "state": None},
+        "validateParameterName": lambda payload: {
+            **_validate_parameter_name_response(
+                payload.get("name", ""),
+                payload.get("currentParameterName", ""),
+                payload.get("currentParameterKey", ""),
+            ),
+            "state": None,
+        },
         "validateExpression": lambda payload: {
             **_validate_expression_response(
                 payload.get("expression", ""),
@@ -4832,7 +4839,7 @@ def _run_self_test_suite(data):
     }
 
 
-def _validate_parameter_name_response(name):
+def _validate_parameter_name_response(name, current_parameter_name="", current_parameter_key=""):
     trimmed_name = (name or "").strip()
     if not trimmed_name:
         return {"ok": False, "message": "Name is required."}
@@ -4849,9 +4856,26 @@ def _validate_parameter_name_response(name):
             "message": 'Use letters, digits, and only these symbols: _, ", $, °, µ. The name must not start with a digit.'
         }
 
+    current_name_normalized = str(current_parameter_name or "").strip()
+    current_key_normalized = str(current_parameter_key or "").strip()
+    if current_name_normalized and current_name_normalized.lower() == trimmed_name.lower():
+        return {"ok": True, "message": ""}
+
     design = _design()
-    if design and design.allParameters.itemByName(trimmed_name):
-        return {"ok": False, "message": f'A parameter named "{trimmed_name}" already exists in this design.'}
+    if design:
+        current_parameter = None
+        if current_key_normalized:
+            current_parameter = _find_user_parameter_by_token(design, current_key_normalized)
+            if current_parameter and str(current_parameter.name or "").strip().lower() == trimmed_name.lower():
+                return {"ok": True, "message": ""}
+
+        existing = design.allParameters.itemByName(trimmed_name)
+        if existing:
+            if current_parameter and existing == current_parameter:
+                return {"ok": True, "message": ""}
+            if current_name_normalized and str(existing.name or "").strip().lower() == current_name_normalized.lower():
+                return {"ok": True, "message": ""}
+            return {"ok": False, "message": f'A parameter named "{trimmed_name}" already exists in this design.'}
 
     return {"ok": True, "message": ""}
 
