@@ -4909,10 +4909,46 @@
       const favoriteToggleInFlightKeys = new Set();
       let pendingConfirmMode = "confirm";
       let pendingTextInputResolver = null;
+      const RAPID_CREATE_FEATURE_FLAGS = Object.freeze({
+        rowStoreEnabled: true,
+        incrementalParseEnabled: true,
+        perfTelemetryEnabled: true
+      });
+      const rapidUnitValidationCache = new Map();
+      const rapidPerfStats = {
+        parseRuns: 0,
+        parseMsTotal: 0,
+        parseRowsTotal: 0,
+        parseRowsReusedTotal: 0,
+        unitValidationCalls: 0,
+        unitValidationCacheHits: 0
+      };
 
       function reportBackgroundFailure(contextLabel, error) {
         const reason = String(error?.message || error || "Unknown error");
         appendStatusHistory(`${contextLabel} failed (${reason}).`, "warning");
+      }
+
+      function noteRapidPerfSample(sample = {}) {
+        if (!RAPID_CREATE_FEATURE_FLAGS.perfTelemetryEnabled) {
+          return;
+        }
+        rapidPerfStats.parseRuns += 1;
+        rapidPerfStats.parseMsTotal += Number(sample.parseMs || 0);
+        rapidPerfStats.parseRowsTotal += Number(sample.rowCount || 0);
+        rapidPerfStats.parseRowsReusedTotal += Number(sample.reusedRowCount || 0);
+        rapidPerfStats.unitValidationCalls += Number(sample.unitValidationCalls || 0);
+        rapidPerfStats.unitValidationCacheHits += Number(sample.unitValidationCacheHits || 0);
+        if (rapidPerfStats.parseRuns % 25 === 0) {
+          appendRawMessageTrace("rapidCreate.perf.sample", {
+            runs: rapidPerfStats.parseRuns,
+            avgParseMs: Number((rapidPerfStats.parseMsTotal / Math.max(1, rapidPerfStats.parseRuns)).toFixed(2)),
+            avgRows: Number((rapidPerfStats.parseRowsTotal / Math.max(1, rapidPerfStats.parseRuns)).toFixed(2)),
+            avgRowsReused: Number((rapidPerfStats.parseRowsReusedTotal / Math.max(1, rapidPerfStats.parseRuns)).toFixed(2)),
+            unitValidationCalls: rapidPerfStats.unitValidationCalls,
+            unitValidationCacheHits: rapidPerfStats.unitValidationCacheHits
+          });
+        }
       }
 
       function updateSharedModalBodyClass() {
@@ -5129,6 +5165,21 @@
         return row;
       }
 
+      function cloneRapidRowForReuse(previousRow, nextLineNumber, nextRawLine) {
+        if (!previousRow) {
+          return null;
+        }
+        return {
+          ...previousRow,
+          lineNumber: nextLineNumber,
+          rawLine: String(nextRawLine || ""),
+          nameErrors: Array.isArray(previousRow.nameErrors) ? previousRow.nameErrors.slice() : [],
+          parseErrors: Array.isArray(previousRow.parseErrors) ? previousRow.parseErrors.slice() : [],
+          expressionErrors: Array.isArray(previousRow.expressionErrors) ? previousRow.expressionErrors.slice() : [],
+          unitErrors: Array.isArray(previousRow.unitErrors) ? previousRow.unitErrors.slice() : []
+        };
+      }
+
       function getRapidRowKey(row) {
         const nameKey = String(row?.name || "").trim().toLowerCase();
         if (nameKey) {
@@ -5216,11 +5267,43 @@
         row.message = String(message || "Invalid row.");
       }
 
+      async function validateRapidUnitCandidateCached(unitCandidate, perfSample) {
+        const token = String(unitCandidate || "").trim().toLowerCase();
+        if (!token) {
+          return null;
+        }
+        if (rapidUnitValidationCache.has(token)) {
+          if (perfSample) {
+            perfSample.unitValidationCacheHits += 1;
+          }
+          return rapidUnitValidationCache.get(token);
+        }
+        if (perfSample) {
+          perfSample.unitValidationCalls += 1;
+        }
+        const validation = await sendToFusion(ACTION.VALIDATE_UNIT, { unit: token });
+        const normalized = {
+          ok: !!validation?.ok,
+          unit: String(validation?.unit || token || "").trim(),
+          message: String(validation?.message || "")
+        };
+        rapidUnitValidationCache.set(token, normalized);
+        return normalized;
+      }
+
       async function buildRapidCreateRowsFromEditor(options = {}) {
         const editor = document.getElementById("rapidCreateEditor");
         if (!editor) {
           return;
         }
+        const parseStart = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+        const perfSample = {
+          parseMs: 0,
+          rowCount: 0,
+          reusedRowCount: 0,
+          unitValidationCalls: 0,
+          unitValidationCacheHits: 0
+        };
         const previousRows = Array.isArray(state.rapidCreate.rows) ? state.rapidCreate.rows.slice() : [];
         const previousFingerprints = {
           ...(state.rapidCreate.rowFingerprintByKey && typeof state.rapidCreate.rowFingerprintByKey === "object"
@@ -5232,31 +5315,64 @@
         const lines = String(editor.value || "").split(/\r?\n/);
         const activeLineNumber = getRapidEditorActiveLineNumber(editor.value, editor.selectionStart);
         const baseRows = [];
-        lines.forEach((line, index) => {
-          const parsed = parseRapidCreateLine(line, index + 1, { mode, activeLineNumber });
-          if (parsed) {
-            parsed.rowKey = getRapidRowKey(parsed);
-            const liveDraft = getRapidLiveDraftByRowKey(parsed.rowKey);
-            if (liveDraft) {
-              parsed.liveState = String(liveDraft.liveState || "live");
-              parsed.liveKey = String(liveDraft.key || "");
-              parsed.liveName = String(liveDraft.name || "");
-              parsed.lastCommitted = {
-                name: String(liveDraft.lastCommitted?.name || ""),
-                expression: String(liveDraft.lastCommitted?.expression || ""),
-                comment: String(liveDraft.lastCommitted?.comment || ""),
-                unit: String(liveDraft.lastCommitted?.unit || "")
-              };
-              parsed.createState = parsed.liveState;
-            } else {
-              parsed.liveState = "draft";
-              parsed.liveKey = "";
-              parsed.liveName = "";
-              parsed.lastCommitted = null;
-            }
-            baseRows.push(parsed);
+        const previousRowsByRawLine = new Map();
+        previousRows.forEach((row) => {
+          const rawLine = String(row?.rawLine || "");
+          if (!rawLine.trim()) {
+            return;
           }
+          const bucket = previousRowsByRawLine.get(rawLine) || [];
+          bucket.push(row);
+          previousRowsByRawLine.set(rawLine, bucket);
         });
+        for (let index = 0; index < lines.length; index += 1) {
+          const line = String(lines[index] || "");
+          const nextLineNumber = index + 1;
+          let parsed = null;
+          if (RAPID_CREATE_FEATURE_FLAGS.incrementalParseEnabled) {
+            const bucket = previousRowsByRawLine.get(line);
+            if (bucket && bucket.length > 0) {
+              const candidate = bucket.shift();
+              const activeSensitive = !line.includes("\t") && !line.includes(",");
+              const reusableCandidate = !!candidate
+                && String(candidate?.name || "").trim().length > 0
+                && String(candidate?.expression || "").trim().length > 0
+                && (!Array.isArray(candidate?.nameErrors) || candidate.nameErrors.length === 0)
+                && (!Array.isArray(candidate?.parseErrors) || candidate.parseErrors.length === 0)
+                && (!Array.isArray(candidate?.unitErrors) || candidate.unitErrors.length === 0);
+              if (!activeSensitive && reusableCandidate) {
+                parsed = cloneRapidRowForReuse(candidate, nextLineNumber, line);
+                perfSample.reusedRowCount += 1;
+              }
+            }
+          }
+          if (!parsed) {
+            parsed = parseRapidCreateLine(line, nextLineNumber, { mode, activeLineNumber });
+          }
+          if (!parsed) {
+            continue;
+          }
+          parsed.rowKey = getRapidRowKey(parsed);
+          const liveDraft = getRapidLiveDraftByRowKey(parsed.rowKey);
+          if (liveDraft) {
+            parsed.liveState = String(liveDraft.liveState || "live");
+            parsed.liveKey = String(liveDraft.key || "");
+            parsed.liveName = String(liveDraft.name || "");
+            parsed.lastCommitted = {
+              name: String(liveDraft.lastCommitted?.name || ""),
+              expression: String(liveDraft.lastCommitted?.expression || ""),
+              comment: String(liveDraft.lastCommitted?.comment || ""),
+              unit: String(liveDraft.lastCommitted?.unit || "")
+            };
+            parsed.createState = parsed.liveState;
+          } else {
+            parsed.liveState = "draft";
+            parsed.liveKey = "";
+            parsed.liveName = "";
+            parsed.lastCommitted = null;
+          }
+          baseRows.push(parsed);
+        }
         const nextOverrideMap = {};
         for (const row of baseRows) {
           if (row.severity === "draft") {
@@ -5321,12 +5437,12 @@
             }
             if (detection.kind === "candidate") {
               try {
-                const validation = await sendToFusion(ACTION.VALIDATE_UNIT, { unit: detection.unit });
+                const validation = await validateRapidUnitCandidateCached(detection.unit, perfSample);
                 if (String(parseNonce) !== String(rapidCreateParseNonce)) {
                   return;
                 }
-                if (!validation.ok) {
-                  row.unitErrors.push(validation.message || `Invalid unit "${detection.unit}".`);
+                if (!validation?.ok) {
+                  row.unitErrors.push(validation?.message || `Invalid unit "${detection.unit}".`);
                   if (mode === "commit") {
                     setRapidRowHardError(row, row.unitErrors[0], "error");
                   } else {
@@ -5335,7 +5451,7 @@
                     row.message = row.unitErrors[0];
                   }
                 } else {
-                  row.detectedUnit = String(validation.unit || detection.unit || "").trim();
+                  row.detectedUnit = String(validation?.unit || detection.unit || "").trim();
                 }
               } catch (error) {
                 if (String(parseNonce) !== String(rapidCreateParseNonce)) {
@@ -5429,6 +5545,9 @@
           scheduleRapidComputeForMissingRows();
           scheduleRapidDraftSync({ bulk: baseRows.length >= 8 });
         }
+        perfSample.rowCount = baseRows.length;
+        perfSample.parseMs = ((typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now()) - parseStart;
+        noteRapidPerfSample(perfSample);
       }
 
       function scheduleRapidComputeForMissingRows() {

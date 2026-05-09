@@ -4058,3 +4058,35 @@ Legend:
     - modal dismisses immediately,
     - bulk delete finishes faster than prior row-by-row flow,
     - failure summary remains actionable when dependency-protected rows cannot be deleted.
+
+## 2026-05-09 - Rapid Create architecture perf stage: feature-flagged incremental parse + unit-validation cache + telemetry
+- What changed:
+  - `BetterParameters/palette.html`
+    - Added staged architecture controls (feature flags):
+      - `RAPID_CREATE_FEATURE_FLAGS.rowStoreEnabled`
+      - `RAPID_CREATE_FEATURE_FLAGS.incrementalParseEnabled`
+      - `RAPID_CREATE_FEATURE_FLAGS.perfTelemetryEnabled`
+    - Added lightweight Rapid Create perf telemetry accumulator (`rapidPerfStats`) and periodic raw trace samples every 25 parses.
+    - Added incremental parse reuse path in `buildRapidCreateRowsFromEditor(...)`:
+      - reuses prior parsed rows for unchanged, already-clean delimiter rows,
+      - skips reuse for active-line-sensitive rows and rows with prior validation/error state,
+      - preserves existing downstream duplicate/error reconciliation logic.
+    - Added cached unit validation helper `validateRapidUnitCandidateCached(...)`:
+      - caches validated unit candidates by normalized token,
+      - avoids repeated Fusion `validateUnit` bridge calls for repeated expressions/units.
+    - Routed row unit validation through cache helper and included cache/call counts in perf telemetry samples.
+- Why:
+  - Implements first maintainable architecture step toward row-scoped incremental behavior without changing external contracts or UX semantics.
+  - Reduces repeated expensive operations during typing (especially repeated unit validation and full row recreation churn).
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `432 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion smoke on large rapid sessions to verify no behavior drift:
+    - repeated edits on same-unit expressions should show fewer pauses,
+    - mixed row duplicates/name collisions should still surface exact same error/warning behavior,
+    - monitor raw trace for parse reuse/caching metrics under realistic workloads.
