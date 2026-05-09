@@ -3743,3 +3743,24 @@ Legend:
     - `VERIFY OK palette.html`
 - Remaining risk / next check:
   - In-Fusion smoke while editing a row and receiving background updates; verify no warning toast appears and queued state still applies after save/discard.
+
+## 2026-05-09 - Selective immediate validation: suppress transient blanks, keep true-invalid immediate
+- What changed:
+  - `BetterParameters/palette.html`
+    - Table name-input live validation now suppresses immediate inline error only for transient blank (`"Name is required."`) while user is actively editing.
+    - Immediate inline errors remain for true-invalid name forms (e.g., starts with number, invalid chars, whitespace violations).
+    - Rapid Create live parsing now treats missing expression on the active line as `draft` (continue typing) instead of hard error.
+    - Rapid Create missing expression on non-active lines in live mode is now `warning` (not hard error); commit mode still enforces hard error.
+- Why:
+  - Requested selective immediate validation model: show real immediate errors, but avoid noisy transient errors expected during active typing/composition.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `430 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - In-Fusion smoke:
+    - table rename: clear field then type replacement name; no transient required-error during typing, immediate invalid-char/leading-digit still shown,
+    - Rapid Create: `name<TAB>` active line shows draft guidance, not hard error, while commit still blocks missing expression.

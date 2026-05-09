@@ -5127,10 +5127,17 @@
             }
           }
           if (!row.expression) {
+            const isActiveLiveRow = mode !== "commit" && row.lineNumber === activeLineNumber;
             if (mode === "commit") {
               setRapidRowHardError(row, "Expression is required.", "error");
+            } else if (isActiveLiveRow) {
+              row.severity = "draft";
+              row.status = "draft";
+              row.message = "Continue typing: add expression after tab/comma.";
             } else if (row.severity !== "error") {
-              setRapidRowHardError(row, "Expression is required.", "error");
+              row.severity = "warning";
+              row.status = "warning";
+              row.message = "Expression is required.";
             }
             continue;
           }
@@ -15276,7 +15283,13 @@
           const row = nameInput.closest("tr.parameter-row[data-parameter-key]");
           const localMessage = validateParameterNameLocallyForRow(String(nameInput.value || ""), row);
           if (localMessage) {
-            setRowNameValidationState(nameInput, localMessage, "error");
+            if (localMessage === "Name is required.") {
+              // Transient blank values are expected while replacing/editing a name.
+              // Keep immediate hard errors for truly invalid forms (e.g. leading digit).
+              setRowNameValidationState(nameInput, "", "success");
+            } else {
+              setRowNameValidationState(nameInput, localMessage, "error");
+            }
           } else {
             setRowNameValidationState(nameInput, "", "success");
             scheduleManagedRowTimer(rowNameValidationTimersByInput, nameInput, ROW_NAME_VALIDATION_DEBOUNCE_MS, () => {
