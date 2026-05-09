@@ -13238,9 +13238,9 @@
         const replaceEnd = tokenEnd + absoluteOffset;
         const prefix = insertionPrefix || "";
         const isCallable = EXPRESSION_CALLABLE.has(name);
-        const insertion = isCallable ? `${prefix}${name}(  )` : `${prefix}${name}`;
+        const insertion = isCallable ? `${prefix}${name}(  )` : `${prefix}${name} `;
         input.value = `${input.value.slice(0, replaceStart)}${insertion}${input.value.slice(replaceEnd)}`;
-        const caret = replaceStart + prefix.length + name.length + (isCallable ? 2 : 0);
+        const caret = replaceStart + prefix.length + name.length + (isCallable ? 2 : 1);
         input.focus();
         input.setSelectionRange(caret, caret);
         if (input.id === "newExpression") {

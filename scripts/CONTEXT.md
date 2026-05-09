@@ -3491,3 +3491,21 @@ Legend:
     - header sort toggles (asc/desc/none) remain correct in flat mode,
     - timeline sort stays globally ordered in flat mode,
     - group drag/collapse actions are naturally unavailable while headers hidden and resume when turned back ON.
+
+## 2026-05-09 - Bugfix: add trailing space after expression suggestion selection
+- What changed:
+  - `BetterParameters/palette.html`
+    - Updated `applyExpressionSuggestion(name)` so non-callable dropdown picks insert a trailing space (`name `) instead of bare token (`name`).
+    - Updated caret placement accordingly for non-callable picks (caret lands after inserted trailing space).
+    - Callable function insertion behavior remains unchanged (`name(  )` with caret inside args).
+- Why:
+  - Requested UX bugfix: selecting an item from expression suggestions should automatically add a space for smoother continued typing.
+- Validation run + pass/fail counts:
+  - `.venv/bin/python -m pytest` => `425 passed, 6 skipped, 0 failed`.
+- Live Fusion AddIns sync (manifest untouched):
+  - Synced runtime payload via `BetterParameters/update_helper.py --verify`.
+  - Verification:
+    - `VERIFY OK BetterParameters.py`
+    - `VERIFY OK palette.html`
+- Remaining risk / next check:
+  - Manual FE smoke in Fusion: select unit/token suggestions repeatedly in row editor + rapid create editor; confirm single trailing space insertion and expected caret position.
