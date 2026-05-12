@@ -26,6 +26,8 @@
         --row-collapse-arrow-size: 16px; /* group toggle button container */
         --table-row-height: 30px;
         --narrow-action-btn-w: 74px;
+        --icon-btn-size: 22px;
+        --control-h: 22px;
         --bg-light: #ebebeb;
         --bg-dark: #313b4b;
         --bg: var(--bg-light);
@@ -1132,7 +1134,7 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-height: 22px;
+        min-height: var(--control-h);
         padding: 2px 8px;
         border-radius: 999px;
         border: 1px solid var(--line);
@@ -1255,7 +1257,7 @@
       }
 
       #parameterRows .expression-input {
-        min-height: 22px;
+        min-height: var(--control-h);
         padding: 1px 5px;
         border: 1px solid transparent;
         background: transparent;
@@ -1263,9 +1265,9 @@
       }
 
       #parameterRows .comment-input {
-        min-height: 22px;
-        height: 22px;
-        max-height: 22px;
+        min-height: var(--control-h);
+        height: var(--control-h);
+        max-height: var(--control-h);
         padding: 1px 5px;
         border: 1px solid transparent;
         background: transparent;
@@ -1481,8 +1483,8 @@
       }
 
       body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-icon-btn {
-        width: 22px;
-        height: 22px;
+        width: var(--icon-btn-size);
+        height: var(--icon-btn-size);
         padding: 0;
         display: inline-flex;
         align-items: center;
@@ -1704,7 +1706,7 @@
         border-radius: 0;
         background: transparent;
         padding: 0;
-        min-height: 22px;
+        min-height: var(--control-h);
         display: flex;
         align-items: center;
         width: 100%;
@@ -1718,8 +1720,8 @@
       }
 
       body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell .expression-input {
-        min-height: 22px;
-        height: 22px;
+        min-height: var(--control-h);
+        height: var(--control-h);
         margin: 0;
         padding: 1px 6px;
         width: 100%;
@@ -1731,11 +1733,11 @@
       }
 
       body.narrow-stack.ultralight-narrow-ui:not(.hide-revert) #parameterRows tr.parameter-row td.revert-cell .revert-button {
-        width: 22px;
-        min-width: 22px;
-        max-width: 22px;
-        height: 22px;
-        min-height: 22px;
+        width: var(--icon-btn-size);
+        min-width: var(--icon-btn-size);
+        max-width: var(--icon-btn-size);
+        height: var(--icon-btn-size);
+        min-height: var(--icon-btn-size);
         padding: 0;
         border-radius: 4px;
         font-size: 11px;
@@ -1903,8 +1905,8 @@
       }
 
       .native-icon-btn {
-        width: 22px;
-        height: 22px;
+        width: var(--icon-btn-size);
+        height: var(--icon-btn-size);
         padding: 0;
         border-radius: 2px;
         border: 1px solid var(--line);
@@ -1925,8 +1927,8 @@
       }
 
       .timeline-sort-btn {
-        width: 22px;
-        height: 22px;
+        width: var(--icon-btn-size);
+        height: var(--icon-btn-size);
         padding: 0;
       }
 
@@ -2053,8 +2055,8 @@
       }
 
       .rail-actions .icon-btn {
-        width: 22px;
-        height: 22px;
+        width: var(--icon-btn-size);
+        height: var(--icon-btn-size);
         border-radius: 2px;
         border-color: var(--line);
         background: var(--btn-soft-bg);
@@ -2542,7 +2544,7 @@
 
       #newExpression {
         width: 100%;
-        min-height: 22px;
+        min-height: var(--control-h);
         max-height: 160px;
         resize: none;
         overflow-y: auto;
