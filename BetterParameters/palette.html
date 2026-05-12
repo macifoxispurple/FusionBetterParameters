@@ -672,12 +672,12 @@
         position: relative;
       }
 
-      #parameterRows .field-shell {
+      .parameter-rows .field-shell {
         display: grid;
         align-items: center;
       }
 
-      #parameterRows .expression-field-error {
+      .parameter-rows .expression-field-error {
         position: static;
         min-height: 0;
         padding: 0;
@@ -694,7 +694,7 @@
         margin-top: 0;
       }
 
-      #parameterRows .expression-field-error.has-message {
+      .parameter-rows .expression-field-error.has-message {
         opacity: 1;
         transform: translateY(0);
         max-height: 120px;
@@ -778,12 +778,12 @@
         vertical-align: middle;
       }
 
-      #parameterRows tr.parameter-row td {
+      .parameter-rows tr.parameter-row td {
         min-height: var(--table-row-height);
         height: auto;
       }
 
-      #parameterRows tr.group-header-row td {
+      .parameter-rows tr.group-header-row td {
         height: var(--table-row-height);
       }
 
@@ -974,15 +974,15 @@
         pointer-events: none;
       }
 
-      body.compute-mode-auto #parameterRows tr.parameter-row .row-actions .save-button {
+      body.compute-mode-auto .parameter-rows tr.parameter-row .row-actions .save-button {
         display: none;
       }
 
-      body.compute-mode-auto #parameterRows tr.parameter-row .save-button-inline {
+      body.compute-mode-auto .parameter-rows tr.parameter-row .save-button-inline {
         display: none;
       }
 
-      body.compute-mode-manual.hide-comment #parameterRows tr.parameter-row .save-button-inline {
+      body.compute-mode-manual.hide-comment .parameter-rows tr.parameter-row .save-button-inline {
         display: inline-block;
       }
 
@@ -1029,9 +1029,9 @@
         background: var(--btn-hover);
       }
 
-      #parameterRows .dirty-field-shell:has(.field-discard-button.is-dirty) .param-name-input,
-      #parameterRows .dirty-field-shell:has(.field-discard-button.is-dirty) .expression-input,
-      #parameterRows .dirty-field-shell:has(.field-discard-button.is-dirty) .comment-input {
+      .parameter-rows .dirty-field-shell:has(.field-discard-button.is-dirty) .param-name-input,
+      .parameter-rows .dirty-field-shell:has(.field-discard-button.is-dirty) .expression-input,
+      .parameter-rows .dirty-field-shell:has(.field-discard-button.is-dirty) .comment-input {
         padding-right: 24px;
       }
 
@@ -1126,7 +1126,7 @@
         margin: 0;
       }
 
-      #parameterRows .name-field-error.has-message {
+      .parameter-rows .name-field-error.has-message {
         display: block;
       }
 
@@ -1256,7 +1256,7 @@
         flex-wrap: nowrap;
       }
 
-      #parameterRows .expression-input {
+      .parameter-rows .expression-input {
         min-height: var(--control-h);
         padding: 1px 5px;
         border: 1px solid transparent;
@@ -1264,7 +1264,7 @@
         border-radius: 1px;
       }
 
-      #parameterRows .comment-input {
+      .parameter-rows .comment-input {
         min-height: var(--control-h);
         height: var(--control-h);
         max-height: var(--control-h);
@@ -1298,7 +1298,7 @@
         max-width: var(--narrow-action-btn-w);
       }
 
-      body:not(.narrow-stack) #parameterRows tr.parameter-row td.comments-cell .row-actions .revert-button {
+      body:not(.narrow-stack) .parameter-rows tr.parameter-row td.comments-cell .row-actions .revert-button {
         display: none;
       }
 
@@ -1310,7 +1310,7 @@
         position: relative;
       }
 
-      body:not(.narrow-stack) #parameterRows tr.parameter-row td.comments-cell .row-actions {
+      body:not(.narrow-stack) .parameter-rows tr.parameter-row td.comments-cell .row-actions {
         position: absolute;
         right: 0;
         top: 50%;
@@ -1318,11 +1318,11 @@
         margin: 0;
       }
 
-      #parameterRows tr.parameter-row td {
+      .parameter-rows tr.parameter-row td {
         background: var(--row-zebra-odd);
       }
 
-      #parameterRows tr.parameter-row.is-even td {
+      .parameter-rows tr.parameter-row.is-even td {
         background: var(--row-zebra-even);
       }
 
@@ -1339,11 +1339,11 @@
         display: none;
       }
 
-      body.hide-comment #parameterRows tr.parameter-row td.value-cell {
+      body.hide-comment .parameter-rows tr.parameter-row td.value-cell {
         display: table-cell;
       }
 
-      body.hide-comment #parameterRows tr.parameter-row td.value-cell .value-cell-layout {
+      body.hide-comment .parameter-rows tr.parameter-row td.value-cell .value-cell-layout {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         align-items: center;
@@ -1357,12 +1357,12 @@
         align-self: center;
       }
 
-      body.hide-comment #parameterRows tr.parameter-row td.value-cell .preview-value {
+      body.hide-comment .parameter-rows tr.parameter-row td.value-cell .preview-value {
         align-self: center;
       }
 
-      body.hide-comment #parameterRows tr.parameter-row td.value-cell .preview-current,
-      body.hide-comment #parameterRows tr.parameter-row td.value-cell .preview-new {
+      body.hide-comment .parameter-rows tr.parameter-row td.value-cell .preview-current,
+      body.hide-comment .parameter-rows tr.parameter-row td.value-cell .preview-new {
         white-space: normal;
         overflow: visible;
         text-overflow: clip;
@@ -1382,31 +1382,31 @@
         display: none;
       }
 
-      body.narrow-stack #parameterRows {
+      body.narrow-stack .parameter-rows {
         display: block;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row {
+      body.narrow-stack .parameter-rows tr.parameter-row {
         display: block;
         padding: 8px 10px;
         border-bottom: 1px solid var(--line-subtle);
       }
 
-      body.narrow-stack #parameterRows tr.group-header-row {
+      body.narrow-stack .parameter-rows tr.group-header-row {
         display: block;
       }
 
-      body.narrow-stack #parameterRows tr.group-header-row td {
+      body.narrow-stack .parameter-rows tr.group-header-row td {
         display: block;
         width: 100%;
       }
 
-      body.narrow-stack #parameterRows tr.group-header-row .group-header {
+      body.narrow-stack .parameter-rows tr.group-header-row .group-header {
         width: 100%;
         box-sizing: border-box;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td {
+      body.narrow-stack .parameter-rows tr.parameter-row td {
         display: none;
         background: transparent !important;
         border-bottom: 0;
@@ -1415,66 +1415,66 @@
         min-height: 0;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row.is-odd {
+      body.narrow-stack .parameter-rows tr.parameter-row.is-odd {
         background: var(--row-zebra-odd);
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row.is-even {
+      body.narrow-stack .parameter-rows tr.parameter-row.is-even {
         background: var(--row-zebra-even);
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row:hover {
+      body.narrow-stack .parameter-rows tr.parameter-row:hover {
         background: var(--panel-hover);
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row.is-selected {
+      body.narrow-stack .parameter-rows tr.parameter-row.is-selected {
         background: var(--selected-row-bg);
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row.is-selected:hover {
+      body.narrow-stack .parameter-rows tr.parameter-row.is-selected:hover {
         background: var(--selected-row-hover);
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td.name-cell {
+      body.narrow-stack .parameter-rows tr.parameter-row td.name-cell {
         display: block;
         order: 1;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td.param-name-cell {
+      body.narrow-stack .parameter-rows tr.parameter-row td.param-name-cell {
         display: block;
         margin-top: 6px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td.param-name-cell .param-name-editor {
+      body.narrow-stack .parameter-rows tr.parameter-row td.param-name-cell .param-name-editor {
         display: block;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td.param-name-cell .param-name-input {
+      body.narrow-stack .parameter-rows tr.parameter-row td.param-name-cell .param-name-input {
         width: 100%;
         min-width: 0;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row .name-cell-main {
+      body.narrow-stack .parameter-rows tr.parameter-row .name-cell-main {
         display: none;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary {
+      body.narrow-stack .parameter-rows tr.parameter-row .narrow-summary {
         display: grid;
         gap: 6px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-head {
+      body.narrow-stack .parameter-rows tr.parameter-row .narrow-summary-head {
         display: grid;
         grid-template-columns: auto minmax(0, 1fr) auto auto auto;
         align-items: center;
         gap: 6px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-name {
+      body.narrow-stack .parameter-rows tr.parameter-row .narrow-summary-name {
         display: none;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-state {
+      body.narrow-stack .parameter-rows tr.parameter-row .narrow-summary-state {
         color: var(--muted);
         white-space: nowrap;
         min-width: 0;
@@ -1482,7 +1482,7 @@
         text-overflow: ellipsis;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-icon-btn {
+      body.narrow-stack .parameter-rows tr.parameter-row .narrow-summary-icon-btn {
         width: var(--icon-btn-size);
         height: var(--icon-btn-size);
         padding: 0;
@@ -1491,65 +1491,65 @@
         justify-content: center;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-toggle {
+      body.narrow-stack .parameter-rows tr.parameter-row .narrow-summary-toggle {
         font-size: 12px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td.expression-cell {
+      body.narrow-stack .parameter-rows tr.parameter-row td.expression-cell {
         display: block;
         margin-top: 6px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td.expression-cell .field-shell {
+      body.narrow-stack .parameter-rows tr.parameter-row td.expression-cell .field-shell {
         border: 1px solid var(--line);
         border-radius: 4px;
         background: color-mix(in srgb, var(--panel-raised) 96%, var(--panel));
         padding: 5px 6px 4px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td.expression-cell .expression-input {
+      body.narrow-stack .parameter-rows tr.parameter-row td.expression-cell .expression-input {
         border-color: color-mix(in srgb, var(--line) 75%, transparent);
         background: var(--input-bg);
         border-radius: 3px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td.expression-cell .expression-field-error {
+      body.narrow-stack .parameter-rows tr.parameter-row td.expression-cell .expression-field-error {
         margin-top: 4px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td.value-cell {
+      body.narrow-stack .parameter-rows tr.parameter-row td.value-cell {
         display: none;
         margin-top: 6px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row.has-narrow-value-summary td.value-cell {
+      body.narrow-stack .parameter-rows tr.parameter-row.has-narrow-value-summary td.value-cell {
         display: block;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td.value-cell .preview-value {
+      body.narrow-stack .parameter-rows tr.parameter-row td.value-cell .preview-value {
         border: 1px solid var(--line-subtle);
         border-radius: 4px;
         background: color-mix(in srgb, var(--panel-raised) 93%, var(--panel));
         padding: 4px 6px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td.comments-cell {
+      body.narrow-stack .parameter-rows tr.parameter-row td.comments-cell {
         display: none;
         margin-top: 6px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row.has-visible-actions td.comments-cell,
-      body.narrow-stack #parameterRows tr.parameter-row.is-narrow-expanded td.comments-cell {
+      body.narrow-stack .parameter-rows tr.parameter-row.has-visible-actions td.comments-cell,
+      body.narrow-stack .parameter-rows tr.parameter-row.is-narrow-expanded td.comments-cell {
         display: block !important;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td.comments-cell .comment-shell {
+      body.narrow-stack .parameter-rows tr.parameter-row td.comments-cell .comment-shell {
         display: grid;
         grid-template-columns: minmax(0, 1fr);
         gap: 6px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td.comments-cell .row-actions {
+      body.narrow-stack .parameter-rows tr.parameter-row td.comments-cell .row-actions {
         order: 1;
         display: none;
         align-items: center;
@@ -1563,11 +1563,11 @@
         border-top: 1px solid var(--line-subtle);
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row.has-visible-actions td.comments-cell .row-actions {
+      body.narrow-stack .parameter-rows tr.parameter-row.has-visible-actions td.comments-cell .row-actions {
         display: flex;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td.comments-cell .row-actions:not(.has-revert-action)::before {
+      body.narrow-stack .parameter-rows tr.parameter-row td.comments-cell .row-actions:not(.has-revert-action)::before {
         content: "";
         display: inline-block;
         width: var(--narrow-action-btn-w);
@@ -1577,7 +1577,7 @@
         flex: 0 0 var(--narrow-action-btn-w);
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row td.comments-cell .comment-input {
+      body.narrow-stack .parameter-rows tr.parameter-row td.comments-cell .comment-input {
         order: 2;
         display: none;
         border-color: color-mix(in srgb, var(--line) 75%, transparent);
@@ -1585,26 +1585,26 @@
         border-radius: 3px;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row.is-narrow-expanded td.comments-cell .comment-input {
+      body.narrow-stack .parameter-rows tr.parameter-row.is-narrow-expanded td.comments-cell .comment-input {
         display: block;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row .narrow-expanded-kind {
+      body.narrow-stack .parameter-rows tr.parameter-row .narrow-expanded-kind {
         order: 3;
         display: none;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row.is-narrow-expanded .narrow-expanded-kind {
+      body.narrow-stack .parameter-rows tr.parameter-row.is-narrow-expanded .narrow-expanded-kind {
         display: block;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row .row-actions {
+      body.narrow-stack .parameter-rows tr.parameter-row .row-actions {
         opacity: 1;
         pointer-events: auto;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row .row-actions .revert-button,
-      body.narrow-stack #parameterRows tr.parameter-row .row-actions .save-button {
+      body.narrow-stack .parameter-rows tr.parameter-row .row-actions .revert-button,
+      body.narrow-stack .parameter-rows tr.parameter-row .row-actions .save-button {
         width: var(--narrow-action-btn-w);
         min-width: var(--narrow-action-btn-w);
         max-width: var(--narrow-action-btn-w);
@@ -1615,16 +1615,16 @@
         text-align: center;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row .narrow-expanded-kind .parameter-kind {
+      body.narrow-stack .parameter-rows tr.parameter-row .narrow-expanded-kind .parameter-kind {
         opacity: 0.9;
       }
 
-      body.narrow-stack #parameterRows tr.parameter-row .reorder-handle,
-      body.narrow-stack #parameterRows tr.parameter-row .reorder-handle-placeholder {
+      body.narrow-stack .parameter-rows tr.parameter-row .reorder-handle,
+      body.narrow-stack .parameter-rows tr.parameter-row .reorder-handle-placeholder {
         display: none !important;
       }
 
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row {
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row {
         display: grid;
         grid-template-columns: minmax(96px, 0.9fr) minmax(0, 1.6fr) 24px;
         align-items: center;
@@ -1635,73 +1635,73 @@
         box-sizing: border-box;
       }
 
-      body.narrow-stack.ultralight-narrow-ui.hide-revert #parameterRows tr.parameter-row {
+      body.narrow-stack.ultralight-narrow-ui.hide-revert .parameter-rows tr.parameter-row {
         grid-template-columns: minmax(96px, 0.9fr) minmax(0, 1fr);
       }
 
-      body.narrow-stack.ultralight-narrow-ui.hide-revert #parameterRows tr.parameter-row td.revert-cell {
+      body.narrow-stack.ultralight-narrow-ui.hide-revert .parameter-rows tr.parameter-row td.revert-cell {
         display: none !important;
       }
 
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.name-cell,
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell,
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.revert-cell,
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.param-name-cell {
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.name-cell,
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.expression-cell,
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.revert-cell,
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.param-name-cell {
         display: block;
         margin-top: 0;
         align-self: center;
       }
 
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.name-cell {
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.name-cell {
         display: none !important;
       }
 
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.param-name-cell {
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.param-name-cell {
         min-width: 0;
         width: 100%;
         order: 0;
         margin-top: 0;
       }
 
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell {
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.expression-cell {
         order: 1;
         min-width: 0;
         width: 100%;
         justify-self: stretch;
       }
 
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.revert-cell {
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.revert-cell {
         order: 2;
         justify-self: end;
         width: 24px;
         min-width: 24px;
       }
 
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row .narrow-summary {
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row .narrow-summary {
         display: block;
       }
 
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row .narrow-summary-head {
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row .narrow-summary-head {
         display: block;
       }
 
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row .narrow-summary-name {
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row .narrow-summary-name {
         display: block;
         font-weight: inherit;
       }
 
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row .favorite-button {
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row .favorite-button {
         display: none !important;
       }
 
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row .narrow-summary-state,
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row .narrow-summary-icon-btn,
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.value-cell,
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.comments-cell {
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row .narrow-summary-state,
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row .narrow-summary-icon-btn,
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.value-cell,
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.comments-cell {
         display: none !important;
       }
 
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell .field-shell {
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.expression-cell .field-shell {
         border: 0;
         border-radius: 0;
         background: transparent;
@@ -1713,13 +1713,13 @@
         min-width: 0;
       }
 
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell .dirty-field-shell,
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell .expression-input-shell {
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.expression-cell .dirty-field-shell,
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.expression-cell .expression-input-shell {
         width: 100%;
         min-width: 0;
       }
 
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell .expression-input {
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.expression-cell .expression-input {
         min-height: var(--control-h);
         height: var(--control-h);
         margin: 0;
@@ -1728,11 +1728,11 @@
         min-width: 0;
       }
 
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell .expression-field-error {
+      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.expression-cell .expression-field-error {
         display: none;
       }
 
-      body.narrow-stack.ultralight-narrow-ui:not(.hide-revert) #parameterRows tr.parameter-row td.revert-cell .revert-button {
+      body.narrow-stack.ultralight-narrow-ui:not(.hide-revert) .parameter-rows tr.parameter-row td.revert-cell .revert-button {
         width: var(--icon-btn-size);
         min-width: var(--icon-btn-size);
         max-width: var(--icon-btn-size);
@@ -1745,41 +1745,41 @@
         text-align: center;
       }
 
-      #parameterRows tr {
+      .parameter-rows tr {
         transition: background 80ms ease;
       }
 
-      #parameterRows tr.parameter-row:hover td {
+      .parameter-rows tr.parameter-row:hover td {
         background: var(--panel-hover);
       }
 
-      body.range-selecting #parameterRows,
-      body.range-selecting #parameterRows * {
+      body.range-selecting .parameter-rows,
+      body.range-selecting .parameter-rows * {
         user-select: none;
         -webkit-user-select: none;
       }
 
-      #parameterRows tr.parameter-row.is-even:hover td,
-      #parameterRows tr.parameter-row.is-odd:hover td {
+      .parameter-rows tr.parameter-row.is-even:hover td,
+      .parameter-rows tr.parameter-row.is-odd:hover td {
         background: var(--panel-hover);
       }
 
-      #parameterRows tr.parameter-row.is-selected td {
+      .parameter-rows tr.parameter-row.is-selected td {
         background: var(--selected-row-bg);
       }
 
-      #parameterRows tr.parameter-row.is-selected:hover td {
+      .parameter-rows tr.parameter-row.is-selected:hover td {
         background: var(--selected-row-hover);
       }
 
-      #parameterRows tr.is-row-dragging {
+      .parameter-rows tr.is-row-dragging {
         position: relative;
         z-index: 10;
         transform: scale(0.9);
         opacity: 0.9;
       }
 
-      #parameterRows tr.is-row-dragging td {
+      .parameter-rows tr.is-row-dragging td {
         background: var(--selected-row-bg) !important;
         box-shadow: 0 4px 16px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.08);
       }
@@ -1796,14 +1796,14 @@
         background: var(--accent);
       }
 
-      #parameterRows tr.group-header-row.is-group-dragging {
+      .parameter-rows tr.group-header-row.is-group-dragging {
         position: relative;
         z-index: 10;
         transform: scale(0.88);
         opacity: 0.9;
       }
 
-      #parameterRows tr.group-header-row.is-group-dragging .group-header {
+      .parameter-rows tr.group-header-row.is-group-dragging .group-header {
         background: color-mix(in srgb, var(--accent) 12%, var(--panel-raised));
         border-left-color: var(--accent);
         box-shadow: 0 4px 14px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.08);
@@ -2256,31 +2256,31 @@
         display: none;
       }
 
-      #parameterRows tr.parameter-row .row-actions {
+      .parameter-rows tr.parameter-row .row-actions {
         opacity: 0;
         pointer-events: none;
         transition: opacity 80ms ease;
       }
 
-      #parameterRows tr.parameter-row:hover .row-actions,
-      #parameterRows tr.parameter-row.is-dirty .row-actions {
+      .parameter-rows tr.parameter-row:hover .row-actions,
+      .parameter-rows tr.parameter-row.is-dirty .row-actions {
         opacity: 1;
         pointer-events: auto;
       }
 
-      #parameterRows tr.parameter-row.is-revert-available .row-actions {
+      .parameter-rows tr.parameter-row.is-revert-available .row-actions {
         opacity: 1;
         pointer-events: auto;
       }
 
-      #parameterRows tr.parameter-row .expression-input:hover,
-      #parameterRows tr.parameter-row .comment-input:hover {
+      .parameter-rows tr.parameter-row .expression-input:hover,
+      .parameter-rows tr.parameter-row .comment-input:hover {
         border-color: color-mix(in srgb, var(--line) 65%, transparent);
         background: color-mix(in srgb, var(--panel-raised) 80%, transparent);
       }
 
-      #parameterRows tr.parameter-row .expression-input:focus,
-      #parameterRows tr.parameter-row .comment-input:focus {
+      .parameter-rows tr.parameter-row .expression-input:focus,
+      .parameter-rows tr.parameter-row .comment-input:focus {
         border-color: var(--accent);
         background: color-mix(in srgb, var(--panel-raised) 88%, var(--panel));
       }
@@ -3684,7 +3684,7 @@
               <thead>
                 <tr id="parameterHeaderRow"></tr>
               </thead>
-              <tbody id="parameterRows">
+              <tbody id="parameterRows" class="parameter-rows">
                 <tr>
                   <td colspan="7" class="empty">Loading parameters...</td>
                 </tr>
