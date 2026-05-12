@@ -7981,6 +7981,7 @@
         if (!row) {
           return false;
         }
+        const rowKey = String(row.getAttribute("data-parameter-key") || "");
 
         const value = String(input.value || "");
         const savedName = String(input.getAttribute("data-saved-name") || "");
