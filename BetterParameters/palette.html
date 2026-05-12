@@ -1483,6 +1483,20 @@
         order: 1;
       }
 
+      body.narrow-stack #parameterRows tr.parameter-row td.param-name-cell {
+        display: block;
+        margin-top: 6px;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row td.param-name-cell .param-name-editor {
+        display: block;
+      }
+
+      body.narrow-stack #parameterRows tr.parameter-row td.param-name-cell .param-name-input {
+        width: 100%;
+        min-width: 0;
+      }
+
       body.narrow-stack #parameterRows tr.parameter-row .name-cell-main {
         display: none;
       }
@@ -1500,11 +1514,7 @@
       }
 
       body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-name {
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        font-weight: 600;
+        display: none;
       }
 
       body.narrow-stack #parameterRows tr.parameter-row .narrow-summary-state {
@@ -1678,15 +1688,22 @@
 
       body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.name-cell,
       body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell,
-      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.revert-cell {
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.revert-cell,
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.param-name-cell {
         display: block;
         margin-top: 0;
         align-self: center;
       }
 
       body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.name-cell {
+        display: none !important;
+      }
+
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.param-name-cell {
         min-width: 0;
+        width: 100%;
         order: 0;
+        margin-top: 0;
       }
 
       body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell {
