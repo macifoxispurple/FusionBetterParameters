@@ -1662,7 +1662,17 @@
         grid-template-columns: minmax(96px, 0.9fr) minmax(0, 1.6fr) 24px;
         align-items: center;
         gap: 8px;
-        padding: 3px 8px;
+        min-height: var(--table-row-height);
+        padding: 0 8px;
+        box-sizing: border-box;
+      }
+
+      body.narrow-stack.ultralight-narrow-ui.hide-revert #parameterRows tr.parameter-row {
+        grid-template-columns: minmax(96px, 0.9fr) minmax(0, 1fr);
+      }
+
+      body.narrow-stack.ultralight-narrow-ui.hide-revert #parameterRows tr.parameter-row td.revert-cell {
+        display: none !important;
       }
 
       body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.name-cell,
@@ -1670,6 +1680,7 @@
       body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.revert-cell {
         display: block;
         margin-top: 0;
+        align-self: center;
       }
 
       body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.name-cell {
@@ -1679,6 +1690,9 @@
 
       body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell {
         order: 1;
+        min-width: 0;
+        width: 100%;
+        justify-self: stretch;
       }
 
       body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.revert-cell {
@@ -1718,12 +1732,26 @@
         border-radius: 0;
         background: transparent;
         padding: 0;
+        min-height: 22px;
+        display: flex;
+        align-items: center;
+        width: 100%;
+        min-width: 0;
+      }
+
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell .dirty-field-shell,
+      body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell .expression-input-shell {
+        width: 100%;
+        min-width: 0;
       }
 
       body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell .expression-input {
         min-height: 22px;
         height: 22px;
+        margin: 0;
         padding: 1px 6px;
+        width: 100%;
+        min-width: 0;
       }
 
       body.narrow-stack.ultralight-narrow-ui #parameterRows tr.parameter-row td.expression-cell .expression-field-error {
