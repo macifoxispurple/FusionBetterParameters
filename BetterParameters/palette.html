@@ -76,6 +76,9 @@
         --error-light: #cc2222;
         --error-dark: #e85454;
         --error: var(--error-light);
+        --warning-light: #c56a00;
+        --warning-dark: #f2c94c;
+        --warning: var(--warning-light);
         --success-light: #2e7d32;
         --success-dark: #4caf50;
         --success: var(--success-light);
@@ -119,6 +122,7 @@
         --accent-hover: var(--accent-hover-dark);
         --accent-text: var(--accent-text-dark);
         --error: var(--error-dark);
+        --warning: var(--warning-dark);
         --success: var(--success-dark);
         --btn-bg: var(--btn-bg-dark);
         --btn-hover: var(--btn-hover-dark);
@@ -600,7 +604,7 @@
       }
 
       .status.warning {
-        color: var(--accent);
+        color: var(--warning);
       }
 
       .status.success {
@@ -2620,7 +2624,7 @@
       .rapid-create-warning-marker {
         position: absolute;
         left: 0;
-        color: #8a6d00 !important;
+        color: var(--warning) !important;
         font-weight: 700 !important;
         line-height: 1;
         pointer-events: none;
@@ -2723,7 +2727,7 @@
       }
 
       .rapid-create-status-warning {
-        color: #8a6d00 !important;
+        color: var(--warning) !important;
       }
 
       .rapid-create-preview td:last-child {
@@ -3390,7 +3394,7 @@
       }
 
       .status-history-kind-warning .status-history-text {
-        color: var(--accent);
+        color: var(--warning);
       }
 
       .status-history-kind-success .status-history-text {
@@ -3402,7 +3406,7 @@
       }
 
       #parameterFileSummary.status-warning {
-        color: var(--accent);
+        color: var(--warning);
       }
 
       #parameterFileSummary.status-success {
