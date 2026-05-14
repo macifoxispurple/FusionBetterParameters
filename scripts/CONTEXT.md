@@ -4090,3 +4090,22 @@ Legend:
     - repeated edits on same-unit expressions should show fewer pauses,
     - mixed row duplicates/name collisions should still surface exact same error/warning behavior,
     - monitor raw trace for parse reuse/caching metrics under realistic workloads.
+
+## 2026-05-14 - Attribution cleanup audit; install generic commit-msg guard
+- What changed:
+  - Audited repo-level attribution risk sources and contributor-facing metadata surfaces.
+    - This repo's local content, refs, and configured identity were checked for author/co-author contamination and tool-signature leakage.
+    - Additional account-level follow-up for other repositories was noted outside this repo's canonical docs.
+  - Installed prevention guard:
+    - `.git/hooks/commit-msg` (active, executable) rejects commit messages containing co-author trailers or generated-by/tool-signature lines. Worktrees automatically inherit this hook via `git rev-parse --git-path hooks/commit-msg`.
+    - `scripts/hooks/commit-msg` (version-controlled mirror) so fresh clones can opt in via `git config core.hooksPath scripts/hooks` or by copying into `.git/hooks/`.
+    - Verified: hook rejects bad message (`exit=1`) and passes good message (`exit=0`).
+- Why:
+  - Existing HANDOFF rule (`scripts/HANDOFF.md` line 89) already prohibited extra attribution trailers/tool-brand signatures. The hook adds mechanical enforcement at commit time.
+- Validation run + pass/fail counts:
+  - No code/runtime changes. Tests not re-run (no functional surface touched).
+- Live Fusion AddIns sync:
+  - Not required - no edits inside `BetterParameters/` source dir. Changes confined to workspace-root operational files plus the local git hook.
+- Remaining risk / next check:
+  - Hook protects only this repo's clones. For full account-wide coverage, consider a global shared hooks path - out of scope this session.
+  - If `scripts/hooks/commit-msg` is later staged, hook will (by design) allow the commit; the script content does not itself trigger the regex.

@@ -10,22 +10,22 @@ You are taking responsibility for Fusion 360 Python add-in called BetterParamete
 
 - Add-in name: `BetterParameters`
 - Source root:
-  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\BetterParameters`
-  - macOS: `~/Documents/Codex/BetterParameters/BetterParameters`
+  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters`
+  - macOS: `~/Documents/Codex/BetterParameters`
 - Live Fusion load root:
   - Windows: `%APPDATA%\Autodesk\Autodesk Fusion 360\API\AddIns\BetterParameters`
   - macOS: `~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters`
 - Workspace root:
-  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\BetterParameters`
-  - macOS: `~/Documents/Codex/BetterParameters/BetterParameters`
+  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters`
+  - macOS: `~/Documents/Codex/BetterParameters`
 - Repo: `git@github.com:macifoxispurple/FusionBetterParameters.git`
 - Main files:
   - Frontend: `palette.html`
   - Backend: `BetterParameters.py`
   - Manifest: `BetterParameters.manifest`
 - Session continuity log:
-  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\BetterParameters\scripts\CONTEXT.md`
-  - macOS: `~/Documents/Codex/BetterParameters/BetterParameters/scripts/CONTEXT.md`
+  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\scripts\CONTEXT.md`
+  - macOS: `~/Documents/Codex/BetterParameters/scripts/CONTEXT.md`
 
 ## Maintainer Quick Start
 
@@ -73,11 +73,11 @@ python -m pytest tests/test_fe_browser_current.py -q
 - Never place release staging folders inside `BetterParameters` source dir.
 - Canonical artifact locations are:
   - Staging dir:
-    - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\BetterParameters\_release_stage`
-    - macOS: `~/Documents/Codex/BetterParameters/BetterParameters/_release_stage`
+    - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\_release_stage`
+    - macOS: `~/Documents/Codex/BetterParameters/_release_stage`
   - Packaged zips:
-    - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\BetterParameters\_releases_packages`
-    - macOS: `~/Documents/Codex/BetterParameters/BetterParameters/_releases_packages`
+    - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\_releases_packages`
+    - macOS: `~/Documents/Codex/BetterParameters/_releases_packages`
 - Do not manually edit user data files:
   - `settings.json`
   - `update_state.json`
@@ -101,11 +101,11 @@ python -m pytest tests/test_fe_browser_current.py -q
 ### Location and tooling
 
 - Tests:
-  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\BetterParameters\tests\`
-  - macOS: `~/Documents/Codex/BetterParameters/BetterParameters/tests/`
+  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\tests\`
+  - macOS: `~/Documents/Codex/BetterParameters/tests/`
 - Config:
-  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\BetterParameters\pytest.ini`
-  - macOS: `~/Documents/Codex/BetterParameters/BetterParameters/pytest.ini`
+  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\pytest.ini`
+  - macOS: `~/Documents/Codex/BetterParameters/pytest.ini`
 - Runner: `python -m pytest` from workspace root
 - Stubs: `tests\stubs\adsk\` — minimal offline replacements for `adsk.core` / `adsk.fusion`
 - Helpers: `tests\helpers.py` — shared mock factories (`make_mock_design`, `make_package_json`, etc.)
@@ -138,8 +138,8 @@ Expected output: `N passed` with no failures or errors. Fix any failures before 
 
 - FE changes are owned end-to-end in `palette.html`, including bridge contracts, UX behavior, and regression prevention.
 - The Fusion in-process harness is **joint FE+BE responsibility**:
-  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\BetterParameters\scripts\fusion_bp_test_harness.py`
-  - macOS: `~/Documents/Codex/BetterParameters/BetterParameters/scripts/fusion_bp_test_harness.py`
+  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\scripts\fusion_bp_test_harness.py`
+  - macOS: `~/Documents/Codex/BetterParameters/scripts/fusion_bp_test_harness.py`
 - Ownership model:
   - FE owns harness alignment with FE-visible workflows, gating, and UX-critical behavior.
   - BE owns harness alignment with backend action semantics, envelope fields, `errorCode`, and contract/schema changes.
@@ -153,12 +153,12 @@ Expected output: `N passed` with no failures or errors. Fix any failures before 
   1. Offline suite from workspace root:
      - `python -m pytest`
   2. Fusion in-process harness in Fusion Scripts and Add-Ins:
-     - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\BetterParameters\scripts\fusion_bp_test_harness.py`
-     - macOS: `~/Documents/Codex/BetterParameters/BetterParameters/scripts/fusion_bp_test_harness.py`
+     - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\scripts\fusion_bp_test_harness.py`
+     - macOS: `~/Documents/Codex/BetterParameters/scripts/fusion_bp_test_harness.py`
 - Confirm harness summary reports zero failures before considering FE work complete.
 - For manual-only Fusion checks, use:
-  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\BetterParameters\tests\MANUAL_TESTS.md`
-  - macOS: `~/Documents/Codex/BetterParameters/BetterParameters/tests/MANUAL_TESTS.md`
+  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\tests\MANUAL_TESTS.md`
+  - macOS: `~/Documents/Codex/BetterParameters/tests/MANUAL_TESTS.md`
 
 ### Mock bridge policy (FE)
 
@@ -170,19 +170,19 @@ Expected output: `N passed` with no failures or errors. Fix any failures before 
 ### Harness sync to live Fusion Scripts (required)
 
 - Trigger condition: any edit to:
-  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\BetterParameters\scripts\fusion_bp_test_harness.py`
-  - macOS: `~/Documents/Codex/BetterParameters/BetterParameters/scripts/fusion_bp_test_harness.py`
+  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\scripts\fusion_bp_test_harness.py`
+  - macOS: `~/Documents/Codex/BetterParameters/scripts/fusion_bp_test_harness.py`
 - Required action: copy updated harness script into Fusion live Scripts directory before Fusion-side test execution.
 - Canonical command:
 
 ```powershell
-Copy-Item -LiteralPath "$env:USERPROFILE\Documents\Codex\BetterParameters\BetterParameters\scripts\fusion_bp_test_harness.py" -Destination "$env:APPDATA\Autodesk\Autodesk Fusion 360\API\Scripts\fusion_bp_test_harness.py" -Force
+Copy-Item -LiteralPath "$env:USERPROFILE\Documents\Codex\BetterParameters\scripts\fusion_bp_test_harness.py" -Destination "$env:APPDATA\Autodesk\Autodesk Fusion 360\API\Scripts\fusion_bp_test_harness.py" -Force
 ```
 
 - Verification command (required):
 
 ```powershell
-$src = "$env:USERPROFILE\Documents\Codex\BetterParameters\BetterParameters\scripts\fusion_bp_test_harness.py"
+$src = "$env:USERPROFILE\Documents\Codex\BetterParameters\scripts\fusion_bp_test_harness.py"
 $dst = "$env:APPDATA\Autodesk\Autodesk Fusion 360\API\Scripts\fusion_bp_test_harness.py"
 (Get-FileHash $src).Hash -eq (Get-FileHash $dst).Hash
 ```
@@ -193,11 +193,11 @@ $dst = "$env:APPDATA\Autodesk\Autodesk Fusion 360\API\Scripts\fusion_bp_test_har
 - macOS canonical commands:
 
 ```bash
-cp "$HOME/Documents/Codex/BetterParameters/BetterParameters/scripts/fusion_bp_test_harness.py" "$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/Scripts/fusion_bp_test_harness.py"
+cp "$HOME/Documents/Codex/BetterParameters/scripts/fusion_bp_test_harness.py" "$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/Scripts/fusion_bp_test_harness.py"
 ```
 
 ```bash
-src="$HOME/Documents/Codex/BetterParameters/BetterParameters/scripts/fusion_bp_test_harness.py"
+src="$HOME/Documents/Codex/BetterParameters/scripts/fusion_bp_test_harness.py"
 dst="$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/Scripts/fusion_bp_test_harness.py"
 [ "$(shasum -a 256 "$src" | awk '{print $1}')" = "$(shasum -a 256 "$dst" | awk '{print $1}')" ] && echo True || echo False
 ```
@@ -490,25 +490,25 @@ Version consistency requirements:
 Use these paths for release packaging:
 
 - Stage root:
-  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\BetterParameters\_release_stage`
-  - macOS: `~/Documents/Codex/BetterParameters/BetterParameters/_release_stage`
+  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\_release_stage`
+  - macOS: `~/Documents/Codex/BetterParameters/_release_stage`
 - Stage package folder:
-  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\BetterParameters\_release_stage\BetterParameters`
-  - macOS: `~/Documents/Codex/BetterParameters/BetterParameters/_release_stage/BetterParameters`
+  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\_release_stage\BetterParameters`
+  - macOS: `~/Documents/Codex/BetterParameters/_release_stage/BetterParameters`
 - Zip output:
-  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\BetterParameters\_releases_packages\BetterParameters-X.Y.Z.zip`
-  - macOS: `~/Documents/Codex/BetterParameters/BetterParameters/_releases_packages/BetterParameters-X.Y.Z.zip`
+  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\_releases_packages\BetterParameters-X.Y.Z.zip`
+  - macOS: `~/Documents/Codex/BetterParameters/_releases_packages/BetterParameters-X.Y.Z.zip`
 
 Do not leave stale stage content. Recreate stage folder fresh per release.
 
 Canonical script paths:
 
 - Canonical ship script:
-  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\BetterParameters\scripts\ship.py`
-  - macOS: `~/Documents/Codex/BetterParameters/BetterParameters/scripts/ship.py`
+  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\scripts\ship.py`
+  - macOS: `~/Documents/Codex/BetterParameters/scripts/ship.py`
 - Release notes template:
-  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\BetterParameters\scripts\release_notes_template.md`
-  - macOS: `~/Documents/Codex/BetterParameters/BetterParameters/scripts/release_notes_template.md`
+  - Windows: `%USERPROFILE%\Documents\Codex\BetterParameters\scripts\release_notes_template.md`
+  - macOS: `~/Documents/Codex/BetterParameters/scripts/release_notes_template.md`
 
 ## GitHub Release Notes Formatting (Required)
 
@@ -523,7 +523,7 @@ Safe PowerShell pattern:
 ```powershell
 $ver = "X.Y.Z"
 $tag = "v$ver"
-$zip = "$env:USERPROFILE\Documents\Codex\BetterParameters\BetterParameters\_releases_packages\BetterParameters-$ver.zip"
+$zip = "$env:USERPROFILE\Documents\Codex\BetterParameters\_releases_packages\BetterParameters-$ver.zip"
 $notes = @'
 BetterParameters vX.Y.Z
 
@@ -542,7 +542,7 @@ macOS equivalent:
 ```bash
 ver="X.Y.Z"
 tag="v$ver"
-zip="$HOME/Documents/Codex/BetterParameters/BetterParameters/_releases_packages/BetterParameters-$ver.zip"
+zip="$HOME/Documents/Codex/BetterParameters/_releases_packages/BetterParameters-$ver.zip"
 tmp="$(mktemp /tmp/bp_release_notes_${ver}_XXXX.md)"
 cat > "$tmp" <<'EOF'
 BetterParameters vX.Y.Z
