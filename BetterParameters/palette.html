@@ -1162,10 +1162,6 @@
         cursor: default;
       }
 
-      .narrow-expanded-kind {
-        display: none;
-      }
-
       .name-cell-main {
         display: flex;
         align-items: center;
@@ -1387,9 +1383,19 @@
       }
 
       body.narrow-stack .parameter-rows tr.parameter-row {
-        display: block;
-        padding: 8px 10px;
+        display: grid;
+        grid-template-columns: minmax(96px, 0.9fr) minmax(0, 1.6fr) 24px;
+        align-items: center;
+        gap: 8px;
+        min-height: var(--table-row-height);
+        height: var(--table-row-height);
+        padding: 0 8px;
+        box-sizing: border-box;
         border-bottom: 1px solid var(--line-subtle);
+      }
+
+      body.narrow-stack.hide-revert .parameter-rows tr.parameter-row {
+        grid-template-columns: minmax(96px, 0.9fr) minmax(0, 1fr);
       }
 
       body.narrow-stack .parameter-rows tr.group-header-row {
@@ -1436,13 +1442,34 @@
       }
 
       body.narrow-stack .parameter-rows tr.parameter-row td.name-cell {
+        display: none;
+      }
+
+      body.narrow-stack .parameter-rows tr.parameter-row .narrow-summary {
         display: block;
-        order: 1;
+      }
+
+      body.narrow-stack .parameter-rows tr.parameter-row .narrow-summary-head {
+        display: block;
+      }
+
+      body.narrow-stack .parameter-rows tr.parameter-row .narrow-summary-name {
+        display: block;
+        font-weight: inherit;
+      }
+
+      body.narrow-stack .parameter-rows tr.parameter-row td.param-name-cell,
+      body.narrow-stack .parameter-rows tr.parameter-row td.expression-cell,
+      body.narrow-stack .parameter-rows tr.parameter-row td.revert-cell {
+        display: block;
+        margin-top: 0;
+        align-self: center;
       }
 
       body.narrow-stack .parameter-rows tr.parameter-row td.param-name-cell {
-        display: block;
-        margin-top: 6px;
+        min-width: 0;
+        width: 100%;
+        order: 0;
       }
 
       body.narrow-stack .parameter-rows tr.parameter-row td.param-name-cell .param-name-editor {
@@ -1454,169 +1481,32 @@
         min-width: 0;
       }
 
-      body.narrow-stack .parameter-rows tr.parameter-row .name-cell-main {
-        display: none;
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row .narrow-summary {
-        display: grid;
-        gap: 6px;
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row .narrow-summary-head {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr) auto auto auto;
-        align-items: center;
-        gap: 6px;
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row .narrow-summary-name {
-        display: none;
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row .narrow-summary-state {
-        color: var(--muted);
-        white-space: nowrap;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row .narrow-summary-icon-btn {
-        width: var(--icon-btn-size);
-        height: var(--icon-btn-size);
-        padding: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row .narrow-summary-toggle {
-        font-size: 12px;
-      }
-
       body.narrow-stack .parameter-rows tr.parameter-row td.expression-cell {
-        display: block;
-        margin-top: 6px;
+        order: 1;
+        min-width: 0;
+        width: 100%;
+        justify-self: stretch;
       }
 
-      body.narrow-stack .parameter-rows tr.parameter-row td.expression-cell .field-shell {
-        border: 1px solid var(--line);
-        border-radius: 4px;
-        background: color-mix(in srgb, var(--panel-raised) 96%, var(--panel));
-        padding: 5px 6px 4px;
+      body.narrow-stack .parameter-rows tr.parameter-row td.revert-cell {
+        order: 2;
+        justify-self: end;
+        width: 24px;
+        min-width: 24px;
       }
 
-      body.narrow-stack .parameter-rows tr.parameter-row td.expression-cell .expression-input {
-        border-color: color-mix(in srgb, var(--line) 75%, transparent);
-        background: var(--input-bg);
-        border-radius: 3px;
+      body.narrow-stack.hide-revert .parameter-rows tr.parameter-row td.revert-cell {
+        display: none !important;
       }
 
-      body.narrow-stack .parameter-rows tr.parameter-row td.expression-cell .expression-field-error {
-        margin-top: 4px;
+      body.narrow-stack .parameter-rows tr.parameter-row .favorite-button {
+        display: none !important;
       }
 
-      body.narrow-stack .parameter-rows tr.parameter-row td.value-cell {
-        display: none;
-        margin-top: 6px;
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row.has-narrow-value-summary td.value-cell {
-        display: block;
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row td.value-cell .preview-value {
-        border: 1px solid var(--line-subtle);
-        border-radius: 4px;
-        background: color-mix(in srgb, var(--panel-raised) 93%, var(--panel));
-        padding: 4px 6px;
-      }
-
+      body.narrow-stack .parameter-rows tr.parameter-row .narrow-summary-state,
+      body.narrow-stack .parameter-rows tr.parameter-row td.value-cell,
       body.narrow-stack .parameter-rows tr.parameter-row td.comments-cell {
         display: none;
-        margin-top: 6px;
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row.has-visible-actions td.comments-cell,
-      body.narrow-stack .parameter-rows tr.parameter-row.is-narrow-expanded td.comments-cell {
-        display: block !important;
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row td.comments-cell .comment-shell {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr);
-        gap: 6px;
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row td.comments-cell .row-actions {
-        order: 1;
-        display: none;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        width: auto;
-        min-width: 100%;
-        max-width: 100%;
-        margin: 0;
-        padding-top: 6px;
-        border-top: 1px solid var(--line-subtle);
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row.has-visible-actions td.comments-cell .row-actions {
-        display: flex;
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row td.comments-cell .row-actions:not(.has-revert-action)::before {
-        content: "";
-        display: inline-block;
-        width: var(--narrow-action-btn-w);
-        min-width: var(--narrow-action-btn-w);
-        max-width: var(--narrow-action-btn-w);
-        height: 24px;
-        flex: 0 0 var(--narrow-action-btn-w);
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row td.comments-cell .comment-input {
-        order: 2;
-        display: none;
-        border-color: color-mix(in srgb, var(--line) 75%, transparent);
-        background: var(--input-bg);
-        border-radius: 3px;
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row.is-narrow-expanded td.comments-cell .comment-input {
-        display: block;
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row .narrow-expanded-kind {
-        order: 3;
-        display: none;
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row.is-narrow-expanded .narrow-expanded-kind {
-        display: block;
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row .row-actions {
-        opacity: 1;
-        pointer-events: auto;
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row .row-actions .revert-button,
-      body.narrow-stack .parameter-rows tr.parameter-row .row-actions .save-button {
-        width: var(--narrow-action-btn-w);
-        min-width: var(--narrow-action-btn-w);
-        max-width: var(--narrow-action-btn-w);
-        height: 24px;
-        padding: 2px 8px;
-        margin: 0;
-        border-radius: 4px;
-        text-align: center;
-      }
-
-      body.narrow-stack .parameter-rows tr.parameter-row .narrow-expanded-kind .parameter-kind {
-        opacity: 0.9;
       }
 
       body.narrow-stack .parameter-rows tr.parameter-row .reorder-handle,
@@ -1624,84 +1514,7 @@
         display: none !important;
       }
 
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row {
-        display: grid;
-        grid-template-columns: minmax(96px, 0.9fr) minmax(0, 1.6fr) 24px;
-        align-items: center;
-        gap: 8px;
-        min-height: var(--table-row-height);
-        height: var(--table-row-height);
-        padding: 0 8px;
-        box-sizing: border-box;
-      }
-
-      body.narrow-stack.ultralight-narrow-ui.hide-revert .parameter-rows tr.parameter-row {
-        grid-template-columns: minmax(96px, 0.9fr) minmax(0, 1fr);
-      }
-
-      body.narrow-stack.ultralight-narrow-ui.hide-revert .parameter-rows tr.parameter-row td.revert-cell {
-        display: none !important;
-      }
-
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.name-cell,
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.expression-cell,
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.revert-cell,
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.param-name-cell {
-        display: block;
-        margin-top: 0;
-        align-self: center;
-      }
-
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.name-cell {
-        display: none !important;
-      }
-
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.param-name-cell {
-        min-width: 0;
-        width: 100%;
-        order: 0;
-        margin-top: 0;
-      }
-
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.expression-cell {
-        order: 1;
-        min-width: 0;
-        width: 100%;
-        justify-self: stretch;
-      }
-
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.revert-cell {
-        order: 2;
-        justify-self: end;
-        width: 24px;
-        min-width: 24px;
-      }
-
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row .narrow-summary {
-        display: block;
-      }
-
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row .narrow-summary-head {
-        display: block;
-      }
-
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row .narrow-summary-name {
-        display: block;
-        font-weight: inherit;
-      }
-
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row .favorite-button {
-        display: none !important;
-      }
-
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row .narrow-summary-state,
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row .narrow-summary-icon-btn,
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.value-cell,
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.comments-cell {
-        display: none !important;
-      }
-
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.expression-cell .field-shell {
+      body.narrow-stack .parameter-rows tr.parameter-row td.expression-cell .field-shell {
         border: 0;
         border-radius: 0;
         background: transparent;
@@ -1713,13 +1526,13 @@
         min-width: 0;
       }
 
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.expression-cell .dirty-field-shell,
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.expression-cell .expression-input-shell {
+      body.narrow-stack .parameter-rows tr.parameter-row td.expression-cell .dirty-field-shell,
+      body.narrow-stack .parameter-rows tr.parameter-row td.expression-cell .expression-input-shell {
         width: 100%;
         min-width: 0;
       }
 
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.expression-cell .expression-input {
+      body.narrow-stack .parameter-rows tr.parameter-row td.expression-cell .expression-input {
         min-height: var(--control-h);
         height: var(--control-h);
         margin: 0;
@@ -1728,11 +1541,11 @@
         min-width: 0;
       }
 
-      body.narrow-stack.ultralight-narrow-ui .parameter-rows tr.parameter-row td.expression-cell .expression-field-error {
+      body.narrow-stack .parameter-rows tr.parameter-row td.expression-cell .expression-field-error {
         display: none;
       }
 
-      body.narrow-stack.ultralight-narrow-ui:not(.hide-revert) .parameter-rows tr.parameter-row td.revert-cell .revert-button {
+      body.narrow-stack:not(.hide-revert) .parameter-rows tr.parameter-row td.revert-cell .revert-button {
         width: var(--icon-btn-size);
         min-width: var(--icon-btn-size);
         max-width: var(--icon-btn-size);
@@ -3854,7 +3667,6 @@
               <button id="textTunerSidebarButton" class="ghost" type="button">Text Tuner: On</button>
               <button id="toggleRevertButtonsButton" class="ghost" type="button">Show Revert: On</button>
               <button id="hideGroupsButton" class="ghost" type="button">Hide Groups: Off</button>
-              <button id="ultralightNarrowUiButton" class="ghost" type="button">Ultralight Narrow UI: Off</button>
               <button id="computeModeButton" class="ghost" type="button">Compute: Auto</button>
               <button id="autoFitColumnsButton" class="ghost" type="button">Auto Fit</button>
               <button id="resetSettingsButton" class="ghost" type="button">Reset Settings</button>
@@ -4634,7 +4446,6 @@
           showRevertButtons: DEFAULT_SHOW_REVERT_BUTTONS,
           alwaysShowRowDragHandle: false,
           showCommentColumn: DEFAULT_SHOW_COMMENT_COLUMN,
-          ultralightNarrowUi: false,
           showTextTunerSidebar: DEFAULT_SHOW_TEXT_TUNER_SIDEBAR,
           hideGroups: false,
           autoFitColumns: true,
@@ -4765,7 +4576,6 @@
         },
         tableSort: loadStoredTableSort(),
         timelineSortActive: false,
-        expandedRows: {},
         localPreviousExpressions: {},
         applyAllRunning: false,
         selectedRow: null,
@@ -6604,13 +6414,9 @@
 
       function getEffectiveColumnOrder() {
         if (document.body.classList.contains("narrow-stack")) {
-          if (
-            document.body.classList.contains("ultralight-narrow-ui")
-            && !document.body.classList.contains("hide-revert")
-          ) {
-            return ["parameter", "expression", "revert", "name", "unit", "value", "comment"];
-          }
-          return DEFAULT_TABLE_COLUMN_ORDER.slice();
+          return document.body.classList.contains("hide-revert")
+            ? ["parameter", "expression", "name", "unit", "value", "comment", "revert"]
+            : ["parameter", "expression", "revert", "name", "unit", "value", "comment"];
         }
         return normalizeColumnOrder(state.settings.parameterTableColumnOrder, DEFAULT_TABLE_COLUMN_ORDER);
       }
@@ -7211,15 +7017,6 @@
         button.textContent = `Comment: ${isOn ? "On" : "Off"}`;
       }
 
-      function renderUltralightNarrowUiToggle() {
-        const button = document.getElementById("ultralightNarrowUiButton");
-        const isOn = state.settings.ultralightNarrowUi === true;
-        if (button) {
-          button.textContent = `Ultralight Narrow UI: ${isOn ? "On" : "Off"}`;
-        }
-        document.body.classList.toggle("ultralight-narrow-ui", isOn);
-      }
-
       function renderHideGroupsToggle() {
         const button = document.getElementById("hideGroupsButton");
         const isOn = state.settings.hideGroups === true;
@@ -7229,8 +7026,7 @@
       }
 
       function shouldUseCompactRevertLabel() {
-        return state.settings.ultralightNarrowUi === true
-          && document.body.classList.contains("narrow-stack");
+        return document.body.classList.contains("narrow-stack");
       }
 
       function syncVisibleRevertButtonLabels() {
@@ -10324,8 +10120,6 @@
               ? "Clear search to reorder parameters."
               : `Drag to reorder ${safeName}. Right-click for group + reorder options.`;
             const showRevert = !isModelRow && state.settings.showRevertButtons !== false;
-            const compactPreviousValue = previousValue.replace(/\s+/g, " ").trim();
-            const isNarrowExpanded = !!state.expandedRows[rowStateKey];
             const hasRevert = !!previousExpression;
             const useCompactRevertLabel = shouldUseCompactRevertLabel();
             const revertLabel = useCompactRevertLabel ? "R" : "Revert";
@@ -10354,26 +10148,19 @@
             })();
             const stripeClass = (stripeParity === 0) ? " is-even" : " is-odd";
             const hiddenClass = groupCollapsed ? " is-hidden-by-group" : "";
-            const narrowExpandedClass = isNarrowExpanded ? " is-narrow-expanded" : "";
-            const narrowToggleGlyph = isNarrowExpanded ? "\u25be" : "\u25b8";
-            const narrowToggleTitle = isNarrowExpanded ? "Hide comment and parameter type" : "Show comment and parameter type";
             const rowScope = isModelRow ? "model" : "user";
             const rowSelectable = isModelRow ? "false" : "true";
             const kindText = isModelRow
               ? (String(param?.createdBy || "").trim() ? `Model Parameter • ${escapeHtml(String(param.createdBy || ""))}` : "Model Parameter")
               : "User Parameter";
             const favoriteButtonMain = buildFavoriteButtonHtml(isModelRow, !!param.isFavorite, favoriteTitle);
-            const favoriteButtonNarrow = buildFavoriteButtonHtml(isModelRow, !!param.isFavorite, favoriteTitle);
             const reorderHandleHtml = (isFavoritesGroup || isModelRow)
               ? `<span class="reorder-handle-placeholder" aria-hidden="true"></span>`
               : `<button class="reorder-handle" type="button" data-reorder-handle="true" tabindex="-1" aria-label="${reorderTitle}" title="${reorderTitle}"${isSearchActive ? " disabled" : ""}></button>`;
-            const narrowReorderButtonHtml = isModelRow
-              ? ""
-              : `<button class="ghost narrow-summary-icon-btn" type="button" data-narrow-reorder="true" title="More / reorder">&#8942;</button>`;
             const nameReadonlyAttrs = isModelRow ? ' readonly aria-readonly="true"' : "";
 
             pieces.push(`
-              <tr class="parameter-row${stripeClass}${hiddenClass}${narrowExpandedClass}" data-parameter-scope="${rowScope}" data-row-selectable="${rowSelectable}" data-index="0" data-group-index="${index}" data-group-name="${safeGroupLabel}" data-parameter-key="${safeKey}" data-parameter-name="${safeName}" data-row-uid="row-${renderRowCounter}"${(isFavoritesGroup && !isModelRow) ? ' data-favorites-row="true"' : ""}>
+              <tr class="parameter-row${stripeClass}${hiddenClass}" data-parameter-scope="${rowScope}" data-row-selectable="${rowSelectable}" data-index="0" data-group-index="${index}" data-group-name="${safeGroupLabel}" data-parameter-key="${safeKey}" data-parameter-name="${safeName}" data-row-uid="row-${renderRowCounter}"${(isFavoritesGroup && !isModelRow) ? ' data-favorites-row="true"' : ""}>
                 <td class="name-cell">
                   <div class="name-cell-main">
                     ${reorderHandleHtml}
@@ -10384,11 +10171,7 @@
                   </div>
                   <div class="narrow-summary">
                     <div class="narrow-summary-head">
-                      ${favoriteButtonNarrow}
                       <strong class="narrow-summary-name">${safeName}</strong>
-                      <span class="narrow-summary-state" data-narrow-summary-state>${safePreview}</span>
-                      ${narrowReorderButtonHtml}
-                      <button class="ghost narrow-summary-icon-btn narrow-summary-toggle" type="button" data-narrow-toggle="true" aria-expanded="${isNarrowExpanded ? "true" : "false"}" title="${narrowToggleTitle}">${narrowToggleGlyph}</button>
                     </div>
                   </div>
                 </td>
@@ -10441,9 +10224,6 @@
                     <div class="row-actions">
                       ${revertButton}
                       <button class="save-button" type="button" disabled>${rowCommitLabel}</button>
-                    </div>
-                    <div class="narrow-expanded-kind">
-                      <span class="parameter-kind">Type: ${kindText}</span>
                     </div>
                   </div>
                 </td>
@@ -10651,70 +10431,6 @@
           row.classList.toggle("is-selected", !!(key && selected.has(key)));
         });
         renderSelectionCountChip();
-      }
-
-      function narrowRowStateKeyFromRow(row) {
-        if (!row) {
-          return "";
-        }
-        return String(row.getAttribute("data-parameter-key") || "");
-      }
-
-      function setNarrowRowExpanded(row, expanded) {
-        const key = narrowRowStateKeyFromRow(row);
-        if (!key) {
-          return;
-        }
-        state.expandedRows[key] = !!expanded;
-        row.classList.toggle("is-narrow-expanded", !!expanded);
-        const toggle = row.querySelector("[data-narrow-toggle]");
-        if (toggle) {
-          toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
-          toggle.textContent = expanded ? "\u25be" : "\u25b8";
-          toggle.title = expanded ? "Hide comment and parameter type" : "Show comment and parameter type";
-        }
-      }
-
-      function renderNarrowValueSummary(row) {
-        if (!row) {
-          return;
-        }
-
-        const summaryState = row.querySelector("[data-narrow-summary-state]");
-        const summaryName = row.querySelector(".narrow-summary-name");
-        const nameInput = row.querySelector(".param-name-input");
-        if (!summaryState) {
-          return;
-        }
-        if (summaryName && nameInput) {
-          const nextName = String(nameInput.value || "").trim();
-          summaryName.textContent = nextName || (row.getAttribute("data-parameter-name") || "");
-        }
-
-        const previewCell = row.querySelector(".preview-cell");
-        const saveButton = getRowPrimarySaveButton(row);
-        const isDirty = row.classList.contains("is-dirty");
-        const canSave = !!(saveButton && !saveButton.disabled && saveButton.classList.contains("is-ready"));
-
-        const currentText = (previewCell?.getAttribute("data-saved-preview") || "").trim();
-        const draftText = (previewCell?.getAttribute("data-draft-preview") || "").trim();
-
-        summaryState.textContent = currentText || "";
-
-        if (document.body.classList.contains("narrow-stack") && previewCell) {
-          const previewValueNode = previewCell.querySelector(".preview-value");
-          if (isDirty && canSave) {
-            const nextValue = draftText || currentText;
-            row.classList.add("has-narrow-value-summary");
-            if (previewValueNode) {
-              previewValueNode.textContent = `${currentText} (current); ${nextValue} (unsaved)`;
-            }
-          } else {
-            row.classList.remove("has-narrow-value-summary");
-          }
-        } else {
-          row.classList.remove("has-narrow-value-summary");
-        }
       }
 
       function setSelectedParameterRow(row, options = {}) {
@@ -11828,9 +11544,6 @@
           showCommentColumn: typeof settings.showCommentColumn === "boolean"
             ? settings.showCommentColumn
             : (state.settings.showCommentColumn === true),
-          ultralightNarrowUi: typeof settings.ultralightNarrowUi === "boolean"
-            ? settings.ultralightNarrowUi
-            : (state.settings.ultralightNarrowUi === true),
           showTextTunerSidebar: typeof settings.showTextTunerSidebar === "boolean"
             ? settings.showTextTunerSidebar
             : (state.settings.showTextTunerSidebar !== false),
@@ -11867,7 +11580,6 @@
         renderAlwaysShowRowDragHandleToggle();
         renderAutoOpenToggle();
         renderCommentColumnToggle();
-        renderUltralightNarrowUiToggle();
         renderHideGroupsToggle();
         renderTextTunerSidebarToggle();
         renderComputeModeButton();
@@ -13966,10 +13678,6 @@
         const currentExpression = expressionInput.value || "";
         const draftPreview = previewCell.getAttribute("data-draft-preview") || "";
         const showDraft = currentExpression !== savedExpression && !!draftPreview;
-        if (document.body.classList.contains("narrow-stack")) {
-          renderNarrowValueSummary(row);
-          return;
-        }
         setPreviewCellContent(previewCell, savedPreview, showDraft ? draftPreview : "");
       }
 
@@ -14026,9 +13734,6 @@
         if (rowActions) {
           rowActions.classList.toggle("has-revert-action", !!revertButton);
         }
-        const hasVisibleSave = isManualComputeMode() && isDirty;
-        const hasVisibleRevert = !!revertButton;
-        row.classList.toggle("has-visible-actions", hasVisibleSave || hasVisibleRevert);
         const draftKey = getRowDraftKey(row);
         if (draftKey) {
           const fieldShell = expressionInput.closest ? expressionInput.closest(".field-shell") : null;
@@ -14062,7 +13767,6 @@
           }
         }
         renderRowPreview(row);
-        renderNarrowValueSummary(row);
         refreshBatchActionBar();
         flushQueuedRenderPushIfReady();
       }
@@ -17157,20 +16861,6 @@
         }
       });
 
-      document.getElementById("ultralightNarrowUiButton").addEventListener("click", async () => {
-        const previousValue = state.settings.ultralightNarrowUi === true;
-        const nextValue = !previousValue;
-        state.settings.ultralightNarrowUi = nextValue;
-        renderUltralightNarrowUiToggle();
-        try {
-          await saveSettingsPartial({ ultralightNarrowUi: nextValue });
-        } catch (error) {
-          state.settings.ultralightNarrowUi = previousValue;
-          renderUltralightNarrowUiToggle();
-          setGlobalStatus(error.message, "error");
-        }
-      });
-
       document.getElementById("hideGroupsButton").addEventListener("click", async () => {
         const previousValue = state.settings.hideGroups === true;
         const nextValue = !previousValue;
@@ -18051,34 +17741,6 @@
       });
 
       document.getElementById("parameterRows").addEventListener("click", async (event) => {
-        const narrowToggle = event.target.closest("[data-narrow-toggle]");
-        if (narrowToggle) {
-          const row = narrowToggle.closest("tr.parameter-row[data-parameter-key]");
-          if (!row) {
-            return;
-          }
-          const nextExpanded = !row.classList.contains("is-narrow-expanded");
-          setNarrowRowExpanded(row, nextExpanded);
-          return;
-        }
-
-        const narrowReorder = event.target.closest("[data-narrow-reorder]");
-        if (narrowReorder) {
-          const row = narrowReorder.closest("tr.parameter-row[data-parameter-key]");
-          if (!row) {
-            return;
-          }
-          if (hasBlockingLocalEdits()) {
-            setGlobalStatus("Save or discard pending row edits before using reorder actions.", "warning");
-            return;
-          }
-          event.preventDefault();
-          cancelReorderMenuClose();
-          const rect = narrowReorder.getBoundingClientRect();
-          openReorderMenu(row, rect.left + (rect.width / 2), rect.bottom + 4);
-          return;
-        }
-
         const reorderHandle = event.target.closest("[data-reorder-handle]");
         if (reorderHandle) {
           return;
