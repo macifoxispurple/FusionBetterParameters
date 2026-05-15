@@ -3,6 +3,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PALETTE_PATH = REPO_ROOT / "BetterParameters" / "palette.html"
+MOCK_FIXTURES_PATH = REPO_ROOT / "BetterParameters" / "dev" / "mock_bridge_fixtures.js"
+RENDER_DATASET_PATH = REPO_ROOT / "tests" / "fixtures" / "render_test_datasets.json"
 
 
 def _read(path: Path) -> str:
@@ -13,6 +15,13 @@ def test_palette_mock_bridge_mode_wiring_present():
     text = _read(PALETTE_PATH)
     assert "__BP_USE_MOCK_BRIDGE" in text
     assert "dev/mock_bridge_fixtures.js" in text
+
+
+def test_generated_render_fixture_assets_present():
+    assert MOCK_FIXTURES_PATH.exists()
+    assert RENDER_DATASET_PATH.exists()
+    assert "render-large" in _read(MOCK_FIXTURES_PATH)
+    assert '"defaultMode": "render-smoke"' in _read(RENDER_DATASET_PATH)
 
 
 def test_palette_cmd_ctrl_parity_shortcuts_present():

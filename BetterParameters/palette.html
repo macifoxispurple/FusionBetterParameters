@@ -3270,6 +3270,7 @@
         }
       }
     </style>
+    <script src="dev/mock_bridge_fixtures.js"></script>
     <script>
       (function () {
         try {
@@ -3280,18 +3281,6 @@
           };
           if (getFlag("mock")) {
             window.__BP_USE_MOCK_BRIDGE = true;
-            try {
-              var fixturePaths = ["dev/mock_bridge_fixtures.js"];
-              for (var i = 0; i < fixturePaths.length; i += 1) {
-                var xhr = new XMLHttpRequest();
-                xhr.open("GET", fixturePaths[i], false);
-                xhr.send(null);
-                if ((xhr.status === 0 || xhr.status === 200) && String(xhr.responseText || "").trim()) {
-                  (0, eval)(xhr.responseText);
-                  break;
-                }
-              }
-            } catch (_) {}
           }
           var fixture = String(params.get("fixture") || "").trim();
           if (fixture) {

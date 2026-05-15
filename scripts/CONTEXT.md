@@ -5,7 +5,20 @@ Canonical location: `scripts/CONTEXT.md` (repo root copies are deprecated/remove
 
 ## Current Task
 
-- FE ownership active. Baseline captured and verified; ready for FE feature work, maintenance, and troubleshooting.
+- FE render-test fixture workflow added and verified; repo now has local deterministic mock datasets for browser render automation.
+
+## Session Updates (2026-05-15)
+
+- Local automated render-test dataset generation added and verified.
+  - Added deterministic generator: `scripts/generate_render_test_dataset.py`
+  - Generated fixture source: `tests/fixtures/render_test_datasets.json`
+  - Generated mock helper consumed by `palette.html`: `BetterParameters/dev/mock_bridge_fixtures.js`
+  - Updated `palette.html` mock bootstrap to load the helper via a local script include so Playwright `file://` runs work under Chromium.
+  - Extended browser coverage in `tests/test_fe_browser_current.py` to load the large render fixture and verify grouped row rendering.
+  - Added baseline presence checks for generated assets in `tests/test_fe_current_baseline.py`.
+  - Verification:
+    - focused FE tests: `./.venv/bin/python -m pytest tests/test_fe_current_baseline.py tests/test_fe_browser_current.py -q` -> `11 passed`
+    - full suite: `./.venv/bin/python -m pytest` -> `440 passed`
 
 ## Session Updates (2026-04-18)
 
@@ -4109,3 +4122,20 @@ Legend:
 - Remaining risk / next check:
   - Hook protects only this repo's clones. For full account-wide coverage, consider a global shared hooks path - out of scope this session.
   - If `scripts/hooks/commit-msg` is later staged, hook will (by design) allow the commit; the script content does not itself trigger the regex.
+
+## 2026-05-15 - Local HTTP helper for render fixture browser work
+- What changed:
+  - Added `scripts/serve_render_fixture.sh` with `start`, `stop`, `restart`, `status`, and `url` commands.
+  - Helper serves repo root over `python3 -m http.server` on `127.0.0.1:8765` by default.
+  - Tracks/adopts the running fixture server with a repo-local pid file so it can manage an already-running matching server on the same port.
+  - Prints the direct render-fixture URL:
+    - `http://127.0.0.1:8765/BetterParameters/palette.html?mock=1&layoutdebug=1&fixture=render-large`
+- Why:
+  - Allows the Codex in-app browser to load the local render-test fixture over HTTP, avoiding the `file://` URL policy block.
+- Validation run + pass/fail counts:
+  - `scripts/serve_render_fixture.sh status` => detected running server.
+  - `scripts/serve_render_fixture.sh stop` => stopped detected server cleanly.
+  - `scripts/serve_render_fixture.sh start` => restarted server successfully.
+  - `scripts/serve_render_fixture.sh status` => confirmed running again on `127.0.0.1:8765`.
+- Live Fusion AddIns sync:
+  - Not required - helper is workspace tooling only, no runtime payload change for Fusion add-in behavior.

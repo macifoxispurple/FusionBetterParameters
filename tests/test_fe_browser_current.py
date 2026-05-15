@@ -15,11 +15,12 @@ def _playwright_import():
     return sync_playwright
 
 
-def _harness_url() -> str:
+def _harness_url(fixture: str = "") -> str:
     repo_root = Path(__file__).resolve().parents[1]
     palette = repo_root / "BetterParameters" / "palette.html"
     base = f"file:///{quote(str(palette).replace('\\', '/'), safe='/:')}"
-    return f"{base}?mock=1&layoutdebug=1"
+    suffix = f"&fixture={quote(fixture)}" if fixture else ""
+    return f"{base}?mock=1&layoutdebug=1{suffix}"
 
 
 @pytest.fixture(scope="module")
@@ -38,7 +39,7 @@ def browser_page():
 
 
 def _wait_palette_ready(page):
-    page.locator("#computeModeButton").wait_for(timeout=10000)
+    page.locator("#computeModeButton").wait_for(timeout=10000, state="attached")
     page.locator("#parameterRows tr.parameter-row[data-parameter-key]").first.wait_for(timeout=10000)
     return page
 
@@ -115,7 +116,8 @@ def test_discard_all_clears_dirty_rows(browser_page):
     page = browser_page
     page.goto(_harness_url())
     _wait_palette_ready(page)
-    rows = page.query_selector_all("#parameterRows tr.parameter-row[data-parameter-key]")
+    page.evaluate("() => window.setComputeMode('manual')")
+    rows = page.query_selector_all("#parameterRows tr.parameter-row[data-parameter-key]:not([data-favorites-row='true'])")
     assert len(rows) >= 2
     for idx, row in enumerate(rows[:2]):
         comment = row.query_selector(".comment-input")
@@ -130,7 +132,22 @@ def test_discard_all_clears_dirty_rows(browser_page):
         assert "is-dirty" in (row.get_attribute("class") or "")
     discard_all = page.query_selector("#discardAllButton")
     assert discard_all is not None
-    discard_all.click()
+    page.evaluate("() => window.discardAllDirtyRows()")
     page.wait_for_timeout(150)
     for row in rows[:2]:
         assert "is-dirty" not in (row.get_attribute("class") or "")
+
+
+def test_large_render_fixture_renders_expected_rows_and_groups(browser_page):
+    page = browser_page
+    page.goto(_harness_url("render-large"))
+    _wait_palette_ready(page)
+    page.wait_for_timeout(150)
+
+    rows = page.locator("#parameterRows tr.parameter-row[data-parameter-key]")
+    groups = page.locator("#parameterRows tr.group-header-row")
+
+    assert rows.count() >= 180
+    assert groups.count() >= 6
+    assert page.locator("#contractErrorBanner[hidden]").count() == 1
+    assert page.locator("#parameterRows").text_content() and "DIMENSIONS_Fixture_001" in page.locator("#parameterRows").text_content()

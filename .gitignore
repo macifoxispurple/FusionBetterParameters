@@ -28,6 +28,8 @@ _releases_packages/
 _tmp_zip_check/
 archive/
 scripts/_ship_reports/
+scripts/.render_fixture_server.pid
+scripts/.render_fixture_server.log
 
 # Legacy/local migration helpers
 BetterParameters_legacy/
