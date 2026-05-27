@@ -24,6 +24,15 @@ def test_generated_render_fixture_assets_present():
     assert '"defaultMode": "render-smoke"' in _read(RENDER_DATASET_PATH)
 
 
+def test_rapid_create_batch_workspace_markers_present():
+    text = _read(PALETTE_PATH)
+    assert "rapidCreateValidateBatch" in text
+    assert "rapidCreatePreviewBatch" in text
+    assert "rapidCreateApplyBatch" in text
+    assert "rapidCreateGridBody" in text
+    assert "rapidCreateApplyButton" in text
+
+
 def test_palette_cmd_ctrl_parity_shortcuts_present():
     text = _read(PALETTE_PATH)
     assert "const ctrlOrMeta = event.ctrlKey || event.metaKey;" in text

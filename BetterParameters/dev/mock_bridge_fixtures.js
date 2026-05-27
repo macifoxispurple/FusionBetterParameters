@@ -3831,9 +3831,54 @@
       return { ok: false, message: "Expression is required.", state: null };
     }
     return okReadOnly({
+      preview: expression,
       valuePreview: expression,
       expression: expression
     });
+  }
+
+  function validateRapidRows(state, payload) {
+    var rows = Array.isArray(payload.rows) ? payload.rows : [];
+    var targetCounts = {};
+    var results = [];
+    rows.forEach(function (row) {
+      var targetName = String(row.targetName || "").trim();
+      var op = String(row.operation || "create").trim().toLowerCase() || "create";
+      if (op !== "skip" && targetName) {
+        var targetKey = targetName.toLowerCase();
+        targetCounts[targetKey] = (targetCounts[targetKey] || 0) + 1;
+      }
+    });
+    rows.forEach(function (row) {
+      var diagnostics = [];
+      var targetName = String(row.targetName || "").trim();
+      var currentName = String(row.currentName || "").trim();
+      var expression = String(row.expression || "").trim();
+      var unit = String(row.unit || "").trim();
+      var op = String(row.operation || "create").trim().toLowerCase() || "create";
+      var existing = findParameter(state, { key: row.matchedParameterKey, name: currentName || targetName });
+      if (op !== "skip") {
+        var nameError = validateName(targetName);
+        if (nameError) diagnostics.push({ level: "error", message: nameError });
+        if (!expression) diagnostics.push({ level: "error", message: "Expression is required." });
+        if (targetName && targetCounts[targetName.toLowerCase()] > 1) diagnostics.push({ level: "error", message: 'Duplicate target name "' + targetName + '" in batch.' });
+        if (op === "create" && findParameter(state, { name: targetName })) diagnostics.push({ level: "error", message: 'A parameter named "' + targetName + '" already exists in this design.' });
+        if ((op === "update" || op === "rename") && !existing) diagnostics.push({ level: "error", message: "Existing parameter match is required for update/rename." });
+      }
+      results.push({
+        rowId: String(row.rowId || ""),
+        operation: op,
+        matchedCurrentName: existing ? String(existing.name || "") : "",
+        matchedParameterKey: existing ? String(existing.key || "") : "",
+        targetName: targetName,
+        normalizedUnit: unit,
+        dependencies: [],
+        diagnostics: diagnostics,
+        blocking: diagnostics.some(function (item) { return item.level === "error"; }),
+        ok: diagnostics.every(function (item) { return item.level !== "error"; })
+      });
+    });
+    return results;
   }
 
   window.__BP_MOCK_FIXTURE_HELPER = {
@@ -3892,6 +3937,109 @@
 
       if (action === actionMap.PREVIEW_EXPRESSION) {
         return previewExpression(payload);
+      }
+
+      if (action === actionMap.RAPID_CREATE_VALIDATE_BATCH) {
+        var validateRows = validateRapidRows(runtimeState, payload);
+        var validateBlocking = validateRows.filter(function (row) { return row.blocking; }).length;
+        return okReadOnly({
+          ok: validateBlocking === 0,
+          message: validateBlocking === 0 ? "" : validateBlocking + " rapid-create row(s) need attention.",
+          rows: validateRows,
+          dependencyOrder: [],
+          blockingCount: validateBlocking
+        });
+      }
+
+      if (action === actionMap.RAPID_CREATE_PREVIEW_BATCH) {
+        var previewRows = validateRapidRows(runtimeState, payload).map(function (row) {
+          if (row.ok) {
+            row.preview = String(((payload.rows || []).find(function (item) { return String(item.rowId || "") === String(row.rowId || ""); }) || {}).expression || "");
+          } else {
+            row.preview = "";
+          }
+          return row;
+        });
+        var previewBlocking = previewRows.filter(function (row) { return row.blocking; }).length;
+        return okReadOnly({
+          ok: previewBlocking === 0,
+          message: previewBlocking === 0 ? "" : previewBlocking + " rapid-create preview(s) failed.",
+          rows: previewRows,
+          dependencyOrder: [],
+          blockingCount: previewBlocking
+        });
+      }
+
+      if (action === actionMap.RAPID_CREATE_APPLY_BATCH) {
+        var applyRows = validateRapidRows(runtimeState, payload);
+        var applyBlocking = applyRows.filter(function (row) { return row.blocking; }).length;
+        if (applyBlocking > 0) {
+          return {
+            ok: false,
+            message: applyBlocking + " rapid-create row(s) failed validation.",
+            state: clone(runtimeState),
+            rows: applyRows,
+            counts: { create: 0, update: 0, rename: 0, skip: 0, error: applyBlocking },
+            dependencyOrder: []
+          };
+        }
+        var counts = { create: 0, update: 0, rename: 0, skip: 0, error: 0 };
+        var payloadRows = Array.isArray(payload.rows) ? payload.rows : [];
+        payloadRows.forEach(function (row) {
+          var op = String(row.operation || "create").trim().toLowerCase() || "create";
+          var currentName = String(row.currentName || "").trim();
+          var targetName = String(row.targetName || "").trim();
+          var expression = String(row.expression || "").trim();
+          var unit = String(row.unit || "").trim();
+          var comment = String(row.comment || "");
+          var existing = findParameter(runtimeState, { key: row.matchedParameterKey, name: currentName || targetName });
+          if (op === "skip") {
+            counts.skip += 1;
+            return;
+          }
+          if (op === "create") {
+            runtimeState.parameters = runtimeState.parameters || [];
+            runtimeState.parameters.push({
+              key: "fixture::rapid::" + targetName.toLowerCase(),
+              name: targetName,
+              expression: expression,
+              unit: unit,
+              comment: comment,
+              valuePreview: expression,
+              previousExpression: "",
+              previousValue: "",
+              parameterKind: "User Parameter",
+              isUserParameter: true,
+              isFavorite: false,
+              group: ""
+            });
+            counts.create += 1;
+            return;
+          }
+          if (existing) {
+            if (op === "rename") {
+              existing.name = targetName;
+              counts.rename += 1;
+            } else {
+              counts.update += 1;
+            }
+            existing.previousExpression = String(existing.expression || "");
+            existing.previousValue = String(existing.valuePreview || "");
+            existing.expression = expression;
+            existing.unit = unit;
+            existing.comment = comment;
+            existing.valuePreview = expression;
+          }
+        });
+        runtimeState.parameterNames = (runtimeState.parameters || []).map(function (item) { return String(item.name || ""); });
+        return {
+          ok: true,
+          message: "",
+          state: clone(runtimeState),
+          rows: validateRapidRows(runtimeState, payload),
+          counts: counts,
+          dependencyOrder: []
+        };
       }
 
       if (action === actionMap.REVERT_PARAMETER) {

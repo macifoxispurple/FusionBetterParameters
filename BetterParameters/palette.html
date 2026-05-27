@@ -2367,11 +2367,11 @@
 
       .rapid-create-layout {
         display: grid;
-        gap: 8px;
+        gap: 10px;
       }
 
       #rapidCreateModal {
-        width: min(760px, calc(100vw - 24px));
+        width: min(1200px, calc(100vw - 24px));
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
@@ -2382,57 +2382,62 @@
       #rapidCreateModal .create-modal-card {
         display: flex;
         flex-direction: column;
-        height: 80vh;
-        max-height: 80vh;
+        height: 84vh;
+        max-height: 84vh;
       }
 
       #rapidCreateModal .create-modal-body {
         display: grid;
-        grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
         min-height: 0;
         height: 100%;
         overflow: hidden;
       }
 
-      .rapid-create-editor-wrap {
-        position: relative;
+      .rapid-create-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
       }
 
-      .rapid-create-error-gutter {
-        position: absolute;
-        top: 0;
-        left: 3px;
-        width: 10px;
+      .rapid-create-toolbar .spacer {
+        flex: 1 1 auto;
+      }
+
+      .rapid-create-shell {
+        display: grid;
+        grid-template-columns: minmax(0, 1.8fr) minmax(260px, 0.8fr);
+        gap: 12px;
+        min-height: 0;
         height: 100%;
-        overflow: hidden;
-        pointer-events: none;
-        z-index: 2;
       }
 
-      .rapid-create-error-marker {
-        position: absolute;
-        left: 0;
-        color: var(--error);
-        font-weight: 700;
-        line-height: 1;
-        pointer-events: none;
+      .rapid-create-main,
+      .rapid-create-sidebar {
+        min-height: 0;
+        display: grid;
+        gap: 10px;
       }
 
-      .rapid-create-warning-marker {
-        position: absolute;
-        left: 0;
-        color: var(--warning);
-        font-weight: 700;
-        line-height: 1;
-        pointer-events: none;
+      .rapid-create-paste-panel {
+        display: grid;
+        gap: 8px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: var(--panel-raised);
+      }
+
+      .rapid-create-paste-panel[hidden] {
+        display: none;
       }
 
       .rapid-create-editor {
         width: 100%;
-        min-height: 140px;
-        max-height: 220px;
+        min-height: 110px;
+        max-height: 200px;
         resize: vertical;
-        padding-left: 14px;
         font-family: Consolas, "Courier New", monospace;
         font-size: 12px;
         line-height: 1.35;
@@ -2443,36 +2448,14 @@
       }
 
       .rapid-create-active-status {
-        height: 18px;
-        min-height: 18px;
-        overflow: hidden;
-        white-space: nowrap;
-        text-overflow: ellipsis;
+        min-height: 20px;
         color: var(--muted);
-      }
-
-      .create-expression-value.is-success {
-        color: var(--success);
-      }
-
-      .create-expression-value.is-error {
-        color: var(--error);
-      }
-
-      .rapid-create-inline-note {
-        text-align: right;
-      }
-
-      .create-actions-inline-note {
-        margin-left: auto;
-        white-space: nowrap;
       }
 
       .rapid-create-summary {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
-        min-height: 26px;
       }
 
       .rapid-create-chip {
@@ -2482,37 +2465,57 @@
         padding: 2px 8px;
       }
 
-      .rapid-create-preview-wrap {
-        height: 100%;
+      .rapid-create-grid-wrap,
+      .rapid-create-sidebar-card {
         min-height: 0;
-        max-height: none;
-        overflow: auto;
         border: 1px solid var(--line);
         border-radius: 4px;
+        background: var(--panel);
+        overflow: auto;
       }
 
-      .rapid-create-preview {
+      .rapid-create-grid {
         width: 100%;
         border-collapse: collapse;
         table-layout: fixed;
       }
 
-      .rapid-create-preview th,
-      .rapid-create-preview td {
+      .rapid-create-grid th,
+      .rapid-create-grid td {
         border-bottom: 1px solid var(--line-subtle);
-        padding: 4px 6px;
+        padding: 6px;
         text-align: left;
         vertical-align: top;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
       }
 
-      .rapid-create-preview th {
+      .rapid-create-grid th {
         position: sticky;
         top: 0;
         background: var(--table-header-bg);
         z-index: 1;
+      }
+
+      .rapid-create-grid input,
+      .rapid-create-grid select {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .rapid-create-grid td:nth-child(7),
+      .rapid-create-grid td:nth-child(8) {
+        font-size: 12px;
+      }
+
+      .rapid-create-status-cell {
+        white-space: normal;
+      }
+
+      .rapid-create-row.is-error {
+        background: color-mix(in srgb, var(--error) 10%, transparent);
+      }
+
+      .rapid-create-row.is-warning {
+        background: color-mix(in srgb, var(--warning) 10%, transparent);
       }
 
       .rapid-create-status-ok {
@@ -2527,29 +2530,44 @@
         color: var(--warning);
       }
 
-      .rapid-create-preview td:last-child {
-        max-width: 260px;
+      .rapid-create-sidebar-card {
+        padding: 10px;
+        display: grid;
+        gap: 10px;
+        align-content: start;
       }
 
-      .rapid-create-preview th:nth-child(4),
-      .rapid-create-preview td:nth-child(4) {
-        min-width: 150px;
-        width: 150px;
+      .rapid-create-sidebar-card h3 {
+        margin: 0;
+        font-size: 13px;
       }
 
-      .rapid-create-preview th:nth-child(5),
-      .rapid-create-preview td:nth-child(5) {
-        min-width: 96px;
-        width: 96px;
+      .rapid-create-issues,
+      .rapid-create-notes {
+        display: grid;
+        gap: 6px;
+      }
+
+      .rapid-create-issue {
+        border-left: 3px solid var(--line);
+        padding-left: 8px;
+      }
+
+      .rapid-create-issue.is-error {
+        border-left-color: var(--error);
+      }
+
+      .rapid-create-issue.is-warning {
+        border-left-color: var(--warning);
       }
 
       .rapid-row-unit-button {
-        min-width: 120px;
+        min-width: 110px;
         width: 100%;
       }
 
-      #rapidCreateCreateAllButton:disabled,
-      #rapidCreateCreateAllButton.is-disabled {
+      #rapidCreateApplyButton:disabled,
+      #rapidCreateApplyButton.is-disabled {
         background: color-mix(in srgb, var(--btn-bg) 82%, var(--panel));
         border-color: var(--line-subtle);
         color: var(--muted);
@@ -2557,10 +2575,16 @@
         opacity: 0.68;
       }
 
-      #rapidCreateCreateAllButton:disabled:hover,
-      #rapidCreateCreateAllButton.is-disabled:hover {
+      #rapidCreateApplyButton:disabled:hover,
+      #rapidCreateApplyButton.is-disabled:hover {
         background: color-mix(in srgb, var(--btn-bg) 82%, var(--panel));
         border-color: var(--line-subtle);
+      }
+
+      @media (max-width: 980px) {
+        .rapid-create-shell {
+          grid-template-columns: 1fr;
+        }
       }
 
       .unit-picker {
@@ -3566,32 +3590,61 @@
             </button>
           </div>
           <div class="create-modal-body section rapid-create-layout">
-            <div class="rapid-create-help">Format: <code>name[TAB]expression[TAB]comment</code> or <code>name,expression,comment</code>.</div>
-            <div class="rapid-create-editor-wrap">
-              <div id="rapidCreateErrorGutter" class="rapid-create-error-gutter" aria-hidden="true"></div>
-              <textarea id="rapidCreateEditor" class="rapid-create-editor" spellcheck="false" placeholder="length\t10mm&#10;width\t25mm&#10;taper\t15deg"></textarea>
-            </div>
-            <div id="rapidCreateActiveStatus" class="rapid-create-active-status"></div>
-            <div id="rapidCreateSummary" class="rapid-create-summary"></div>
-            <div class="rapid-create-preview-wrap">
-              <table class="rapid-create-preview">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Value</th>
-                    <th>Comment</th>
-                    <th>Detected Unit</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody id="rapidCreatePreviewBody">
-                  <tr><td colspan="5" class="muted">No rows yet.</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <div class="actions">
-              <button id="rapidCreateCreateAllButton" class="primary" type="button">Create All</button>
+            <div class="rapid-create-toolbar">
+              <button id="rapidCreatePasteButton" class="ghost" type="button">Paste</button>
+              <button id="rapidCreateAddRowButton" class="ghost" type="button">Add Row</button>
+              <button id="rapidCreateNormalizeButton" class="ghost" type="button">Normalize</button>
+              <button id="rapidCreateValidateButton" class="ghost" type="button">Validate</button>
+              <button id="rapidCreatePreviewButton" class="ghost" type="button">Preview</button>
+              <span class="spacer"></span>
+              <button id="rapidCreateApplyButton" class="primary" type="button">Apply</button>
               <button id="rapidCreateCloseButton" class="ghost" type="button">Close</button>
+            </div>
+            <div id="rapidCreateSummary" class="rapid-create-summary"></div>
+            <div class="rapid-create-shell">
+              <div class="rapid-create-main">
+                <div id="rapidCreatePastePanel" class="rapid-create-paste-panel" hidden>
+                  <div class="rapid-create-help">Paste TSV/CSV rows here. Columns map in order to <code>Current Name</code>, <code>Target Name</code>, <code>Expression</code>, <code>Unit</code>, <code>Comment</code>, <code>Operation</code>.</div>
+                  <textarea id="rapidCreateEditor" class="rapid-create-editor" spellcheck="false" placeholder="width\twidth\t50 mm\tmm\tShelf width\tupdate&#10;\tnewHeight\t75 mm\tmm\tAdded in bulk\tcreate"></textarea>
+                </div>
+                <div class="rapid-create-grid-wrap">
+                  <table class="rapid-create-grid">
+                    <thead>
+                      <tr>
+                        <th>Current Name</th>
+                        <th>Target Name</th>
+                        <th>Expression</th>
+                        <th>Unit</th>
+                        <th>Comment</th>
+                        <th>Operation</th>
+                        <th>Preview</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody id="rapidCreateGridBody">
+                      <tr><td colspan="8" class="muted">Paste rows or add a blank row to begin.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="rapid-create-sidebar">
+                <div class="rapid-create-sidebar-card">
+                  <h3>Issues</h3>
+                  <div id="rapidCreateIssueList" class="rapid-create-issues">
+                    <div class="muted">No issues yet.</div>
+                  </div>
+                </div>
+                <div class="rapid-create-sidebar-card">
+                  <h3>Dependency Notes</h3>
+                  <div id="rapidCreateDependencyNotes" class="rapid-create-notes">
+                    <div class="muted">Validation will surface batch order and dependency notes here.</div>
+                  </div>
+                </div>
+                <div class="rapid-create-sidebar-card">
+                  <h3>Live Status</h3>
+                  <div id="rapidCreateActiveStatus" class="rapid-create-active-status"></div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -3992,6 +4045,9 @@
         VALIDATE_PARAMETER_NAME: "validateParameterName",
         VALIDATE_EXPRESSION: "validateExpression",
         PREVIEW_EXPRESSION: "previewExpression",
+        RAPID_CREATE_VALIDATE_BATCH: "rapidCreateValidateBatch",
+        RAPID_CREATE_PREVIEW_BATCH: "rapidCreatePreviewBatch",
+        RAPID_CREATE_APPLY_BATCH: "rapidCreateApplyBatch",
         VALIDATE_UNIT: "validateUnit",
         GET_MODEL_PARAMETERS: "getModelParameters",
         RENAME_PARAMETER: "renameParameter",
@@ -4045,6 +4101,9 @@
         [ACTION.VALIDATE_PARAMETER_NAME]: { readOnly: true },
         [ACTION.VALIDATE_EXPRESSION]: { readOnly: true },
         [ACTION.PREVIEW_EXPRESSION]: { readOnly: true },
+        [ACTION.RAPID_CREATE_VALIDATE_BATCH]: { readOnly: true },
+        [ACTION.RAPID_CREATE_PREVIEW_BATCH]: { readOnly: true },
+        [ACTION.RAPID_CREATE_APPLY_BATCH]: { mutating: true },
         [ACTION.VALIDATE_UNIT]: { readOnly: true },
         [ACTION.GET_MODEL_PARAMETERS]: { readOnly: true },
         [ACTION.RENAME_PARAMETER]: { mutating: true, supportsIncremental: true },
@@ -4604,23 +4663,20 @@
         ,
         rapidCreate: {
           rows: [],
-          counts: { ready: 0, warnings: 0, errors: 0, created: 0, failed: 0 },
+          counts: { create: 0, update: 0, rename: 0, skip: 0, error: 0, warning: 0 },
           validating: false,
           processing: false,
-          queueVersion: 0,
-          pendingBulkSync: false,
-          sessionId: "",
-          sessionCreatedKeys: [],
-          sessionCreatedNames: [],
-          liveDraftByRowKey: {},
-          lastLineCount: 0,
-          activeLineNumber: 1,
-          unitOverridesByRowKey: {},
-          lastCommittedText: "",
-          liveExpressionMessage: "",
-          liveExpressionKind: "",
-          computedByRowKey: {},
-          rowFingerprintByKey: {}
+          pastePanelOpen: false,
+          lastCommittedSnapshot: "",
+          activeRowKey: "",
+          activeStatus: "",
+          issueCount: 0,
+          warningCount: 0,
+          dependencyOrder: [],
+          dependencyNotes: [],
+          validationCache: {},
+          previewCache: {},
+          rowSequence: 0
         },
         unitMenuContext: {
           mode: "create",
@@ -4668,6 +4724,7 @@
       const favoriteToggleInFlightKeys = new Set();
       let pendingConfirmMode = "confirm";
       let pendingTextInputResolver = null;
+      let rapidCreateFocusedPreviewTimer = null;
       const RAPID_CREATE_FEATURE_FLAGS = Object.freeze({
         rowStoreEnabled: true,
         incrementalParseEnabled: true,
@@ -15042,6 +15099,638 @@
         });
       }
 
+      function sanitizeSingleLineExpressionInput(input) {
+        if (!input) {
+          return false;
+        }
+        const originalValue = String(input.value || "");
+        if (!/[\r\n]/.test(originalValue)) {
+          return false;
+        }
+        const selectionStart = Number(input.selectionStart || 0);
+        const selectionEnd = Number(input.selectionEnd || selectionStart);
+        const normalizedValue = originalValue.replace(/\r\n|\r|\n/g, " ");
+        input.value = normalizedValue;
+        const maxPos = normalizedValue.length;
+        input.setSelectionRange(Math.min(selectionStart, maxPos), Math.min(selectionEnd, maxPos));
+        return true;
+      }
+
+      const RAPID_CREATE_GRID_FIELDS = Object.freeze([
+        "currentName",
+        "targetName",
+        "expression",
+        "unit",
+        "comment",
+        "operation"
+      ]);
+
+      function nextRapidCreateRowKey() {
+        state.rapidCreate.rowSequence = Number(state.rapidCreate.rowSequence || 0) + 1;
+        return `rapid-row-${state.rapidCreate.rowSequence}`;
+      }
+
+      function makeRapidCreateComposerRow(values = {}) {
+        return {
+          rowKey: String(values.rowKey || nextRapidCreateRowKey()),
+          currentName: String(values.currentName || ""),
+          targetName: String(values.targetName || ""),
+          expression: String(values.expression || ""),
+          unit: String(values.unit || ""),
+          comment: String(values.comment || ""),
+          operation: String(values.operation || "create"),
+          matchedParameterKey: String(values.matchedParameterKey || ""),
+          matchedCurrentName: String(values.matchedCurrentName || ""),
+          preview: String(values.preview || ""),
+          dependencies: Array.isArray(values.dependencies) ? values.dependencies.slice() : [],
+          diagnostics: Array.isArray(values.diagnostics) ? values.diagnostics.slice() : [],
+          blocking: !!values.blocking,
+          touched: !!values.touched,
+          statusLabel: String(values.statusLabel || "Draft")
+        };
+      }
+
+      function getRapidCreateExistingParameterByName(name) {
+        const target = String(name || "").trim();
+        if (!target) {
+          return null;
+        }
+        return (state.parameters || []).find((param) => String(param?.name || "").trim() === target) || null;
+      }
+
+      function getRapidCreateExistingParameterByKey(key) {
+        const target = String(key || "").trim();
+        if (!target) {
+          return null;
+        }
+        return (state.parameters || []).find((param) => String(param?.key || "").trim() === target) || null;
+      }
+
+      function inferRapidCreateRowOperation(row) {
+        const explicit = String(row.operation || "").trim().toLowerCase();
+        if (explicit === "skip") {
+          return "skip";
+        }
+        const currentName = String(row.currentName || "").trim();
+        const targetName = String(row.targetName || "").trim();
+        const matched = getRapidCreateExistingParameterByKey(row.matchedParameterKey) || getRapidCreateExistingParameterByName(currentName || targetName);
+        if (matched) {
+          row.matchedParameterKey = String(matched.key || "");
+          row.matchedCurrentName = String(matched.name || "");
+          if (targetName && targetName !== String(matched.name || "")) {
+            return explicit === "create" ? "rename" : (explicit || "rename");
+          }
+          return explicit === "rename" ? "rename" : (explicit === "update" ? "update" : "update");
+        }
+        row.matchedParameterKey = "";
+        row.matchedCurrentName = "";
+        return explicit && explicit !== "update" && explicit !== "rename" ? explicit : "create";
+      }
+
+      function tokenizeRapidCreateLine(line) {
+        const text = String(line || "");
+        const delimiter = text.includes("\t") ? "\t" : ",";
+        const values = [];
+        let current = "";
+        let quote = "";
+        for (let index = 0; index < text.length; index += 1) {
+          const char = text.charAt(index);
+          if (quote) {
+            if (char === quote) {
+              if (index + 1 < text.length && text.charAt(index + 1) === quote) {
+                current += quote;
+                index += 1;
+              } else {
+                quote = "";
+              }
+            } else {
+              current += char;
+            }
+            continue;
+          }
+          if (char === '"' || char === "'") {
+            quote = char;
+            continue;
+          }
+          if (char === delimiter) {
+            values.push(current);
+            current = "";
+            continue;
+          }
+          current += char;
+        }
+        values.push(current);
+        return values.map((value) => String(value || "").trim());
+      }
+
+      function normalizeRapidCreateImportedRows(rawText) {
+        const lines = String(rawText || "").split(/\r?\n/);
+        const imported = [];
+        lines.forEach((line) => {
+          if (!String(line || "").trim()) {
+            return;
+          }
+          const parts = tokenizeRapidCreateLine(line);
+          let row = null;
+          if (parts.length >= 5) {
+            row = makeRapidCreateComposerRow({
+              currentName: parts[0] || "",
+              targetName: parts[1] || "",
+              expression: parts[2] || "",
+              unit: parts[3] || "",
+              comment: parts[4] || "",
+              operation: parts[5] || ""
+            });
+          } else {
+            row = makeRapidCreateComposerRow({
+              currentName: parts[0] || "",
+              targetName: parts[0] || "",
+              expression: parts[1] || "",
+              comment: parts[2] || "",
+              unit: parts[3] || ""
+            });
+          }
+          row.operation = inferRapidCreateRowOperation(row);
+          imported.push(row);
+        });
+        return imported;
+      }
+
+      function extractRapidCreateDependencies(expression, row) {
+        const source = String(expression || "");
+        const masked = source.replace(/`[^`]*`/g, "0");
+        const targetNames = new Map();
+        (state.rapidCreate.rows || []).forEach((item) => {
+          const name = String(item?.targetName || "").trim();
+          if (name) {
+            targetNames.set(name.toLowerCase(), name);
+          }
+        });
+        const dependencies = [];
+        const seen = new Set();
+        const matches = masked.match(/[A-Za-z_"$°µ][A-Za-z0-9_"$°µ]*/g) || [];
+        matches.forEach((token) => {
+          const lowered = String(token || "").toLowerCase();
+          const mapped = targetNames.get(lowered);
+          if (!mapped || seen.has(lowered) || mapped === String(row?.targetName || "")) {
+            return;
+          }
+          seen.add(lowered);
+          dependencies.push(mapped);
+        });
+        return dependencies;
+      }
+
+      function analyzeRapidCreateRows() {
+        const rows = Array.isArray(state.rapidCreate.rows) ? state.rapidCreate.rows : [];
+        const duplicateTargets = new Map();
+        rows.forEach((row) => {
+          const targetName = String(row.targetName || "").trim();
+          if (!targetName || String(row.operation || "") === "skip") {
+            return;
+          }
+          const key = targetName.toLowerCase();
+          duplicateTargets.set(key, (duplicateTargets.get(key) || 0) + 1);
+        });
+
+        const counts = { create: 0, update: 0, rename: 0, skip: 0, error: 0, warning: 0 };
+        const issues = [];
+        const dependencyNotes = [];
+        const targetByName = new Map();
+
+        rows.forEach((row) => {
+          row.operation = inferRapidCreateRowOperation(row);
+          row.dependencies = extractRapidCreateDependencies(row.expression, row);
+          row.diagnostics = [];
+          row.preview = String(row.preview || "");
+          const targetName = String(row.targetName || "").trim();
+          const currentName = String(row.currentName || "").trim();
+          const matched = getRapidCreateExistingParameterByKey(row.matchedParameterKey) || getRapidCreateExistingParameterByName(currentName || targetName);
+          if (matched) {
+            row.matchedParameterKey = String(matched.key || "");
+            row.matchedCurrentName = String(matched.name || "");
+          }
+          if (targetName && row.operation !== "skip") {
+            targetByName.set(targetName, row.rowKey);
+          }
+          if (row.operation === "skip") {
+            counts.skip += 1;
+            row.blocking = false;
+            row.statusLabel = "Skipped";
+            return;
+          }
+          const nameError = validateParameterNameLocally(targetName);
+          if (nameError) {
+            row.diagnostics.push({ level: "error", message: nameError });
+          }
+          if (!String(row.expression || "").trim()) {
+            row.diagnostics.push({ level: "error", message: "Expression is required." });
+          }
+          if (row.operation === "create" && getRapidCreateExistingParameterByName(targetName)) {
+            row.diagnostics.push({ level: "error", message: `A parameter named '${targetName}' already exists.` });
+          }
+          if ((row.operation === "update" || row.operation === "rename") && !row.matchedParameterKey) {
+            row.diagnostics.push({ level: "error", message: "Current Name must match an existing parameter for update/rename." });
+          }
+          if (targetName && duplicateTargets.get(targetName.toLowerCase()) > 1) {
+            row.diagnostics.push({ level: "error", message: `Duplicate target name '${targetName}' in this batch.` });
+          }
+          row.blocking = row.diagnostics.some((item) => item.level === "error");
+          if (row.blocking) {
+            counts.error += 1;
+            row.statusLabel = row.diagnostics[0]?.message || "Needs attention";
+          } else {
+            counts[row.operation] += 1;
+            row.statusLabel = row.preview ? "Preview ready" : "Ready";
+          }
+          row.diagnostics.forEach((diagnostic) => {
+            issues.push({
+              rowKey: row.rowKey,
+              targetName: targetName || "(untitled row)",
+              level: diagnostic.level,
+              message: diagnostic.message
+            });
+          });
+        });
+
+        const visiting = new Set();
+        const visited = new Set();
+        function visit(rowKey, chain = []) {
+          if (visited.has(rowKey)) {
+            return;
+          }
+          if (visiting.has(rowKey)) {
+            const cycle = chain.concat([rowKey]).join(" -> ");
+            dependencyNotes.push(`Cycle detected: ${cycle}`);
+            const cycleRow = rows.find((row) => row.rowKey === rowKey);
+            if (cycleRow) {
+              cycleRow.diagnostics.push({ level: "error", message: "Dependency cycle detected inside this batch." });
+              cycleRow.blocking = true;
+              cycleRow.statusLabel = "Dependency cycle detected inside this batch.";
+            }
+            return;
+          }
+          visiting.add(rowKey);
+          const row = rows.find((item) => item.rowKey === rowKey);
+          const deps = Array.isArray(row?.dependencies) ? row.dependencies : [];
+          deps.forEach((depName) => {
+            const depRowKey = targetByName.get(depName);
+            if (depRowKey) {
+              visit(depRowKey, chain.concat([rowKey]));
+            } else if (depName && !getRapidCreateExistingParameterByName(depName)) {
+              dependencyNotes.push(`Missing dependency reference: ${depName}`);
+            }
+          });
+          visiting.delete(rowKey);
+          visited.add(rowKey);
+        }
+        rows.forEach((row) => visit(row.rowKey));
+
+        counts.error = rows.filter((row) => row.operation !== "skip" && row.blocking).length;
+        state.rapidCreate.counts = counts;
+        state.rapidCreate.issueCount = issues.filter((item) => item.level === "error").length;
+        state.rapidCreate.warningCount = issues.filter((item) => item.level === "warning").length;
+        state.rapidCreate.dependencyNotes = dependencyNotes;
+        return { issues, dependencyNotes, counts };
+      }
+
+      function getRapidCreateSnapshot() {
+        return JSON.stringify((state.rapidCreate.rows || []).map((row) => ({
+          currentName: row.currentName,
+          targetName: row.targetName,
+          expression: row.expression,
+          unit: row.unit,
+          comment: row.comment,
+          operation: row.operation
+        })));
+      }
+
+      function isRapidCreateDirty() {
+        const pasteValue = String(document.getElementById("rapidCreateEditor")?.value || "").trim();
+        return (state.rapidCreate.rows || []).length > 0 || pasteValue.length > 0;
+      }
+
+      function resetRapidCreateComposerState() {
+        state.rapidCreate.rows = [];
+        state.rapidCreate.counts = { create: 0, update: 0, rename: 0, skip: 0, error: 0, warning: 0 };
+        state.rapidCreate.validating = false;
+        state.rapidCreate.processing = false;
+        state.rapidCreate.pastePanelOpen = false;
+        state.rapidCreate.activeRowKey = "";
+        state.rapidCreate.activeStatus = "";
+        state.rapidCreate.issueCount = 0;
+        state.rapidCreate.warningCount = 0;
+        state.rapidCreate.dependencyOrder = [];
+        state.rapidCreate.dependencyNotes = [];
+        state.rapidCreate.validationCache = {};
+        state.rapidCreate.previewCache = {};
+        state.rapidCreate.lastCommittedSnapshot = "";
+        const editor = document.getElementById("rapidCreateEditor");
+        if (editor) {
+          editor.value = "";
+        }
+      }
+
+      function setRapidCreateModalOpen(isOpen, options = {}) {
+        const backdrop = document.getElementById("rapidCreateModalBackdrop");
+        const modal = document.getElementById("rapidCreateModal");
+        if (!backdrop || !modal) {
+          return;
+        }
+        backdrop.hidden = !isOpen;
+        modal.hidden = !isOpen;
+        updateSharedModalBodyClass();
+        if (isOpen) {
+          setSettingsPanelOpen(false);
+          if (options.reset !== false) {
+            resetRapidCreateComposerState();
+          }
+          renderRapidCreatePreview();
+          requestAnimationFrame(() => document.getElementById("rapidCreatePasteButton")?.focus());
+          return;
+        }
+        if (options.discard === true) {
+          resetRapidCreateComposerState();
+        }
+        if (rapidCreateFocusedPreviewTimer) {
+          window.clearTimeout(rapidCreateFocusedPreviewTimer);
+          rapidCreateFocusedPreviewTimer = null;
+        }
+      }
+
+      async function requestRapidCreateClose() {
+        if (!isRapidCreateDirty()) {
+          setRapidCreateModalOpen(false, { discard: true });
+          return;
+        }
+        const shouldDiscard = await requestConfirmation("Discard Rapid Create changes?", {
+          confirmLabel: "Discard",
+          cancelLabel: "Keep Editing",
+          variant: "discard"
+        });
+        if (shouldDiscard) {
+          setRapidCreateModalOpen(false, { discard: true });
+        }
+      }
+
+      function shouldShortcutSubmitRapidCreateAll() {
+        const applyButton = document.getElementById("rapidCreateApplyButton");
+        return !!(applyButton && !applyButton.disabled);
+      }
+
+      function findRapidRowByKey(rowKey) {
+        const key = String(rowKey || "");
+        if (!key) {
+          return null;
+        }
+        return (state.rapidCreate.rows || []).find((row) => String(row.rowKey || "") === key) || null;
+      }
+
+      function updateRapidCreateRow(rowKey, patch) {
+        state.rapidCreate.rows = (state.rapidCreate.rows || []).map((row) => (
+          String(row.rowKey || "") === String(rowKey || "") ? { ...row, ...patch, touched: true } : row
+        ));
+        analyzeRapidCreateRows();
+        renderRapidCreatePreview();
+      }
+
+      function applyRapidManualUnitForRow(rowKey, unitValue) {
+        const row = findRapidRowByKey(rowKey);
+        if (!row) {
+          return;
+        }
+        const selectedUnit = String(unitValue || "");
+        const patch = { unit: selectedUnit };
+        if (selectedUnit.toLowerCase() === "text") {
+          const expression = String(row.expression || "");
+          if (expression && !(expression.startsWith("`") && expression.endsWith("`"))) {
+            patch.expression = `\`${expression.replace(/`/g, "``")}\``;
+          }
+        }
+        updateRapidCreateRow(rowKey, patch);
+      }
+
+      function wrapRapidExpressionInBackticksForRow(rowKey) {
+        const row = findRapidRowByKey(rowKey);
+        if (!row || !String(row.expression || "").trim()) {
+          return;
+        }
+        const expression = String(row.expression || "");
+        if (expression.startsWith("`") && expression.endsWith("`")) {
+          return;
+        }
+        updateRapidCreateRow(rowKey, { expression: `\`${expression.replace(/`/g, "``")}\`` });
+      }
+
+      function collectRapidCreatePayloadRows() {
+        return (state.rapidCreate.rows || []).map((row) => ({
+          rowId: row.rowKey,
+          matchedParameterKey: row.matchedParameterKey || "",
+          currentName: row.currentName || "",
+          targetName: row.targetName || "",
+          expression: row.expression || "",
+          unit: row.unit || "",
+          comment: row.comment || "",
+          operation: row.operation || "create"
+        }));
+      }
+
+      async function sendRapidCreateBatch(action) {
+        return sendToFusion(action, { rows: collectRapidCreatePayloadRows() });
+      }
+
+      function applyRapidCreateBatchResult(response) {
+        if (!response || !Array.isArray(response.rows)) {
+          return;
+        }
+        const byId = new Map();
+        response.rows.forEach((row) => {
+          byId.set(String(row.rowId || ""), row);
+        });
+        state.rapidCreate.rows = (state.rapidCreate.rows || []).map((row) => {
+          const result = byId.get(String(row.rowKey || ""));
+          if (!result) {
+            return row;
+          }
+          return {
+            ...row,
+            matchedParameterKey: String(result.matchedParameterKey || row.matchedParameterKey || ""),
+            matchedCurrentName: String(result.matchedCurrentName || row.matchedCurrentName || ""),
+            unit: String(result.normalizedUnit || row.unit || ""),
+            preview: Object.prototype.hasOwnProperty.call(result, "preview") ? String(result.preview || "") : row.preview,
+            dependencies: Array.isArray(result.dependencies) ? result.dependencies.slice() : row.dependencies,
+            diagnostics: Array.isArray(result.diagnostics) ? result.diagnostics.slice() : row.diagnostics,
+            blocking: !!result.blocking,
+            statusLabel: result.ok
+              ? (Object.prototype.hasOwnProperty.call(result, "preview") ? "Preview ready" : "Validated")
+              : (Array.isArray(result.diagnostics) && result.diagnostics[0] ? String(result.diagnostics[0].message || "Needs attention") : "Needs attention")
+          };
+        });
+        state.rapidCreate.dependencyOrder = Array.isArray(response.dependencyOrder) ? response.dependencyOrder.slice() : [];
+        analyzeRapidCreateRows();
+      }
+
+      async function validateRapidCreateRows() {
+        if (state.rapidCreate.processing) {
+          return;
+        }
+        state.rapidCreate.validating = true;
+        try {
+          analyzeRapidCreateRows();
+          const response = await sendRapidCreateBatch(ACTION.RAPID_CREATE_VALIDATE_BATCH);
+          applyRapidCreateBatchResult(response);
+          state.rapidCreate.activeStatus = response.ok ? "Validation passed." : String(response.message || "Validation found issues.");
+        } catch (error) {
+          state.rapidCreate.activeStatus = String(error?.message || "Validation failed.");
+        } finally {
+          state.rapidCreate.validating = false;
+          renderRapidCreatePreview();
+        }
+      }
+
+      async function previewRapidCreateRows(rowKey = "") {
+        if (state.rapidCreate.processing) {
+          return;
+        }
+        state.rapidCreate.validating = true;
+        try {
+          analyzeRapidCreateRows();
+          const response = await sendRapidCreateBatch(ACTION.RAPID_CREATE_PREVIEW_BATCH);
+          if (rowKey) {
+            response.rows = (response.rows || []).filter((row) => String(row.rowId || "") === String(rowKey || ""));
+          }
+          applyRapidCreateBatchResult(response);
+          state.rapidCreate.activeStatus = response.ok ? "Preview ready." : String(response.message || "Preview found issues.");
+        } catch (error) {
+          state.rapidCreate.activeStatus = String(error?.message || "Preview failed.");
+        } finally {
+          state.rapidCreate.validating = false;
+          renderRapidCreatePreview();
+        }
+      }
+
+      function scheduleRapidCreateFocusedRowPreview(rowKey) {
+        if (rapidCreateFocusedPreviewTimer) {
+          window.clearTimeout(rapidCreateFocusedPreviewTimer);
+        }
+        rapidCreateFocusedPreviewTimer = window.setTimeout(() => {
+          rapidCreateFocusedPreviewTimer = null;
+          const row = findRapidRowByKey(rowKey);
+          if (!row || row.blocking || row.operation === "skip" || !String(row.expression || "").trim()) {
+            return;
+          }
+          void previewRapidCreateRows(rowKey);
+        }, 450);
+      }
+
+      async function runRapidCreateAllAndMaybeClose() {
+        if (state.rapidCreate.processing) {
+          return;
+        }
+        state.rapidCreate.processing = true;
+        renderRapidCreatePreview();
+        const overlayToken = beginBusyOverlay("Applying Rapid Create batch...");
+        try {
+          analyzeRapidCreateRows();
+          const response = await sendRapidCreateBatch(ACTION.RAPID_CREATE_APPLY_BATCH);
+          applyRapidCreateBatchResult(response);
+          if (response.state) {
+            applyStateFromFusion(response, { source: "response", action: ACTION.RAPID_CREATE_APPLY_BATCH });
+          }
+          const counts = response.counts || {};
+          state.rapidCreate.activeStatus = response.ok
+            ? `Applied: create=${counts.create || 0}, update=${counts.update || 0}, rename=${counts.rename || 0}, skip=${counts.skip || 0}.`
+            : String(response.message || "Apply finished with errors.");
+          renderRapidCreatePreview();
+          if (response.ok) {
+            state.rapidCreate.lastCommittedSnapshot = getRapidCreateSnapshot();
+            setGlobalStatus("Rapid Create apply completed.", "success");
+            setRapidCreateModalOpen(false, { discard: true });
+          } else {
+            setGlobalStatus(response.message || "Rapid Create apply failed.", "warning");
+          }
+        } catch (error) {
+          state.rapidCreate.activeStatus = String(error?.message || "Apply failed.");
+          setGlobalStatus(state.rapidCreate.activeStatus, "error");
+        } finally {
+          await endBusyOverlay(overlayToken);
+          state.rapidCreate.processing = false;
+          renderRapidCreatePreview();
+        }
+      }
+
+      function renderRapidCreatePreview() {
+        const summary = document.getElementById("rapidCreateSummary");
+        const body = document.getElementById("rapidCreateGridBody");
+        const issueList = document.getElementById("rapidCreateIssueList");
+        const dependencyNotes = document.getElementById("rapidCreateDependencyNotes");
+        const activeStatus = document.getElementById("rapidCreateActiveStatus");
+        const pastePanel = document.getElementById("rapidCreatePastePanel");
+        const applyButton = document.getElementById("rapidCreateApplyButton");
+        if (!summary || !body || !issueList || !dependencyNotes || !activeStatus || !pastePanel || !applyButton) {
+          return;
+        }
+        const analysis = analyzeRapidCreateRows();
+        const counts = state.rapidCreate.counts || { create: 0, update: 0, rename: 0, skip: 0, error: 0, warning: 0 };
+        summary.innerHTML = [
+          `<span class="rapid-create-chip">Create: ${counts.create || 0}</span>`,
+          `<span class="rapid-create-chip">Update: ${counts.update || 0}</span>`,
+          `<span class="rapid-create-chip">Rename: ${counts.rename || 0}</span>`,
+          `<span class="rapid-create-chip">Skip: ${counts.skip || 0}</span>`,
+          `<span class="rapid-create-chip">Error: ${counts.error || 0}</span>`
+        ].join("");
+        pastePanel.hidden = !state.rapidCreate.pastePanelOpen;
+        const rows = state.rapidCreate.rows || [];
+        if (!rows.length) {
+          body.innerHTML = `<tr><td colspan="8" class="muted">Paste rows or add a blank row to begin.</td></tr>`;
+        } else {
+          body.innerHTML = rows.map((row) => {
+            const hasWarning = row.diagnostics.some((item) => item.level === "warning");
+            const statusClass = row.blocking
+              ? "rapid-create-status-error"
+              : (hasWarning ? "rapid-create-status-warning" : "rapid-create-status-ok");
+            const rowClass = row.blocking ? "rapid-create-row is-error" : (hasWarning ? "rapid-create-row is-warning" : "rapid-create-row");
+            const unitLabel = row.unit ? getUnitDisplayLabel(row.unit) : "No Units";
+            return `<tr class="${rowClass}" data-rapid-row-key="${escapeRapidHtml(row.rowKey)}">
+              <td><input data-rapid-field="currentName" value="${escapeRapidHtml(row.currentName)}" /></td>
+              <td><input data-rapid-field="targetName" value="${escapeRapidHtml(row.targetName)}" /></td>
+              <td><input data-rapid-field="expression" value="${escapeRapidHtml(row.expression)}" /></td>
+              <td><button class="unit-picker-button rapid-row-unit-button" type="button" data-rapid-row-unit-button="${escapeRapidHtml(row.rowKey)}">${escapeRapidHtml(unitLabel)}</button></td>
+              <td><input data-rapid-field="comment" value="${escapeRapidHtml(row.comment)}" /></td>
+              <td>
+                <select data-rapid-field="operation">
+                  <option value="create"${row.operation === "create" ? " selected" : ""}>create</option>
+                  <option value="update"${row.operation === "update" ? " selected" : ""}>update</option>
+                  <option value="rename"${row.operation === "rename" ? " selected" : ""}>rename</option>
+                  <option value="skip"${row.operation === "skip" ? " selected" : ""}>skip</option>
+                </select>
+              </td>
+              <td title="${escapeRapidHtml(row.preview || "")}">${escapeRapidHtml(row.preview || "—")}</td>
+              <td class="rapid-create-status-cell ${statusClass}">${escapeRapidHtml(row.statusLabel || "Draft")}</td>
+            </tr>`;
+          }).join("");
+        }
+        issueList.innerHTML = analysis.issues.length
+          ? analysis.issues.map((issue) => (
+            `<div class="rapid-create-issue ${issue.level === "error" ? "is-error" : "is-warning"}"><strong>${escapeRapidHtml(issue.targetName)}</strong><div>${escapeRapidHtml(issue.message)}</div></div>`
+          )).join("")
+          : `<div class="muted">No issues yet.</div>`;
+        const notes = [];
+        if (Array.isArray(state.rapidCreate.dependencyOrder) && state.rapidCreate.dependencyOrder.length > 0) {
+          notes.push(`Apply order: ${state.rapidCreate.dependencyOrder.join(" -> ")}`);
+        }
+        (state.rapidCreate.dependencyNotes || []).forEach((note) => notes.push(note));
+        dependencyNotes.innerHTML = notes.length
+          ? notes.map((note) => `<div>${escapeRapidHtml(note)}</div>`).join("")
+          : `<div class="muted">Validation will surface batch order and dependency notes here.</div>`;
+        activeStatus.textContent = state.rapidCreate.activeStatus || "Rapid Create is local-first. Validate, Preview, then Apply.";
+        const actionableRows = rows.filter((row) => row.operation !== "skip").length;
+        const hasBlocking = rows.some((row) => row.blocking);
+        const disabled = state.rapidCreate.processing || state.rapidCreate.validating || hasBlocking || actionableRows <= 0;
+        applyButton.disabled = disabled;
+        applyButton.classList.toggle("is-disabled", disabled);
+      }
+
       document.getElementById("newParamButton").addEventListener("click", () => {
         setCreateModalOpen(true, { focusName: true });
       });
@@ -15066,197 +15755,128 @@
         void requestRapidCreateClose();
       });
 
-      document.getElementById("rapidCreateCreateAllButton").addEventListener("click", async () => {
+      document.getElementById("rapidCreateApplyButton").addEventListener("click", async () => {
         await runRapidCreateAllAndMaybeClose();
       });
 
-      document.getElementById("rapidCreateEditor").addEventListener("input", () => {
-        const editor = document.getElementById("rapidCreateEditor");
-        if (editor) {
-          const nextLineCount = String(editor.value || "").split(/\r?\n/).length;
-          const previousLineCount = Number(state.rapidCreate.lastLineCount || 0);
-          if (Math.abs(nextLineCount - previousLineCount) >= 2) {
-            state.rapidCreate.pendingBulkSync = true;
-          }
-          state.rapidCreate.lastLineCount = nextLineCount;
-        }
-        if (editor) {
-          state.rapidCreate.activeLineNumber = getRapidEditorActiveLineNumber(editor.value, editor.selectionStart);
-          updateRapidCreateExpressionAssist(editor);
-        }
-        if (rapidCreateReparseTimer) {
-          window.clearTimeout(rapidCreateReparseTimer);
-        }
-        rapidCreateReparseTimer = window.setTimeout(() => {
-          rapidCreateReparseTimer = null;
-          const useBulk = state.rapidCreate.pendingBulkSync === true;
-          state.rapidCreate.pendingBulkSync = false;
-          void buildRapidCreateRowsFromEditor({ bulk: useBulk });
-        }, 240);
-        if (rapidExpressionValidationTimer) {
-          window.clearTimeout(rapidExpressionValidationTimer);
-        }
-        rapidExpressionValidationTimer = window.setTimeout(() => {
-          rapidExpressionValidationTimer = null;
-          void validateRapidActiveExpressionAgainstFusion();
-        }, 150);
-      });
-
-      document.getElementById("rapidCreateEditor").addEventListener("keydown", (event) => {
-        const input = event.currentTarget;
-        if (!input) {
-          return;
-        }
-        if (
-          event.key === "`" &&
-          !event.ctrlKey &&
-          !event.metaKey &&
-          !event.altKey
-        ) {
-          const context = getRapidActiveExpressionContext(input);
-          if (context && context.relativeCursor === 0 && !String(context.expression || "").trim()) {
-            event.preventDefault();
-            const start = input.selectionStart || 0;
-            const end = input.selectionEnd || 0;
-            const value = String(input.value || "");
-            input.value = `${value.slice(0, start)}\`\`${value.slice(end)}`;
-            input.setSelectionRange(start + 1, start + 1);
-            input.dispatchEvent(new Event("input", { bubbles: true }));
-            return;
-          }
-        }
-        if (
-          event.key === "Backspace" &&
-          !event.ctrlKey &&
-          !event.metaKey &&
-          !event.altKey &&
-          input.selectionStart === input.selectionEnd
-        ) {
-          const context = getRapidActiveExpressionContext(input);
-          if (
-            context &&
-            String(context.expression || "") === "``" &&
-            Number(context.relativeCursor || 0) === 1
-          ) {
-            event.preventDefault();
-            const removeStart = context.expressionStartAbsolute;
-            const removeEnd = context.expressionStartAbsolute + 2;
-            input.value = `${input.value.slice(0, removeStart)}${input.value.slice(removeEnd)}`;
-            input.setSelectionRange(removeStart, removeStart);
-            input.dispatchEvent(new Event("input", { bubbles: true }));
-            return;
-          }
-          if (context) {
-            const span = findInnermostEmptyFunctionSpanAtCursor(context.expression, context.relativeCursor);
-            if (span) {
-              event.preventDefault();
-              const removeStart = context.expressionStartAbsolute + span.nameStart;
-              const removeEnd = context.expressionStartAbsolute + span.closeIndex + 1;
-              input.value = `${input.value.slice(0, removeStart)}${input.value.slice(removeEnd)}`;
-              input.setSelectionRange(removeStart, removeStart);
-              input.dispatchEvent(new Event("input", { bubbles: true }));
-              return;
-            }
-          }
-        }
-        const { flatItems, highlightedIndex, activeInputId } = state.expressionAutocomplete;
-        const rapidSuggestionsActive = activeInputId === "rapidCreateEditor" && flatItems.length > 0;
-        if (rapidSuggestionsActive && event.key === "ArrowDown") {
-          event.preventDefault();
-          state.expressionAutocomplete.highlightedIndex = (highlightedIndex + 1) % flatItems.length;
-          renderExpressionSuggestions();
-          return;
-        }
-        if (rapidSuggestionsActive && event.key === "ArrowUp") {
-          event.preventDefault();
-          state.expressionAutocomplete.highlightedIndex = (highlightedIndex - 1 + flatItems.length) % flatItems.length;
-          renderExpressionSuggestions();
-          return;
-        }
-        if (rapidSuggestionsActive && event.key === "Enter") {
-          event.preventDefault();
-          applyExpressionSuggestion(flatItems[highlightedIndex]);
-          return;
-        }
-        if (rapidSuggestionsActive && event.key === "Tab") {
-          event.preventDefault();
-          applyExpressionSuggestion(flatItems[highlightedIndex]);
-          return;
-        }
-        if (event.key === "Tab") {
-          event.preventDefault();
-          const start = input.selectionStart || 0;
-          const end = input.selectionEnd || 0;
-          const value = String(input.value || "");
-          input.value = `${value.slice(0, start)}\t${value.slice(end)}`;
-          input.setSelectionRange(start + 1, start + 1);
-          input.dispatchEvent(new Event("input", { bubbles: true }));
-          state.rapidCreate.activeLineNumber = getRapidEditorActiveLineNumber(input.value, input.selectionStart);
-          renderRapidCreatePreview();
-          return;
-        }
-        if (event.key === "Enter") {
-          event.preventDefault();
-          const start = input.selectionStart || 0;
-          const end = input.selectionEnd || 0;
-          const value = String(input.value || "");
-          input.value = `${value.slice(0, start)}\n${value.slice(end)}`;
-          input.setSelectionRange(start + 1, start + 1);
-          input.dispatchEvent(new Event("input", { bubbles: true }));
-          state.rapidCreate.activeLineNumber = getRapidEditorActiveLineNumber(input.value, input.selectionStart);
-          renderRapidCreatePreview();
-          return;
-        }
-        if (event.key === "Escape") {
-          event.preventDefault();
-          if (rapidSuggestionsActive || state.functionHelper.activeInputId === "rapidCreateEditor") {
-            closeExpressionSuggestions();
-            closeFunctionHelper();
-            return;
-          }
-          void requestRapidCreateClose();
-        }
-        window.requestAnimationFrame(() => updateRapidCreateExpressionAssist(input));
-      });
-
-      document.getElementById("rapidCreateEditor").addEventListener("click", (event) => {
-        const input = event.currentTarget;
-        if (!input) {
-          return;
-        }
-        state.rapidCreate.activeLineNumber = getRapidEditorActiveLineNumber(input.value, input.selectionStart);
-        updateRapidCreateExpressionAssist(input);
+      document.getElementById("rapidCreatePasteButton").addEventListener("click", () => {
+        state.rapidCreate.pastePanelOpen = !state.rapidCreate.pastePanelOpen;
         renderRapidCreatePreview();
       });
 
-      document.getElementById("rapidCreateEditor").addEventListener("blur", () => {
-        if (rapidCreateReparseTimer) {
-          window.clearTimeout(rapidCreateReparseTimer);
-          rapidCreateReparseTimer = null;
+      document.getElementById("rapidCreateAddRowButton").addEventListener("click", () => {
+        state.rapidCreate.rows = [...(state.rapidCreate.rows || []), makeRapidCreateComposerRow()];
+        renderRapidCreatePreview();
+      });
+
+      document.getElementById("rapidCreateNormalizeButton").addEventListener("click", () => {
+        const editor = document.getElementById("rapidCreateEditor");
+        const imported = normalizeRapidCreateImportedRows(String(editor?.value || ""));
+        if (imported.length > 0) {
+          state.rapidCreate.rows = [...(state.rapidCreate.rows || []), ...imported];
+          if (editor) {
+            editor.value = "";
+          }
+          state.rapidCreate.pastePanelOpen = false;
+          state.rapidCreate.activeStatus = `Imported ${imported.length} row(s) into the review grid.`;
+        } else {
+          state.rapidCreate.activeStatus = "Paste input is empty.";
         }
-        void buildRapidCreateRowsFromEditor({ bulk: false });
-        window.setTimeout(() => closeExpressionSuggestions(), FIELD_HELPER_CLOSE_DELAY_MS);
-        window.setTimeout(() => closeFunctionHelper(), FIELD_HELPER_CLOSE_DELAY_MS);
+        renderRapidCreatePreview();
       });
 
-      document.getElementById("rapidCreateEditor").addEventListener("paste", () => {
-        state.rapidCreate.pendingBulkSync = true;
-        if (rapidCreateReparseTimer) {
-          window.clearTimeout(rapidCreateReparseTimer);
-          rapidCreateReparseTimer = null;
+      document.getElementById("rapidCreateValidateButton").addEventListener("click", () => {
+        void validateRapidCreateRows();
+      });
+
+      document.getElementById("rapidCreatePreviewButton").addEventListener("click", () => {
+        void previewRapidCreateRows();
+      });
+
+      document.getElementById("rapidCreateEditor").addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+          event.preventDefault();
+          void runRapidCreateAllAndMaybeClose();
         }
-        window.setTimeout(() => {
-          const useBulk = state.rapidCreate.pendingBulkSync === true;
-          state.rapidCreate.pendingBulkSync = false;
-          void buildRapidCreateRowsFromEditor({ bulk: useBulk });
-        }, 0);
       });
 
-      document.getElementById("rapidCreateEditor").addEventListener("scroll", () => {
-        updateRapidEditorValidationStyling();
+      document.getElementById("rapidCreateGridBody").addEventListener("input", (event) => {
+        const input = event.target.closest("[data-rapid-field]");
+        if (!input) {
+          return;
+        }
+        const row = input.closest("[data-rapid-row-key]");
+        if (!row) {
+          return;
+        }
+        const rowKey = String(row.getAttribute("data-rapid-row-key") || "");
+        const field = String(input.getAttribute("data-rapid-field") || "");
+        if (!rowKey || !field) {
+          return;
+        }
+        updateRapidCreateRow(rowKey, { [field]: String(input.value || "") });
+        if (field === "expression" || field === "unit" || field === "targetName" || field === "currentName") {
+          state.rapidCreate.activeRowKey = rowKey;
+          scheduleRapidCreateFocusedRowPreview(rowKey);
+        }
       });
 
-      document.getElementById("rapidCreatePreviewBody").addEventListener("click", (event) => {
+      document.getElementById("rapidCreateGridBody").addEventListener("focusin", (event) => {
+        const input = event.target.closest("[data-rapid-field]");
+        if (!input) {
+          return;
+        }
+        const row = input.closest("[data-rapid-row-key]");
+        if (!row) {
+          return;
+        }
+        state.rapidCreate.activeRowKey = String(row.getAttribute("data-rapid-row-key") || "");
+      });
+
+      document.getElementById("rapidCreateGridBody").addEventListener("paste", (event) => {
+        const input = event.target.closest("[data-rapid-field]");
+        if (!input) {
+          return;
+        }
+        const clipboardText = String(event.clipboardData?.getData("text/plain") || "");
+        if (!clipboardText || (!clipboardText.includes("\n") && !clipboardText.includes("\t"))) {
+          return;
+        }
+        const row = input.closest("[data-rapid-row-key]");
+        if (!row) {
+          return;
+        }
+        event.preventDefault();
+        const startRowKey = String(row.getAttribute("data-rapid-row-key") || "");
+        const field = String(input.getAttribute("data-rapid-field") || "");
+        const startRowIndex = (state.rapidCreate.rows || []).findIndex((item) => String(item.rowKey || "") === startRowKey);
+        const startFieldIndex = RAPID_CREATE_GRID_FIELDS.indexOf(field);
+        if (startRowIndex < 0 || startFieldIndex < 0) {
+          return;
+        }
+        const nextRows = (state.rapidCreate.rows || []).slice();
+        const parsedLines = clipboardText.split(/\r?\n/).filter((line) => String(line || "").length > 0);
+        parsedLines.forEach((lineText, rowOffset) => {
+          const values = tokenizeRapidCreateLine(lineText);
+          const targetIndex = startRowIndex + rowOffset;
+          while (targetIndex >= nextRows.length) {
+            nextRows.push(makeRapidCreateComposerRow());
+          }
+          const nextRow = { ...nextRows[targetIndex] };
+          values.forEach((value, colOffset) => {
+            const fieldName = RAPID_CREATE_GRID_FIELDS[startFieldIndex + colOffset];
+            if (!fieldName) {
+              return;
+            }
+            nextRow[fieldName] = value;
+          });
+          nextRows[targetIndex] = nextRow;
+        });
+        state.rapidCreate.rows = nextRows;
+        renderRapidCreatePreview();
+      });
+
+      document.getElementById("rapidCreateGridBody").addEventListener("click", (event) => {
         const unitButton = event.target.closest("[data-rapid-row-unit-button]");
         if (!unitButton) {
           return;
@@ -15268,7 +15888,7 @@
           return;
         }
         const row = findRapidRowByKey(rowKey);
-        state.createUnit = String(row?.detectedUnit || "");
+        state.createUnit = String(row?.unit || "");
         setUnitMenuOpen(true, {
           contextMode: "rapid",
           rowKey,
@@ -15371,6 +15991,7 @@
 
       let expressionValidationTimer = null;
       document.getElementById("newExpression").addEventListener("input", (event) => {
+        sanitizeSingleLineExpressionInput(event.currentTarget);
         autoSizeTextarea(event.currentTarget, { minHeight: 22, maxHeight: 160 });
         updateExpressionSuggestions(event.currentTarget, document.getElementById("newName").value.trim());
         updateFunctionHelper(event.currentTarget);
@@ -15397,6 +16018,14 @@
       });
 
       document.getElementById("newExpression").addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          closeExpressionSuggestions();
+          closeFunctionHelper();
+          document.getElementById("createForm")?.requestSubmit();
+          return;
+        }
+
         if (
           event.key === "Backspace" &&
           !event.ctrlKey &&
@@ -15431,12 +16060,6 @@
           event.preventDefault();
           state.expressionAutocomplete.highlightedIndex = (highlightedIndex - 1 + flatItems.length) % flatItems.length;
           renderExpressionSuggestions();
-          return;
-        }
-
-        if (event.key === "Enter") {
-          event.preventDefault();
-          applyExpressionSuggestion(flatItems[highlightedIndex]);
           return;
         }
 
@@ -16302,7 +16925,7 @@
             applySelectedUnit(getDefaultCreateUnit());
           } else if (unitMenuMode === "rapid" && rapidRowKey) {
             const rapidRow = findRapidRowByKey(rapidRowKey);
-            if (rapidRow && String(rapidRow.detectedUnit || "") === unitValue) {
+            if (rapidRow && String(rapidRow.unit || "") === unitValue) {
               applyRapidManualUnitForRow(rapidRowKey, getDefaultCreateUnit());
             }
           }

@@ -44,6 +44,12 @@ def _wait_palette_ready(page):
     return page
 
 
+def _open_rapid_create(page):
+    page.keyboard.press("Control+Shift+C")
+    page.locator("#rapidCreateModal").wait_for(timeout=10000, state="visible")
+    return page
+
+
 def test_palette_loads_directly(browser_page):
     page = browser_page
     page.goto(_harness_url())
@@ -151,3 +157,80 @@ def test_large_render_fixture_renders_expected_rows_and_groups(browser_page):
     assert groups.count() >= 6
     assert page.locator("#contractErrorBanner[hidden]").count() == 1
     assert page.locator("#parameterRows").text_content() and "DIMENSIONS_Fixture_001" in page.locator("#parameterRows").text_content()
+
+
+def test_rapid_create_modal_opens_with_grid_workspace(browser_page):
+    page = browser_page
+    page.goto(_harness_url())
+    _wait_palette_ready(page)
+    _open_rapid_create(page)
+    assert page.locator("#rapidCreateGridBody").count() == 1
+    assert page.locator("#rapidCreateApplyButton").count() == 1
+    assert page.locator("#rapidCreateIssueList").count() == 1
+
+
+def test_rapid_create_import_validate_preview_and_apply(browser_page):
+    page = browser_page
+    page.goto(_harness_url())
+    _wait_palette_ready(page)
+    _open_rapid_create(page)
+
+    page.locator("#rapidCreatePasteButton").click()
+    editor = page.locator("#rapidCreateEditor")
+    editor.fill("DIMENSIONS_Fixture_001\tDIMENSIONS_Fixture_001_RENAMED\t42 mm\tmm\tRenamed row\trename\n\tFreshFixtureParam\t25 mm\tmm\tCreated row\tcreate")
+    page.locator("#rapidCreateNormalizeButton").click()
+
+    rows = page.locator("#rapidCreateGridBody tr[data-rapid-row-key]")
+    assert rows.count() == 2
+    assert page.locator("#rapidCreateSummary").text_content()
+
+    page.locator("#rapidCreateValidateButton").click()
+    page.wait_for_timeout(150)
+    assert "Validation" in (page.locator("#rapidCreateActiveStatus").text_content() or "")
+
+    page.locator("#rapidCreatePreviewButton").click()
+    page.wait_for_timeout(150)
+    assert "42 mm" in (rows.nth(0).text_content() or "")
+    assert "25 mm" in (rows.nth(1).text_content() or "")
+
+    page.locator("#rapidCreateApplyButton").click()
+    page.wait_for_timeout(250)
+    page.locator("#rapidCreateModal").wait_for(timeout=10000, state="hidden")
+    assert page.locator("#rapidCreateModal").is_hidden()
+
+
+def test_new_parameter_expression_is_single_line_and_enter_submits(browser_page):
+    page = browser_page
+    page.goto(_harness_url())
+    _wait_palette_ready(page)
+
+    page.locator("#newParamButton").click()
+    page.locator("#createModal").wait_for(timeout=10000, state="visible")
+    page.locator("#newName").fill("BrowserCreateParam")
+
+    page.evaluate(
+        """() => {
+            const input = document.getElementById("newExpression");
+            input.value = "10 mm\\n20 mm";
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+        }"""
+    )
+    page.wait_for_timeout(100)
+    assert "\n" not in (page.locator("#newExpression").input_value() or "")
+
+    page.goto(_harness_url())
+    _wait_palette_ready(page)
+
+    page.locator("#newParamButton").click()
+    page.locator("#createModal").wait_for(timeout=10000, state="visible")
+    page.locator("#newName").fill("BrowserCreateParam")
+    page.locator("#newExpression").fill("10 mm")
+    page.locator("#newExpression").press("Shift+Enter")
+    page.locator("#createModal").wait_for(timeout=10000, state="hidden")
+
+    page.locator("#newParamButton").click()
+    page.locator("#createModal").wait_for(timeout=10000, state="visible")
+    page.locator("#newName").fill("BrowserCreateParamTwo")
+    page.locator("#newExpression").fill("12 mm")
+    page.locator("#newExpression").press("Enter")
+    page.locator("#createModal").wait_for(timeout=10000, state="hidden")
