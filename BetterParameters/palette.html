@@ -3540,7 +3540,7 @@
             </button>
           </div>
           <div class="create-modal-body stack section">
-            <form id="createForm">
+            <form id="createForm" novalidate>
               <div class="create-top-row">
                 <label>
                   Name
@@ -3570,7 +3570,7 @@
                 <textarea id="newComment" name="comment" class="comment-input"></textarea>
               </label>
               <div class="actions">
-                <button class="primary" type="submit">Create Parameter</button>
+                <button id="createSubmitButton" class="primary" type="submit">Done</button>
                 <div id="rapidCreateShortcutHint" class="rapid-create-help rapid-create-inline-note create-actions-inline-note">Try out Rapid Create parameters. Shortcut: <code>Ctrl+Shift+C</code></div>
               </div>
             </form>
@@ -4521,6 +4521,12 @@
           name: ""
         },
         createUnit: "",
+        createModalBaseline: {
+          name: "",
+          expression: "",
+          comment: "",
+          unit: ""
+        },
         hasRememberedUnitSelection: false,
         explicitNoUnitsRemembered: (function () {
           try {
@@ -5712,7 +5718,67 @@
         const name = String(nameInput?.value || "").trim();
         const expression = String(expressionInput?.value || "").trim();
         const comment = String(commentInput?.value || "").trim();
-        return !!(name || expression || comment);
+        const unit = String(document.getElementById("newUnit")?.value || "");
+        const baseline = state.createModalBaseline || {};
+        return !(
+          name === String(baseline.name || "")
+          && expression === String(baseline.expression || "")
+          && comment === String(baseline.comment || "")
+          && unit === String(baseline.unit || "")
+        );
+      }
+
+      function setCreateModalBaseline() {
+        state.createModalBaseline = {
+          name: String(document.getElementById("newName")?.value || "").trim(),
+          expression: String(document.getElementById("newExpression")?.value || "").trim(),
+          comment: String(document.getElementById("newComment")?.value || "").trim(),
+          unit: String(document.getElementById("newUnit")?.value || "")
+        };
+      }
+
+      function updateCreateSubmitButton() {
+        const button = document.getElementById("createSubmitButton");
+        if (!button) {
+          return;
+        }
+        const isDirty = isCreateModalDirty();
+        button.textContent = isDirty ? "Add and Create New" : "Done";
+      }
+
+      function resetCreateModalFormForNextEntry(options = {}) {
+        const focusName = options.focusName === true;
+        const nameInput = document.getElementById("newName");
+        const expressionInput = document.getElementById("newExpression");
+        const commentInput = document.getElementById("newComment");
+
+        if (nameInput) {
+          nameInput.value = "";
+        }
+        if (expressionInput) {
+          expressionInput.value = "";
+          autoSizeTextarea(expressionInput, { minHeight: 22, maxHeight: 160 });
+        }
+        if (commentInput) {
+          commentInput.value = "";
+          autoSizeTextarea(commentInput);
+        }
+
+        setNameError("");
+        setExpressionError("");
+        setCreateExpressionValue("");
+        closeExpressionSuggestions();
+        closeFunctionHelper();
+        syncDefaultUnit(true);
+        setCreateModalBaseline();
+        updateCreateSubmitButton();
+
+        if (focusName && nameInput) {
+          requestAnimationFrame(() => {
+            nameInput.focus();
+            nameInput.select();
+          });
+        }
       }
 
       function getRapidActiveExpressionContext(editor) {
@@ -9656,6 +9722,7 @@
           state.hasRememberedUnitSelection = true;
           setExplicitNoUnitsRemembered(resolvedValue === "");
         }
+        updateCreateSubmitButton();
       }
 
       async function showDeleteFailureReport(totalRequested, deletedCount, failedDetails) {
@@ -14901,6 +14968,8 @@
           normalizeNullableField("newExpression");
           normalizeNullableField("newComment");
           autoSizeTextarea(document.getElementById("newExpression"), { minHeight: 22, maxHeight: 160 });
+          setCreateModalBaseline();
+          updateCreateSubmitButton();
           const nameInput = document.getElementById("newName");
           if (shouldFocusName && nameInput) {
             requestAnimationFrame(() => {
@@ -14925,6 +14994,7 @@
           if (commentInput) {
             commentInput.value = "";
           }
+          setCreateModalBaseline();
         }
 
         setNameError("");
@@ -14932,6 +15002,7 @@
         setCreateExpressionValue("");
         setUnitMenuOpen(false);
         closeExpressionSuggestions();
+        updateCreateSubmitButton();
         if (shouldRestoreFocus) {
           requestAnimationFrame(() => launchButton.focus());
         }
@@ -15968,6 +16039,7 @@
         const value = event.currentTarget.value;
         const localError = validateParameterNameLocally(value);
         setNameError(localError);
+        updateCreateSubmitButton();
 
         if (nameValidationTimer) {
           window.clearTimeout(nameValidationTimer);
@@ -15995,6 +16067,7 @@
         autoSizeTextarea(event.currentTarget, { minHeight: 22, maxHeight: 160 });
         updateExpressionSuggestions(event.currentTarget, document.getElementById("newName").value.trim());
         updateFunctionHelper(event.currentTarget);
+        updateCreateSubmitButton();
 
         const input = event.currentTarget;
         const value = input.value;
@@ -16310,6 +16383,7 @@
 
       document.getElementById("newComment").addEventListener("input", (event) => {
         autoSizeTextarea(event.currentTarget);
+        updateCreateSubmitButton();
       });
 
       parameterRows.addEventListener("click", (event) => {
@@ -18309,6 +18383,10 @@
       document.getElementById("createForm").addEventListener("submit", async (event) => {
         event.preventDefault();
         const form = event.currentTarget;
+        if (!isCreateModalDirty()) {
+          setCreateModalOpen(false, { restoreFocus: false, discard: true });
+          return;
+        }
         const selectedUnit = String(document.getElementById("newUnit").value || "");
         const normalizedExpression = normalizeCreateExpressionForFusion(form.expression.value, selectedUnit);
         if (normalizedExpression !== String(form.expression.value || "")) {
@@ -18338,15 +18416,10 @@
             throw new Error(response.message || "Create failed.");
           }
 
-          form.reset();
-          setNameError("");
-          setExpressionError("");
-          setCreateExpressionValue("");
-          syncDefaultUnit(true);
           applyStateFromFusion(response);
           await refreshParameters({ silentStatus: true });
-          setCreateModalOpen(false, { restoreFocus: false });
-          setGlobalStatus(`Created ${data.name}.`, "success");
+          resetCreateModalFormForNextEntry({ focusName: true });
+          setGlobalStatus(`Created ${data.name}. Ready for the next parameter.`, "success");
         } catch (error) {
           setGlobalStatus(error.message, "error");
         }
