@@ -5,7 +5,34 @@ Canonical location: `scripts/CONTEXT.md` (repo root copies are deprecated/remove
 
 ## Current Task
 
-- FE render-test fixture workflow added and verified; repo now has local deterministic mock datasets for browser render automation.
+- Active investigation: Fusion undo stack pollution from BetterParameters backend operations; map current mutating API calls, research Fusion undo grouping/options, and propose solution paths.
+
+## Session Updates (2026-05-30)
+
+- Task start: investigating undo stack behavior for BP operations.
+  - Goal: identify backend events/actions that likely create Fusion undo entries, research supported mitigation options, and propose implementation approaches before code changes.
+- Investigation finding: BP mutates Fusion from `Palette.incomingFromHTML` handler, not from a `Command.execute` transaction.
+  - Current mutation hotspots include `.expression=`, `.comment=`, `.name=`, `.isFavorite=`, `userParameters.add(...)`, `deleteMe()`, `design.modifyParameters(...)`, and parameter/document attribute writes for BP metadata.
+  - Autodesk API docs indicate edits inside `Command.execute` are grouped into one undo transaction; outside that, each mutating API call can become its own undo item.
+  - Most promising direction: transaction bridge that stages palette requests, runs them inside a hidden/auto command execute handler, then reports async result back to the palette. Secondary mitigation: reduce Fusion attribute writes for BP-only UI metadata and rely more on local JSON unless embed/export/sync is explicitly needed.
+
+- Task start: investigating New Parameter modal blank-form validation/reset behavior.
+  - User repro: after submit/reset, focus returns to Name and `Expression is required.` can appear on the now-blank form.
+  - Scope expected FE-only in `BetterParameters/palette.html` plus targeted browser regression coverage.
+- Implemented FE blank-form required-error suppression for New Parameter modal:
+  - Added create-modal text blank detection and clears only `Name is required.` / `Expression is required.` when name/expression/comment are all blank.
+  - Preserved required validation for incomplete dirty forms (example: name filled, expression blank still shows `Expression is required.`).
+  - Cleared pending create-expression preview timer during automatic reset to avoid stale blank-preview errors after successful create.
+  - Added Playwright regression assertions to the New Parameter modal browser test.
+  - Validation:
+    - targeted browser test: `./.venv/bin/python -m pytest tests/test_fe_browser_current.py::test_new_parameter_expression_is_single_line_and_enter_submits -q` -> `1 passed`
+    - full suite: `./.venv/bin/python -m pytest` -> `442 passed`
+    - live add-in sync: `python3 BetterParameters/update_helper.py BetterParameters "$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters" ... --verify` -> `Done: 10 copied, 4 skipped, 0 error(s)`; `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+- Ship prep requested for patch release.
+  - Updated pending release notes for `v0.9.7` to the New Parameter blank-form validation fix.
+  - Re-ran full offline suite: `./.venv/bin/python -m pytest` -> `442 passed`.
+  - Re-ran live sync verify: `Done: 10 copied, 4 skipped, 0 error(s)`; `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+  - Remaining required gate before running `scripts/ship.py --bump-type patch --fusion-tested`: user/Fusion-side validation confirmation for current live add-in payload.
 
 ## Session Updates (2026-05-15)
 

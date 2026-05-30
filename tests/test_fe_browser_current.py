@@ -211,6 +211,19 @@ def test_new_parameter_expression_is_single_line_and_enter_submits(browser_page)
     focused_id = page.evaluate("() => document.activeElement && document.activeElement.id")
     assert focused_id == "newName"
     assert (page.locator("#createSubmitButton").text_content() or "").strip() == "Done"
+    assert (page.locator("#nameError").text_content() or "").strip() == ""
+    assert (page.locator("#expressionError").text_content() or "").strip() == ""
+
+    page.locator("#newName").fill("BrowserCreateMissingExpr")
+    page.locator("#createSubmitButton").click()
+    page.wait_for_timeout(200)
+    assert page.locator("#createModal").is_visible()
+    assert (page.locator("#expressionError").text_content() or "").strip() == "Expression is required."
+
+    page.locator("#newName").fill("")
+    page.wait_for_timeout(100)
+    assert (page.locator("#nameError").text_content() or "").strip() == ""
+    assert (page.locator("#expressionError").text_content() or "").strip() == ""
 
     page.locator("#newName").fill("BrowserCreateParamTwo")
     page.locator("#newExpression").fill("12 mm")
@@ -220,6 +233,8 @@ def test_new_parameter_expression_is_single_line_and_enter_submits(browser_page)
     assert (page.locator("#newName").input_value() or "") == ""
     assert (page.locator("#newExpression").input_value() or "") == ""
     assert (page.locator("#createSubmitButton").text_content() or "").strip() == "Done"
+    assert (page.locator("#nameError").text_content() or "").strip() == ""
+    assert (page.locator("#expressionError").text_content() or "").strip() == ""
 
     page.locator("#newName").press("Enter")
     page.locator("#createModal").wait_for(timeout=10000, state="hidden")

@@ -4520,6 +4520,24 @@
         );
       }
 
+      function isCreateModalTextBlank() {
+        return !String(document.getElementById("newName")?.value || "").trim()
+          && !String(document.getElementById("newExpression")?.value || "").trim()
+          && !String(document.getElementById("newComment")?.value || "").trim();
+      }
+
+      function clearCreateRequiredErrorsIfTextBlank() {
+        if (!isCreateModalTextBlank()) {
+          return;
+        }
+        if (String(document.getElementById("nameError")?.textContent || "").trim() === "Name is required.") {
+          setNameError("");
+        }
+        if (String(document.getElementById("expressionError")?.textContent || "").trim() === "Expression is required.") {
+          setExpressionError("");
+        }
+      }
+
       function setCreateModalBaseline() {
         state.createModalBaseline = {
           name: String(document.getElementById("newName")?.value || "").trim(),
@@ -4542,6 +4560,11 @@
         const nameInput = document.getElementById("newName");
         const expressionInput = document.getElementById("newExpression");
         const commentInput = document.getElementById("newComment");
+
+        if (expressionValidationTimer) {
+          window.clearTimeout(expressionValidationTimer);
+          expressionValidationTimer = null;
+        }
 
         if (nameInput) {
           nameInput.value = "";
@@ -4615,7 +4638,8 @@
         }
         const expression = String(input.value || "");
         if (!expression.trim()) {
-          setExpressionError("Expression is required.");
+          setExpressionError(isCreateModalTextBlank() ? "" : "Expression is required.");
+          clearCreateRequiredErrorsIfTextBlank();
           setCreateExpressionValue("");
           return false;
         }
@@ -10043,7 +10067,8 @@
         }
         const expression = String(input.value || "");
         if (!expression.trim()) {
-          setExpressionError("Expression is required.");
+          setExpressionError(isCreateModalTextBlank() ? "" : "Expression is required.");
+          clearCreateRequiredErrorsIfTextBlank();
           setCreateExpressionValue("");
           return false;
         }
@@ -14874,6 +14899,9 @@
         if (!expression || !expression.trim()) {
           if (typeof input === "string") {
             setExpressionError("Expression is required.");
+          } else if (input.id === "newExpression" && isCreateModalTextBlank()) {
+            setExpressionError("");
+            clearCreateRequiredErrorsIfTextBlank();
           } else {
             setExpressionValidationState(input, "Expression is required.");
           }
@@ -15551,7 +15579,8 @@
       async function validateCreateNameAgainstFusion(name) {
         const localError = validateParameterNameLocally(name);
         if (localError) {
-          setNameError(localError);
+          setNameError(localError === "Name is required." && isCreateModalTextBlank() ? "" : localError);
+          clearCreateRequiredErrorsIfTextBlank();
           return false;
         }
 
@@ -16164,7 +16193,8 @@
       document.getElementById("newName").addEventListener("input", (event) => {
         const value = event.currentTarget.value;
         const localError = validateParameterNameLocally(value);
-        setNameError(localError);
+        setNameError(localError === "Name is required." && isCreateModalTextBlank() ? "" : localError);
+        clearCreateRequiredErrorsIfTextBlank();
         updateCreateSubmitButton();
 
         if (nameValidationTimer) {
@@ -16198,7 +16228,8 @@
         const input = event.currentTarget;
         const value = input.value;
         if (!value.trim()) {
-          setExpressionError("Expression is required.");
+          setExpressionError(isCreateModalTextBlank() ? "" : "Expression is required.");
+          clearCreateRequiredErrorsIfTextBlank();
           setCreateExpressionValue("");
           return;
         }
@@ -16509,6 +16540,7 @@
 
       document.getElementById("newComment").addEventListener("input", (event) => {
         autoSizeTextarea(event.currentTarget);
+        clearCreateRequiredErrorsIfTextBlank();
         updateCreateSubmitButton();
       });
 
