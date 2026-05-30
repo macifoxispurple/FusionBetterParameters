@@ -1,3 +1,4 @@
-BetterParameters v0.8.11
-- Added a Reinstall current version action in Updates so you can re-stage the same release when needed.
-- Hardened self-update apply to fail cleanly on partial copy errors, plus Updates panel button placement and status text polish.
+BetterParameters v0.9.6
+- Removed the Rapid Create feature and its dedicated backend, mock-bridge, and test support.
+- Restored the New Parameter modal quick-open shortcut: `Ctrl+Shift+C` on Windows and `Cmd+Shift+C` on macOS.
+- Polished the New Parameter modal footer with a shortcut tip on the left and the submit action aligned on the right.
