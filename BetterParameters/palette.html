@@ -3729,6 +3729,8 @@
       const ALL_TABLE_COLUMN_KEYS = ["parameter", "name", "unit", "expression", "value", "comment", "revert"];
       const DEFAULT_TABLE_COLUMN_ORDER = [...ALL_TABLE_COLUMN_KEYS];
       const UNGROUPED_GROUP_LABEL = "Ungrouped";
+      const ROOT_COMPONENT_GROUP_LABEL = "Root Component";
+      const ROOT_COMPONENT_ID = "root";
       const FAVORITES_GROUP_LABEL = "\u2605 Favorites";
       const SYSTEM_GROUP_ID_UNGROUPED = "s:ungrouped";
       const SYSTEM_GROUP_ID_FAVORITES = "s:favorites";
@@ -8967,8 +8969,8 @@
 
       function normalizeModelParameterForMainTable(param) {
         const componentName = String(param?.componentName || "").trim();
-        const groupLabel = componentName || "Root Component";
         const componentStableId = getModelComponentStableId(param);
+        const groupLabel = isRootComponentModelValue(param) ? ROOT_COMPONENT_GROUP_LABEL : (componentName || ROOT_COMPONENT_GROUP_LABEL);
         return {
           key: String(param?.key || param?.name || ""),
           name: String(param?.name || ""),
@@ -9074,6 +9076,9 @@
       }
 
       function getModelComponentStableId(value) {
+        if (isRootComponentModelValue(value)) {
+          return ROOT_COMPONENT_ID;
+        }
         const direct = String(
           value?.componentId
           || value?.componentToken
@@ -9091,8 +9096,29 @@
         return "";
       }
 
+      function isRootComponentModelValue(value) {
+        if (value?.isRootComponent === true) {
+          return true;
+        }
+        const direct = String(
+          value?.componentId
+          || value?.componentToken
+          || value?.componentKey
+          || value?.stableComponentId
+          || ""
+        ).trim().toLowerCase();
+        if (direct === ROOT_COMPONENT_ID) {
+          return true;
+        }
+        const groupId = String(value?.groupId || "").trim().toLowerCase();
+        return groupId === `c:${ROOT_COMPONENT_ID}`;
+      }
+
       function makeModelGroupDescriptorFromValue(value) {
-        const label = displayGroupName(String(value?.componentName || value?.label || ""));
+        const isRootComponent = isRootComponentModelValue(value);
+        const label = isRootComponent
+          ? ROOT_COMPONENT_GROUP_LABEL
+          : displayGroupName(String(value?.componentName || value?.label || ""));
         const stableComponentId = getModelComponentStableId(value);
         const stableGroupId = stableComponentId ? `c:${stableComponentId.toLowerCase()}` : "";
         const fallbackGroupId = stableGroupId || `x:${label.toLowerCase()}`;

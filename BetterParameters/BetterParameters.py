@@ -1147,6 +1147,8 @@ def _find_model_parameter_by_token(design, token):
 
 
 _MODEL_PARAMETER_MAX_LIMIT = 1000  # hard cap per page
+_ROOT_COMPONENT_ID = "root"
+_ROOT_COMPONENT_LABEL = "Root Component"
 
 
 def _model_parameter_count():
@@ -1170,14 +1172,15 @@ def _model_parameter_count():
         return 0
 
 
-def _serialize_model_parameter(param, units_manager, component_name="", component_id=""):
+def _serialize_model_parameter(param, units_manager, component_name="", component_id="", is_root_component=False):
     """Return the serialized dict for a single ModelParameter.
 
     component_name: display name of the owning component. Empty string for root.
-    component_id:   stable identity token for the owning component
-                    (Component.entityToken). Empty string when unavailable —
-                    never fabricated. FE uses this for persistent group-order
-                    identity that survives component renames.
+    component_id:   stable identity token for the owning component. For normal
+                    components this is Component.entityToken. For the Fusion
+                    root component this is the BetterParameters sentinel
+                    "root", because Fusion rewrites the root component display
+                    name on document save/version changes.
     """
     return {
         "key": _parameter_entity_token(param),
@@ -1191,6 +1194,7 @@ def _serialize_model_parameter(param, units_manager, component_name="", componen
         "createdBy": _created_by_label(param),
         "componentName": component_name,
         "componentId": component_id,
+        "isRootComponent": bool(is_root_component),
     }
 
 
@@ -1229,7 +1233,12 @@ def _get_model_parameters(data):
     except Exception:
         return {"ok": True, "totalCount": 0, "parameters": [], "offset": offset, "limit": limit}
 
-    # Collect from all components — (param, component_name, component_id) tuples.
+    try:
+        root_component = design.rootComponent
+    except Exception:
+        root_component = None
+
+    # Collect from all components — (param, component_name, component_id, is_root) tuples.
     # component_id is Component.entityToken — stable across renames within a session.
     # Linear scan across all components is unavoidable for arbitrary filter text.
     candidates = []
@@ -1237,8 +1246,10 @@ def _get_model_parameters(data):
         comp = all_comps.item(comp_idx)
         if not comp:
             continue
-        comp_name = comp.name or ""
-        comp_id = _component_entity_token(comp)
+        is_root_component = _is_root_component(comp, root_component)
+        comp_name = "" if is_root_component else (comp.name or "")
+        comp_filter_name = _ROOT_COMPONENT_LABEL if is_root_component else comp_name
+        comp_id = _ROOT_COMPONENT_ID if is_root_component else _component_entity_token(comp)
         try:
             param_collection = comp.modelParameters
         except Exception:
@@ -1250,18 +1261,18 @@ def _get_model_parameters(data):
             if filter_str:
                 name_cf = (param.name or "").casefold()
                 expr_cf = (param.expression or "").casefold()
-                comp_cf = comp_name.casefold()
+                comp_cf = comp_filter_name.casefold()
                 if filter_str not in name_cf and filter_str not in expr_cf and filter_str not in comp_cf:
                     continue
-            candidates.append((param, comp_name, comp_id))
+            candidates.append((param, comp_name, comp_id, is_root_component))
 
     # Sort by component name then parameter name, both case-insensitive.
-    candidates.sort(key=lambda t: (t[1].casefold(), (t[0].name or "").casefold()))
+    candidates.sort(key=lambda t: ((_ROOT_COMPONENT_LABEL if t[3] else t[1]).casefold(), (t[0].name or "").casefold()))
     filtered_count = len(candidates)
 
     page = candidates[offset: offset + limit]
-    results = [_serialize_model_parameter(p, units_manager, comp_name, comp_id)
-               for p, comp_name, comp_id in page]
+    results = [_serialize_model_parameter(p, units_manager, comp_name, comp_id, is_root)
+               for p, comp_name, comp_id, is_root in page]
 
     return {
         "ok": True,
@@ -1515,6 +1526,22 @@ def _component_entity_token(comp):
         return token if token else ""
     except Exception:
         return ""
+
+
+def _is_root_component(comp, root_component):
+    """Return True when comp is the active design's root component."""
+    if not comp or not root_component:
+        return False
+    if comp is root_component:
+        return True
+    try:
+        comp_token = comp.entityToken
+        root_token = root_component.entityToken
+        if comp_token and root_token and comp_token == root_token:
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def _resolve_document_order_records(design, records):

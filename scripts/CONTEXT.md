@@ -9,6 +9,19 @@ Canonical location: `scripts/CONTEXT.md` (repo root copies are deprecated/remove
 
 ## Session Updates (2026-05-30)
 
+- Task start: fixing root component model-parameter group churn.
+  - User repro: Fusion renames root component on save with document version suffix (example `CoolObject v5`), causing BP to surface a new component group each save.
+  - Plan: detect `design.rootComponent` in backend model-parameter serialization, emit a stable root component identity/display contract, update FE grouping to key root rows on that identity, add regression tests, then sync live add-in.
+  - Implemented:
+    - Backend now detects `design.rootComponent` during `getModelParameters`, emits `componentName: ""`, `componentId: "root"`, and `isRootComponent: true` for root-owned model parameters.
+    - FE now maps root model rows/component preload descriptors to stable group id `c:root` with display label `Root Component`, independent of Fusion's versioned root component name.
+    - Backend API docs updated for root sentinel semantics.
+    - Regression coverage added for root rename stability, root display-label filtering, and FE root-group wiring.
+  - Validation:
+    - focused tests: `./.venv/bin/python -m pytest tests/test_model_parameters.py tests/test_fe_current_baseline.py -q` -> `46 passed`
+    - full suite required escalation for Playwright launch after sandbox Mach-port denial; escalated rerun `./.venv/bin/python -m pytest` -> `445 passed`
+    - live add-in sync: `python3 BetterParameters/update_helper.py BetterParameters "$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters" ... --verify` -> `Done: 10 copied, 4 skipped, 0 error(s)`; `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
 - Task start: investigating undo stack behavior for BP operations.
   - Goal: identify backend events/actions that likely create Fusion undo entries, research supported mitigation options, and propose implementation approaches before code changes.
 - Investigation finding: BP mutates Fusion from `Palette.incomingFromHTML` handler, not from a `Command.execute` transaction.

@@ -47,3 +47,11 @@ def test_palette_contains_core_controls_ids():
     ]
     for control_id in expected_ids:
         assert f'id="{control_id}"' in text
+
+
+def test_palette_has_stable_root_component_group_identity():
+    text = _read(PALETTE_PATH)
+    assert 'const ROOT_COMPONENT_GROUP_LABEL = "Root Component";' in text
+    assert 'const ROOT_COMPONENT_ID = "root";' in text
+    assert "function isRootComponentModelValue(value)" in text
+    assert "value?.isRootComponent === true" in text

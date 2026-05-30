@@ -56,6 +56,8 @@ def _make_design_with_model_params(*specs, component_name="TestComponent",
 
     design = MagicMock()
     design.allComponents = all_components
+    design.rootComponent = MagicMock()
+    design.rootComponent.entityToken = "tok_root"
     design.unitsManager.defaultLengthUnits = "mm"
     design.unitsManager.isValidExpression.return_value = True
     return design, params
@@ -120,6 +122,8 @@ def _make_design_multi_component(*component_specs):
 
     design = MagicMock()
     design.allComponents = all_components
+    design.rootComponent = MagicMock()
+    design.rootComponent.entityToken = "tok_root"
     design.unitsManager.defaultLengthUnits = "mm"
     design.unitsManager.isValidExpression.return_value = True
     return design
@@ -238,6 +242,70 @@ def test_component_id_stable_across_rename():
     assert id_before == id_after == "stable-token-xyz"
     assert result_before["parameters"][0]["componentName"] == "OriginalName"
     assert result_after["parameters"][0]["componentName"] == "RenamedComponent"
+
+
+def test_root_component_uses_stable_root_identity_not_versioned_name():
+    """Root component group identity must ignore Fusion's save-version name churn."""
+    params = [_make_model_param(name="d1", expression="5 mm")]
+
+    collection = MagicMock()
+    collection.count = 1
+    collection.item.side_effect = lambda i: params[i] if i == 0 else None
+
+    root = MagicMock()
+    root.name = "CoolObject v5"
+    root.entityToken = "root-token-that-may-change"
+    root.modelParameters = collection
+
+    all_comps = MagicMock()
+    all_comps.count = 1
+    all_comps.item.side_effect = lambda i: root if i == 0 else None
+
+    design = MagicMock()
+    design.allComponents = all_comps
+    design.rootComponent = root
+    design.unitsManager.defaultLengthUnits = "mm"
+    design.unitsManager.isValidExpression.return_value = True
+
+    result_before = _call_get(design)
+    root.name = "CoolObject v6"
+    result_after = _call_get(design)
+
+    before = result_before["parameters"][0]
+    after = result_after["parameters"][0]
+    assert before["componentName"] == ""
+    assert after["componentName"] == ""
+    assert before["componentId"] == after["componentId"] == "root"
+    assert before["isRootComponent"] is True
+    assert after["isRootComponent"] is True
+
+
+def test_filter_matches_root_component_display_label():
+    """Root rows remain searchable by their stable display label."""
+    params = [_make_model_param(name="d1", expression="5 mm")]
+
+    collection = MagicMock()
+    collection.count = 1
+    collection.item.side_effect = lambda i: params[i] if i == 0 else None
+
+    root = MagicMock()
+    root.name = "CoolObject v5"
+    root.entityToken = "root-token"
+    root.modelParameters = collection
+
+    all_comps = MagicMock()
+    all_comps.count = 1
+    all_comps.item.side_effect = lambda i: root if i == 0 else None
+
+    design = MagicMock()
+    design.allComponents = all_comps
+    design.rootComponent = root
+    design.unitsManager.defaultLengthUnits = "mm"
+    design.unitsManager.isValidExpression.return_value = True
+
+    result = _call_get(design, filter="root component")
+    assert result["totalCount"] == 1
+    assert result["parameters"][0]["componentId"] == "root"
 
 
 def test_component_id_empty_string_when_token_unavailable():
