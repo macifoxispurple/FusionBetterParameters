@@ -8030,6 +8030,15 @@
         return Object.keys(state.rowDraftsByKey || {}).length > 0;
       }
 
+      function isSelectionInteractionBlocked() {
+        return !!(
+          selectedActionInFlight
+          || state.applyAllRunning === true
+          || hasAnyRowApplyInFlight()
+          || hasActiveDragInteraction()
+        );
+      }
+
       function clearRowDraftByKey(key) {
         const token = String(key || "");
         if (!token) {

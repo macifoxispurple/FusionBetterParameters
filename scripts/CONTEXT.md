@@ -9,6 +9,18 @@ Canonical location: `scripts/CONTEXT.md` (repo root copies are deprecated/remove
 
 ## Session Updates (2026-05-30)
 
+- Task start: diagnosing multi-select regression.
+  - User repro: Ctrl/Cmd-click and Shift-click no longer select multiple/range rows in narrow or full table views, breaking multi-row group/delete actions.
+  - Scope expected FE selection/event handling in `BetterParameters/palette.html`, with browser regression coverage if reproducible offline.
+  - Finding: row click/mousedown selection handlers called `isSelectionInteractionBlocked()`, but that helper no longer existed in the active script. Every row selection event threw before updating selection state.
+  - Fix:
+    - Restored `isSelectionInteractionBlocked()` in `palette.html`, blocking only active selection actions, Apply All, row apply, or drag interactions.
+    - Added browser regressions for Meta-click multi-select in full table view and Shift-click range selection in narrow view.
+  - Validation:
+    - targeted browser tests: `./.venv/bin/python -m pytest tests/test_fe_browser_current.py::test_modifier_click_multi_selects_rows tests/test_fe_browser_current.py::test_shift_click_range_selects_rows_in_narrow_view -q` -> `2 passed`
+    - full suite with browser escalation: `./.venv/bin/python -m pytest` -> `447 passed`
+    - live add-in sync: `python3 BetterParameters/update_helper.py BetterParameters "$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters" ... --verify` -> `Done: 10 copied, 4 skipped, 0 error(s)`; `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
 - Task start: fixing root component model-parameter group churn.
   - User repro: Fusion renames root component on save with document version suffix (example `CoolObject v5`), causing BP to surface a new component group each save.
   - Plan: detect `design.rootComponent` in backend model-parameter serialization, emit a stable root component identity/display contract, update FE grouping to key root rows on that identity, add regression tests, then sync live add-in.

@@ -159,8 +159,56 @@ def test_discard_all_clears_dirty_rows(browser_page):
         assert "is-dirty" not in (row.get_attribute("class") or "")
 
 
+def _selectable_user_rows(page):
+    return page.locator("#parameterRows tr.parameter-row[data-parameter-key][data-row-selectable='true']:not([data-favorites-row='true'])")
+
+
+def _selected_user_row_count(page):
+    return page.locator("#parameterRows tr.parameter-row.is-selected[data-row-selectable='true']:not([data-favorites-row='true'])").count()
+
+
+def _click_row_selector(row, modifiers=None, force_row=False):
+    if force_row:
+        row.click(position={"x": 12, "y": 12}, modifiers=modifiers or [], force=True)
+        return
+    row.locator(".parameter-kind").click(modifiers=modifiers or [])
+
+
+def test_modifier_click_multi_selects_rows(browser_page):
+    page = browser_page
+    page.set_viewport_size({"width": 1280, "height": 900})
+    page.goto(_harness_url())
+    _wait_palette_ready(page)
+
+    rows = _selectable_user_rows(page)
+    assert rows.count() >= 3
+
+    _click_row_selector(rows.nth(0))
+    assert _selected_user_row_count(page) == 1
+
+    _click_row_selector(rows.nth(1), modifiers=["Meta"])
+    assert _selected_user_row_count(page) == 2
+    assert page.locator("#selectionCountChip").text_content() == "2 selected"
+
+
+def test_shift_click_range_selects_rows_in_narrow_view(browser_page):
+    page = browser_page
+    page.set_viewport_size({"width": 430, "height": 900})
+    page.goto(_harness_url())
+    _wait_palette_ready(page)
+
+    rows = _selectable_user_rows(page)
+    assert rows.count() >= 5
+
+    _click_row_selector(rows.nth(0), force_row=True)
+    _click_row_selector(rows.nth(3), modifiers=["Shift"], force_row=True)
+    assert _selected_user_row_count(page) == 4
+    assert page.locator("#selectionCountChip").text_content() == "4 selected"
+
+
 def test_large_render_fixture_renders_expected_rows_and_groups(browser_page):
     page = browser_page
+    page.set_viewport_size({"width": 1280, "height": 900})
     page.goto(_harness_url("render-large"))
     _wait_palette_ready(page)
     page.wait_for_timeout(150)
