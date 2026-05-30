@@ -27,6 +27,7 @@ def test_generated_render_fixture_assets_present():
 def test_palette_cmd_ctrl_parity_shortcuts_present():
     text = _read(PALETTE_PATH)
     assert "const ctrlOrMeta = event.ctrlKey || event.metaKey;" in text
+    assert "const isCreateModalShortcut = keyLower === \"c\" && ctrlOrMeta && event.shiftKey && !event.altKey;" in text
     assert "const isLayoutDebugToggle = keyLower === \"d\" && (" in text
     assert "const isTextTunerToggle = keyLower === \"t\" && ctrlOrMeta" in text
     assert "const isComputeModeToggleShortcut = keyLower === \"m\" && ctrlOrMeta" in text
@@ -42,6 +43,7 @@ def test_palette_contains_core_controls_ids():
         "importParametersPackageButton",
         "timelineSortButton",
         "parameterRows",
+        "createShortcutTip",
     ]
     for control_id in expected_ids:
         assert f'id="{control_id}"' in text

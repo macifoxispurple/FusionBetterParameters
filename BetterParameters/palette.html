@@ -2355,6 +2355,25 @@
         padding: 10px;
       }
 
+      .create-form-actions {
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .create-shortcut-tip {
+        min-width: 0;
+        flex: 1 1 auto;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.3;
+      }
+
+      .create-form-actions #createSubmitButton {
+        margin-left: auto;
+        flex: 0 0 auto;
+      }
+
       #newExpression {
         width: 100%;
         min-height: var(--control-h);
@@ -3352,7 +3371,8 @@
                 Comment
                 <textarea id="newComment" name="comment" class="comment-input"></textarea>
               </label>
-              <div class="actions">
+              <div class="actions create-form-actions">
+                <div id="createShortcutTip" class="create-shortcut-tip" aria-live="polite"></div>
                 <button id="createSubmitButton" class="primary" type="submit">Done</button>
               </div>
             </form>
@@ -15823,6 +15843,7 @@
         modal.hidden = !isOpen;
         updateSharedModalBodyClass();
         launchButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
+        renderCreateShortcutTip();
 
         if (isOpen) {
           setSettingsPanelOpen(false);
@@ -15888,6 +15909,18 @@
         }
         const platformHint = String(navigator.platform || navigator.userAgent || "").toLowerCase();
         return platformHint.includes("mac");
+      }
+
+      function getCreateModalShortcutLabel() {
+        return isMacLikeHostPlatform() ? "Cmd+Shift+C" : "Ctrl+Shift+C";
+      }
+
+      function renderCreateShortcutTip() {
+        const tip = document.getElementById("createShortcutTip");
+        if (!tip) {
+          return;
+        }
+        tip.textContent = `Tip: Press ${getCreateModalShortcutLabel()} to open or close this dialog quickly.`;
       }
 
       function resolvePendingConfirmation(result) {
@@ -18882,6 +18915,7 @@
       document.addEventListener("keydown", (event) => {
         const keyLower = String(event.key || "").toLowerCase();
         const ctrlOrMeta = event.ctrlKey || event.metaKey;
+        const isCreateModalShortcut = keyLower === "c" && ctrlOrMeta && event.shiftKey && !event.altKey;
         const isLayoutDebugToggle = keyLower === "d" && (
           (ctrlOrMeta && event.altKey && !event.shiftKey)
           || (ctrlOrMeta && event.shiftKey && !event.altKey)
@@ -18889,6 +18923,20 @@
         const isTextTunerToggle = keyLower === "t" && ctrlOrMeta
           && ((event.altKey && !event.shiftKey) || (event.shiftKey && !event.altKey));
         const isComputeModeToggleShortcut = keyLower === "m" && ctrlOrMeta && event.shiftKey && !event.altKey;
+        if (isCreateModalShortcut) {
+          const confirmModal = document.getElementById("confirmModal");
+          if (confirmModal && !confirmModal.hidden) {
+            return;
+          }
+          event.preventDefault();
+          const createModal = document.getElementById("createModal");
+          if (createModal && !createModal.hidden) {
+            void requestCreateModalClose();
+          } else {
+            setCreateModalOpen(true, { focusName: true });
+          }
+          return;
+        }
         if (isLayoutDebugToggle) {
           event.preventDefault();
           setLayoutDebugEnabled(!state.layoutDebugEnabled);

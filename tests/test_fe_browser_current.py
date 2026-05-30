@@ -63,6 +63,27 @@ def test_fe_shortcut_toggle_layout_debug(browser_page):
     assert initial != after
 
 
+def test_create_modal_shortcut_toggle_and_tip(browser_page):
+    page = browser_page
+    page.goto(_harness_url())
+    _wait_palette_ready(page)
+
+    page.keyboard.press("Control+Shift+C")
+    page.locator("#createModal").wait_for(timeout=10000, state="visible")
+
+    tip_text = (page.locator("#createShortcutTip").text_content() or "").strip()
+    assert "Press" in tip_text
+    assert "Shift+C" in tip_text
+    assert (page.locator("#createSubmitButton").text_content() or "").strip() == "Done"
+
+    footer = page.locator(".create-form-actions")
+    assert footer.locator("#createShortcutTip").count() == 1
+    assert footer.locator("#createSubmitButton").count() == 1
+
+    page.keyboard.press("Control+Shift+C")
+    page.locator("#createModal").wait_for(timeout=10000, state="hidden")
+
+
 def test_apply_all_and_discard_all_controls_present(browser_page):
     page = browser_page
     page.goto(_harness_url())
