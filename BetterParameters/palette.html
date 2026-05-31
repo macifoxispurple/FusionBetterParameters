@@ -2143,6 +2143,7 @@
       .toggle-row {
         display: flex;
         align-items: center;
+        justify-content: space-between;
         gap: 8px;
         color: var(--ink);
         font-size: 12px;
@@ -2197,6 +2198,33 @@
         min-width: 0;
         white-space: nowrap;
         font-size: 12px;
+      }
+
+      .settings-action-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        color: var(--ink);
+        font-size: 12px;
+      }
+
+      .segmented-toggle {
+        position: relative;
+        min-width: 92px;
+        height: 22px;
+        padding: 2px 8px;
+        border-radius: 11px;
+        background: var(--btn-bg);
+        border-color: var(--line);
+        font-size: 11px;
+        font-weight: 600;
+      }
+
+      .segmented-toggle.is-on {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--accent-text);
       }
 
       .settings-subheading {
@@ -3427,6 +3455,34 @@
               <button id="themeToggle" class="toggle theme-toggle" type="button" aria-pressed="false" aria-label="Toggle dark theme"><span class="theme-knob"><span class="theme-icon theme-icon-light"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><line x1="8" y1="1" x2="8" y2="3"/><line x1="8" y1="13" x2="8" y2="15"/><line x1="1" y1="8" x2="3" y2="8"/><line x1="13" y1="8" x2="15" y2="8"/><line x1="3.05" y1="3.05" x2="4.46" y2="4.46"/><line x1="11.54" y1="11.54" x2="12.95" y2="12.95"/><line x1="3.05" y1="12.95" x2="4.46" y2="11.54"/><line x1="11.54" y1="4.46" x2="12.95" y2="3.05"/></svg></span><span class="theme-icon theme-icon-dark"><svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M14 10.5a6 6 0 0 1-7.93-7.93A6 6 0 1 0 14 10.5z"/></svg></span></span></button>
             </div>
             <div class="toggle-row">
+              <span class="toggle-label">Show Drag Handle</span>
+              <button id="alwaysShowRowDragHandleToggle" class="toggle" type="button" aria-pressed="false" aria-label="Toggle drag handle visibility"></button>
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-label">Comment Column</span>
+              <button id="commentColumnButton" class="toggle" type="button" aria-pressed="false" aria-label="Toggle comment column"></button>
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-label">Show Revert Buttons</span>
+              <button id="toggleRevertButtonsButton" class="toggle" type="button" aria-pressed="false" aria-label="Toggle revert buttons"></button>
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-label">Hide Groups</span>
+              <button id="hideGroupsButton" class="toggle" type="button" aria-pressed="false" aria-label="Toggle group visibility"></button>
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-label">Text Tuner Sidebar</span>
+              <button id="textTunerSidebarButton" class="toggle" type="button" aria-pressed="false" aria-label="Toggle text tuner sidebar"></button>
+            </div>
+          </section>
+
+          <section class="settings-panel-section">
+            <div class="section-header">
+              <div>
+                <h2>Behavior</h2>
+              </div>
+            </div>
+            <div class="toggle-row">
               <span class="toggle-label">Remember Unit</span>
               <button id="rememberUnitToggle" class="toggle" type="button" aria-pressed="false" aria-label="Toggle remember unit"></button>
             </div>
@@ -3434,14 +3490,23 @@
               <span class="toggle-label">Open on Startup</span>
               <button id="autoOpenOnStartToggle" class="toggle" type="button" aria-pressed="false" aria-label="Toggle open on startup"></button>
             </div>
+            <div class="toggle-row">
+              <span class="toggle-label">Auto Fit Columns</span>
+              <button id="autoFitColumnsButton" class="toggle" type="button" aria-pressed="false" aria-label="Toggle automatic column fitting"></button>
+            </div>
+            <div class="settings-action-row">
+              <span class="toggle-label">Compute Mode</span>
+              <button id="computeModeButton" class="segmented-toggle" type="button" aria-pressed="false">Auto</button>
+            </div>
+          </section>
+
+          <section class="settings-panel-section">
+            <div class="section-header">
+              <div>
+                <h2>Maintenance</h2>
+              </div>
+            </div>
             <div class="actions">
-              <button id="alwaysShowRowDragHandleToggle" class="ghost" type="button">Show Drag Handle: Off</button>
-              <button id="commentColumnButton" class="ghost" type="button">Comment: Off</button>
-              <button id="textTunerSidebarButton" class="ghost" type="button">Text Tuner: On</button>
-              <button id="toggleRevertButtonsButton" class="ghost" type="button">Show Revert: On</button>
-              <button id="hideGroupsButton" class="ghost" type="button">Hide Groups: Off</button>
-              <button id="computeModeButton" class="ghost" type="button">Compute: Auto</button>
-              <button id="autoFitColumnsButton" class="ghost" type="button">Auto Fit</button>
               <button id="resetSettingsButton" class="ghost" type="button">Reset Settings</button>
               <button id="cleanupDisableButton" class="ghost" type="button">Cleanup + Disable Add-In</button>
             </div>
@@ -4885,6 +4950,9 @@
 
       function renderToggle(id, isOn) {
         const toggle = document.getElementById(id);
+        if (!toggle) {
+          return;
+        }
         toggle.classList.toggle("is-on", isOn);
         toggle.setAttribute("aria-pressed", String(isOn));
       }
@@ -10376,6 +10444,9 @@
 
       function renderToggle(id, isOn) {
         const toggle = document.getElementById(id);
+        if (!toggle) {
+          return;
+        }
         toggle.classList.toggle("is-on", isOn);
         toggle.setAttribute("aria-pressed", String(isOn));
       }
@@ -13150,45 +13221,27 @@
       }
 
       function renderRevertToggle() {
-        const button = document.getElementById("toggleRevertButtonsButton");
         const isOn = state.settings.showRevertButtons !== false;
-        if (button) {
-          button.textContent = `Show Revert: ${isOn ? "On" : "Off"}`;
-        }
+        renderToggle("toggleRevertButtonsButton", isOn);
         document.body.classList.toggle("hide-revert", !isOn);
       }
 
       function renderAutoFitToggle() {
-        const button = document.getElementById("autoFitColumnsButton");
-        const isOn = state.settings.autoFitColumns === true;
-        if (button) {
-          button.textContent = `Auto Fit: ${isOn ? "On" : "Off"}`;
-        }
+        renderToggle("autoFitColumnsButton", state.settings.autoFitColumns === true);
       }
 
       function renderAlwaysShowRowDragHandleToggle() {
-        const button = document.getElementById("alwaysShowRowDragHandleToggle");
         const isOn = state.settings.alwaysShowRowDragHandle !== false;
-        if (button) {
-          button.textContent = `Show Drag Handle: ${isOn ? "On" : "Off"}`;
-        }
+        renderToggle("alwaysShowRowDragHandleToggle", isOn);
         document.body.classList.toggle("always-show-row-drag-handles", isOn);
       }
 
       function renderCommentColumnToggle() {
-        const button = document.getElementById("commentColumnButton");
-        const isOn = state.settings.showCommentColumn === true;
-        if (button) {
-          button.textContent = `Comment: ${isOn ? "On" : "Off"}`;
-        }
+        renderToggle("commentColumnButton", state.settings.showCommentColumn === true);
       }
 
       function renderHideGroupsToggle() {
-        const button = document.getElementById("hideGroupsButton");
-        const isOn = state.settings.hideGroups === true;
-        if (button) {
-          button.textContent = `Hide Groups: ${isOn ? "On" : "Off"}`;
-        }
+        renderToggle("hideGroupsButton", state.settings.hideGroups === true);
       }
 
       function shouldUseCompactRevertLabel() {
@@ -13209,12 +13262,11 @@
         }
         if (!TEMP_TEXT_TUNER_ENABLED) {
           button.disabled = true;
-          button.textContent = "Text Tuner: Off";
+          renderToggle("textTunerSidebarButton", false);
           return;
         }
         button.disabled = false;
-        const isOn = shouldShowTextTunerSidebar();
-        button.textContent = `Text Tuner: ${isOn ? "On" : "Off"}`;
+        renderToggle("textTunerSidebarButton", shouldShowTextTunerSidebar());
       }
 
       function normalizeComputeMode(mode) {
@@ -13238,7 +13290,9 @@
           return;
         }
         const manual = isManualComputeMode();
-        button.textContent = `Compute: ${manual ? "Manual" : "Auto"}`;
+        button.textContent = manual ? "Manual" : "Auto";
+        button.classList.toggle("is-on", manual);
+        button.setAttribute("aria-pressed", String(manual));
       }
 
       function applyComputeModeClasses() {

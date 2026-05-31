@@ -5,11 +5,23 @@ Canonical location: `scripts/CONTEXT.md` (repo root copies are deprecated/remove
 
 ## Current Task
 
-- Active implementation: metadata-parameter persistence design in the real BetterParameters add-in.
-  - Source of truth docs read first: `scripts/HANDOFF.md`, `scripts/CONTEXT.md`, `scripts/METADATA_PARAMETER_SPEC.md`.
-  - Target: reserve `_bp_metadata_v1`, store compact `BPM1Z:` document metadata in its comment, hide it from BP rows, route explicit group/order/UI metadata edits to one comment write, keep legacy attrs/local JSON as fallback/cache.
+- Active implementation: settings pane organization cleanup after metadata-parameter patch ship.
+  - Source of truth docs read first this session: `scripts/HANDOFF.md`, `scripts/CONTEXT.md`, `scripts/METADATA_PARAMETER_SPEC.md`; `scripts/PUSHNOTES.md` read for patch ship.
+  - Target: split the old mixed Appearance controls into Appearance, Behavior, and Maintenance sections, with persistent boolean preferences using the same sliding switch style.
 
 ## Session Updates (2026-05-30)
+
+- Reorganized settings pane controls:
+  - Split old mixed `Appearance` control cluster into:
+    - `Appearance`: Theme, Show Drag Handle, Comment Column, Show Revert Buttons, Hide Groups, Text Tuner Sidebar.
+    - `Behavior`: Remember Unit, Open on Startup, Auto Fit Columns, Compute Mode.
+    - `Maintenance`: Reset Settings, Cleanup + Disable Add-In.
+  - Converted drag handle, comment column, revert buttons, hide groups, text tuner sidebar, and auto-fit columns controls from text buttons to the existing sliding toggle visual.
+  - Kept Compute Mode as a compact labeled mode button (`Auto`/`Manual`) and preserved existing control IDs/handlers for behavior stability.
+  - Validation:
+    - focused frontend: `./.venv/bin/python -m pytest tests/test_fe_current_baseline.py tests/test_fe_browser_current.py::test_palette_loads_directly -q` -> `6 passed`
+    - full suite with Playwright escalation: `./.venv/bin/python -m pytest` -> `468 passed`
+    - visual smoke via Playwright fixture: settings sections/toggles rendered as expected; switch controls measured `36x20`.
 
 - Implemented metadata-parameter persistence design:
   - Added reserved `_bp_metadata_v1` user parameter support with compact `BPM1Z:<sha256>:<base64-zlib-json>` comment encoding/decoding and validation.
