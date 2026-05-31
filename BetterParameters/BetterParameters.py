@@ -294,6 +294,7 @@ ui = adsk.core.UserInterface.cast(None)
 command_handler_registered = False
 restore_window_position_command_handler_registered = False
 _updated_runtime_module = None
+_last_pushed_parameter_signature = None
 
 
 def run(context):
@@ -378,6 +379,10 @@ def _register_application_events():
     on_document_activated = DocumentActivatedHandler()
     app.documentActivated.add(on_document_activated)
     handlers.append(on_document_activated)
+    if ui and hasattr(ui, "commandTerminated"):
+        on_command_terminated = FusionCommandTerminatedHandler()
+        ui.commandTerminated.add(on_command_terminated)
+        handlers.append(on_command_terminated)
 
 
 class ShowPaletteCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
@@ -438,10 +443,27 @@ class DocumentActivatedHandler(adsk.core.DocumentEventHandler):
         try:
             palette = _palette()
             if palette and palette.isVisible:
-                _send_to_palette("renderState", _ok_state(_current_state_payload()))
+                _push_parameter_list()
         except Exception:
             if app:
                 app.log(f"Better Parameters documentActivated refresh failed:\n{traceback.format_exc()}")
+
+
+class FusionCommandTerminatedHandler(adsk.core.ApplicationCommandEventHandler):
+    def __init__(self):
+        super().__init__()
+
+    def notify(self, args):
+        try:
+            command_id = str(getattr(args, "commandId", "") or "")
+            if command_id in {CMD_ID, RESTORE_WINDOW_POSITION_CMD_ID}:
+                return
+            palette = _palette()
+            if palette and palette.isVisible:
+                _push_parameter_list_if_changed()
+        except Exception:
+            if app:
+                app.log(f"Better Parameters commandTerminated refresh failed:\n{traceback.format_exc()}")
 
 
 class PaletteIncomingHandler(adsk.core.HTMLEventHandler):
@@ -591,6 +613,21 @@ def _perf_log(event_name, **payload):
 
 def _cancelled_response(message, **kwargs):
     return {"ok": False, "message": message, "errorCode": ERROR_DIALOG_CANCELLED, "state": None, **kwargs}
+
+
+def _string_values_equal(left, right):
+    return str(left if left is not None else "") == str(right if right is not None else "")
+
+
+def _assign_if_changed(obj, attr_name, next_value):
+    try:
+        current_value = getattr(obj, attr_name)
+    except Exception:
+        current_value = None
+    if _string_values_equal(current_value, next_value):
+        return False
+    setattr(obj, attr_name, next_value)
+    return True
 
 
 def _build_user_parameter_row_patch(token_or_name):
@@ -931,8 +968,54 @@ def _handle_palette_action(action, data):
     return {"ok": False, "message": f"Unknown action: {action}", "errorCode": ERROR_CONTRACT, "state": None}
 
 
+def _state_push_signature(payload):
+    if not isinstance(payload, dict):
+        return ""
+    document = payload.get("document") if isinstance(payload.get("document"), dict) else {}
+    parameters = payload.get("parameters") if isinstance(payload.get("parameters"), list) else []
+    rows = []
+    for parameter in parameters:
+        if not isinstance(parameter, dict):
+            continue
+        rows.append((
+            str(parameter.get("key") or ""),
+            str(parameter.get("name") or ""),
+            str(parameter.get("expression") or ""),
+            str(parameter.get("unit") or ""),
+            str(parameter.get("comment") or ""),
+            bool(parameter.get("isFavorite")),
+            str(parameter.get("group") or ""),
+            str(parameter.get("valuePreview") or ""),
+            str(parameter.get("previousExpression") or ""),
+            str(parameter.get("previousValue") or ""),
+        ))
+    signature_payload = {
+        "documentId": str(document.get("id") or ""),
+        "documentName": str(document.get("name") or ""),
+        "parameters": rows,
+        "groups": payload.get("groups") if isinstance(payload.get("groups"), list) else [],
+        "parameterNames": payload.get("parameterNames") if isinstance(payload.get("parameterNames"), list) else [],
+        "modelParameterCount": int(payload.get("modelParameterCount") or 0),
+    }
+    return json.dumps(signature_payload, sort_keys=True, separators=(",", ":"))
+
+
 def _push_parameter_list():
-    _send_to_palette("renderState", _ok_state(_current_state_payload()))
+    global _last_pushed_parameter_signature
+    payload = _current_state_payload()
+    _last_pushed_parameter_signature = _state_push_signature(payload)
+    _send_to_palette("renderState", _ok_state(payload))
+
+
+def _push_parameter_list_if_changed():
+    global _last_pushed_parameter_signature
+    payload = _current_state_payload()
+    signature = _state_push_signature(payload)
+    if signature == _last_pushed_parameter_signature:
+        return False
+    _last_pushed_parameter_signature = signature
+    _send_to_palette("renderState", _ok_state(payload))
+    return True
 
 
 def _send_to_palette(action, payload):
@@ -1029,9 +1112,7 @@ def _collect_user_parameters(order_state=None):
             writer_version=saved_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
         )
         latest_payload = _choose_latest_metadata(fusion_payload, json_payload)
-        backfill_attributes_from_saved = _is_metadata_newer(json_payload, fusion_payload)
-        if backfill_attributes_from_saved:
-            _write_parameter_group_name(param, latest_payload.get("group") or "", latest_payload.get(METADATA_CHANGED_AT_RECORD_KEY), latest_payload)
+        display_group = _normalize_group_name(latest_payload.get("group") or saved_record.get("group") or "")
 
         results.append(
             {
@@ -1041,7 +1122,7 @@ def _collect_user_parameters(order_state=None):
                 "unit": param.unit,
                 "comment": param.comment or "",
                 "isFavorite": param.isFavorite,
-                "group": latest_payload.get("group") or "",
+                "group": display_group,
                 "valuePreview": _format_parameter_value(param, units_manager),
                 "previousExpression": str(saved_record.get("previous_expression") or ""),
                 "previousValue": str(saved_record.get("previous_value") or ""),
@@ -1574,7 +1655,6 @@ def _resolve_document_order_records(design, records):
 
 def _persist_document_order_snapshot(parameters, previous_state=None):
     info = _active_document_info()
-    design = _design()
     records = {}
     previous_records = {}
     if isinstance(previous_state, dict) and isinstance(previous_state.get("parameters"), dict):
@@ -1602,7 +1682,9 @@ def _persist_document_order_snapshot(parameters, previous_state=None):
         previous_metadata_writer_version = _metadata_writer_version_value(previous_record.get(METADATA_WRITER_VERSION_RECORD_KEY))
         old_current_expression = str(previous_record.get("current_expression") or "")
         old_current_value = str(previous_record.get("current_value") or "")
-        incoming_group = _normalize_group_name(parameter.get("group") or previous_group)
+        incoming_group = _normalize_group_name(parameter.get("group") or "")
+        if not incoming_group and previous_group:
+            incoming_group = previous_group
         incoming_metadata_changed_at = _metadata_changed_at_value(parameter.get("metadataChangedAt"))
         incoming_metadata_revision = _metadata_revision_value(parameter.get("metadataRevision"))
         incoming_metadata_writer_id = _metadata_writer_id_value(parameter.get("metadataWriterId"))
@@ -1622,13 +1704,11 @@ def _persist_document_order_snapshot(parameters, previous_state=None):
             or str(previous_record.get("previous_value") or "") != previous_value
             or _normalize_group_name(previous_record.get("group") or "") != incoming_group
         )
-        touch_attribute_timestamp = False
         if has_metadata_change:
             if incoming_metadata_changed_at > previous_metadata_changed_at:
                 metadata_changed_at = incoming_metadata_changed_at
             else:
                 metadata_changed_at = _now_metadata_timestamp_ms()
-                touch_attribute_timestamp = True
             metadata_revision = max(previous_metadata_revision + 1, incoming_metadata_revision, 1)
             metadata_writer_id = _current_writer_id()
             metadata_writer_version = _current_writer_version()
@@ -1653,11 +1733,6 @@ def _persist_document_order_snapshot(parameters, previous_state=None):
             METADATA_WRITER_ID_RECORD_KEY: metadata_writer_id,
             METADATA_WRITER_VERSION_RECORD_KEY: metadata_writer_version,
         }
-        if touch_attribute_timestamp and design:
-            parameter_entity = _find_user_parameter_by_token(design, key)
-            if parameter_entity:
-                _set_parameter_metadata_changed_at(parameter_entity, metadata_changed_at)
-
     next_state = {
         "documentId": info.get("id", ""),
         "documentName": info.get("name", ""),
@@ -2407,8 +2482,8 @@ def _update_parameter(data):
         raise ValueError("User parameter was not found.")
 
     expression_for_fusion = _normalize_expression_for_fusion(expression, str(parameter.unit or ""))
-    parameter.expression = expression_for_fusion
-    parameter.comment = comment
+    _assign_if_changed(parameter, "expression", expression_for_fusion)
+    _assign_if_changed(parameter, "comment", comment)
 
 
 def _batch_update_parameters(data):
@@ -2499,7 +2574,7 @@ def _batch_update_parameters(data):
         sequential_failed = []
         for param, value_input in zip(params_list, values_list):
             try:
-                param.expression = str(value_input)
+                _assign_if_changed(param, "expression", str(value_input))
             except Exception as exc:
                 sequential_failed.append({"name": param.name, "message": str(exc)})
         if sequential_failed:
@@ -2515,7 +2590,7 @@ def _batch_update_parameters(data):
     for param, comment in comment_pairs:
         if comment is not None:
             try:
-                param.comment = str(comment)
+                _assign_if_changed(param, "comment", str(comment))
             except Exception:
                 pass  # comment failure is non-fatal
 
@@ -2552,9 +2627,9 @@ def _revert_parameter(data):
     current_expression = str(parameter.expression or "")
     current_value = _format_parameter_value(parameter, units_manager)
 
-    parameter.expression = previous_expression
+    _assign_if_changed(parameter, "expression", previous_expression)
     if "comment" in data:
-        parameter.comment = str(data.get("comment") or "")
+        _assign_if_changed(parameter, "comment", str(data.get("comment") or ""))
 
     reverted_value = _format_parameter_value(parameter, units_manager)
     order_value = record.get("order")
@@ -2604,7 +2679,7 @@ def _set_parameter_favorite(data):
     if not param:
         raise ValueError(f'Parameter "{name}" was not found.')
 
-    param.isFavorite = is_favorite
+    _assign_if_changed(param, "isFavorite", is_favorite)
 
 
 def _set_parameter_group(data):
@@ -2634,6 +2709,8 @@ def _set_parameter_group(data):
             writer_version=existing_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
         ),
     )
+    if _normalize_group_name(previous_payload.get("group") or "").casefold() == group_name.casefold():
+        return
     next_payload = _next_metadata_payload(previous_payload, group_name, _now_metadata_timestamp_ms())
     _write_parameter_group_name(parameter, group_name, next_payload.get(METADATA_CHANGED_AT_RECORD_KEY), next_payload)
     _set_parameter_group_record(
@@ -2961,13 +3038,13 @@ def _update_model_parameter(data):
         raise ValueError(expr_result["message"])
 
     try:
-        parameter.expression = expression
+        _assign_if_changed(parameter, "expression", expression)
     except Exception as exc:
         raise ValueError(f"Fusion could not update model parameter '{parameter.name}': {exc}")
 
     if "comment" in data:
         try:
-            parameter.comment = str(data.get("comment") or "")
+            _assign_if_changed(parameter, "comment", str(data.get("comment") or ""))
         except Exception:
             pass
 
@@ -3033,7 +3110,7 @@ def _promote_model_parameter_to_user_parameter(data):
             raise ValueError(f"Created user parameter '{new_name}', but failed to assign group '{promote_group}': {exc}")
 
     try:
-        parameter.expression = new_name
+        _assign_if_changed(parameter, "expression", new_name)
     except Exception as exc:
         try:
             created.deleteMe()
@@ -3141,7 +3218,7 @@ def _update_parameter_unit(data):
         raise ValueError("Fusion could not recreate the parameter with the new unit.")
 
     try:
-        created.isFavorite = param_favorite
+        _assign_if_changed(created, "isFavorite", param_favorite)
     except Exception:
         pass
 
@@ -3676,9 +3753,9 @@ def _import_parameter_rows_into_design(rows, design, conflict_policy="skip", dry
                 imported_count += 1
             else:
                 try:
-                    existing.expression = existing_expression_for_fusion
+                    _assign_if_changed(existing, "expression", existing_expression_for_fusion)
                     if comment:
-                        existing.comment = comment
+                        _assign_if_changed(existing, "comment", comment)
                     if group:
                         _set_parameter_group({"name": name, "group": group})
                     imported_count += 1
@@ -4453,12 +4530,12 @@ def _import_parameters_package(data, dry_run=False):
             else:
                 try:
                     if apply_knobs["applyExpressionsUnits"] and expression:
-                        existing.expression = expression
+                        _assign_if_changed(existing, "expression", expression)
                     if apply_knobs["applyComments"]:
-                        existing.comment = comment
+                        _assign_if_changed(existing, "comment", comment)
                     if apply_knobs["applyFavorites"]:
                         try:
-                            existing.isFavorite = is_favorite
+                            _assign_if_changed(existing, "isFavorite", is_favorite)
                         except Exception:
                             pass
                     if apply_knobs["applyGroups"] and group:
@@ -4494,7 +4571,7 @@ def _import_parameters_package(data, dry_run=False):
                         raise ValueError("Fusion rejected the parameter.")
                     if apply_knobs["applyFavorites"]:
                         try:
-                            created.isFavorite = is_favorite
+                            _assign_if_changed(created, "isFavorite", is_favorite)
                         except Exception:
                             pass
                     if apply_knobs["applyGroups"] and group:
@@ -4644,10 +4721,10 @@ def _seed_test_parameters(data):
         try:
             existing = design.userParameters.itemByName(name)
             if existing:
-                existing.expression = expression
-                existing.comment = comment
+                _assign_if_changed(existing, "expression", expression)
+                _assign_if_changed(existing, "comment", comment)
                 try:
-                    existing.isFavorite = is_favorite
+                    _assign_if_changed(existing, "isFavorite", is_favorite)
                 except Exception:
                     pass
             else:
@@ -4656,7 +4733,7 @@ def _seed_test_parameters(data):
                 if not created:
                     raise ValueError("Fusion rejected the parameter.")
                 try:
-                    created.isFavorite = is_favorite
+                    _assign_if_changed(created, "isFavorite", is_favorite)
                 except Exception:
                     pass
             if group:
@@ -5701,6 +5778,8 @@ def _write_document_metadata_map(design, metadata_map):
 
         if attribute is not None:
             try:
+                if _string_values_equal(attribute.value, serialized):
+                    return True
                 attribute.value = serialized
                 return True
             except Exception:
@@ -5786,6 +5865,8 @@ def _write_document_metadata_state(design, state):
             attribute = None
         if attribute is not None:
             try:
+                if _string_values_equal(attribute.value, serialized):
+                    return True
                 attribute.value = serialized
                 return True
             except Exception:
@@ -5908,7 +5989,9 @@ def _sync_ui_state_between_local_and_fusion(design, order_state):
         return local_state
 
     if _ui_state_is_newer(local_ui_state, fusion_ui_state):
-        _write_fusion_ui_snapshot(design, local_snapshot)
+        # Routine state reads must not write Fusion attributes. Explicit UI
+        # persistence actions write Fusion snapshots after updating local JSON.
+        pass
     return local_state
 
 
@@ -5966,6 +6049,10 @@ def _write_document_attribute_with_diagnostics(owners, namespace, name, value):
 
         if attribute is not None:
             try:
+                if _string_values_equal(attribute.value, value):
+                    details["ok"] = True
+                    details["ownerTypes"] = owner_labels
+                    return details
                 attribute.value = value
                 details["ok"] = True
                 details["ownerTypes"] = owner_labels
@@ -6217,6 +6304,8 @@ def _write_document_metadata_item_entry(
 
         if attribute is not None:
             try:
+                if _string_values_equal(attribute.value, serialized):
+                    return True
                 attribute.value = serialized
                 return True
             except Exception:
@@ -6464,6 +6553,8 @@ def _write_parameter_group_name_with_diagnostics(parameter, group_name, metadata
             attr = None
         if attr is not None:
             try:
+                if _string_values_equal(attr.value, value_text):
+                    return True
                 attr.value = value_text
                 return True
             except Exception:

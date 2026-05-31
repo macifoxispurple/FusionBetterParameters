@@ -159,6 +159,89 @@ def test_discard_all_clears_dirty_rows(browser_page):
         assert "is-dirty" not in (row.get_attribute("class") or "")
 
 
+def test_refresh_force_applies_backend_state_over_local_draft(browser_page):
+    page = browser_page
+    page.goto(_harness_url())
+    _wait_palette_ready(page)
+
+    row = page.locator("#parameterRows tr.parameter-row[data-parameter-key]").first
+    original_key = row.get_attribute("data-parameter-key") or ""
+    assert original_key
+
+    expression = row.locator(".expression-input")
+    expression.fill("local unsaved draft")
+    assert "is-dirty" in (row.get_attribute("class") or "")
+
+    page.evaluate(
+        """([key]) => {
+            const nextState = window.buildMockStatePayload();
+            nextState.parameters = nextState.parameters.map((param) => {
+              if (String(param.key || "") !== key) {
+                return param;
+              }
+              return {
+                ...param,
+                name: "NativeRefreshName",
+                expression: "42 mm",
+                valuePreview: "42.00 mm"
+              };
+            });
+            nextState.parameterNames = nextState.parameters.map((param) => param.name);
+            window.adsk = {
+              fusionSendData: async (action) => {
+                if (action === "refresh") {
+                  return { ok: true, message: "", state: nextState };
+                }
+                return { ok: true, message: "", state: null };
+              }
+            };
+        }""",
+        [original_key],
+    )
+
+    page.evaluate("() => window.refreshParameters({ silentStatus: true })")
+    page.wait_for_timeout(250)
+
+    refreshed = page.locator("#parameterRows tr.parameter-row[data-parameter-key]").first
+    assert refreshed.locator(".param-name-input").input_value() == "NativeRefreshName"
+    assert refreshed.locator(".expression-input").input_value() == "42 mm"
+    assert "is-dirty" not in (refreshed.get_attribute("class") or "")
+
+
+def test_render_state_push_reflects_native_fusion_parameter_change(browser_page):
+    page = browser_page
+    page.goto(_harness_url())
+    _wait_palette_ready(page)
+
+    original_key = page.locator("#parameterRows tr.parameter-row[data-parameter-key]").first.get_attribute("data-parameter-key") or ""
+    assert original_key
+
+    page.evaluate(
+        """([key]) => {
+            const nextState = window.buildMockStatePayload();
+            nextState.parameters = nextState.parameters.map((param) => {
+              if (String(param.key || "") !== key) {
+                return param;
+              }
+              return {
+                ...param,
+                name: "NativePushName",
+                expression: "24 mm",
+                valuePreview: "24.00 mm"
+              };
+            });
+            nextState.parameterNames = nextState.parameters.map((param) => param.name);
+            window.fusionReceiveData("renderState", JSON.stringify({ ok: true, message: "", state: nextState }));
+        }""",
+        [original_key],
+    )
+    page.wait_for_timeout(150)
+
+    refreshed = page.locator("#parameterRows tr.parameter-row[data-parameter-key]").first
+    assert refreshed.locator(".param-name-input").input_value() == "NativePushName"
+    assert refreshed.locator(".expression-input").input_value() == "24 mm"
+
+
 def _selectable_user_rows(page):
     return page.locator("#parameterRows tr.parameter-row[data-parameter-key][data-row-selectable='true']:not([data-favorites-row='true'])")
 

@@ -9,6 +9,96 @@ Canonical location: `scripts/CONTEXT.md` (repo root copies are deprecated/remove
 
 ## Session Updates (2026-05-30)
 
+- Task start: creating real-Fusion probe script for visible metadata-parameter storage feasibility.
+  - Goal: let user run a standalone Fusion script to measure comment payload capacity, metadata parameter visibility/editability, entityToken durability across save/close/reopen, and manual undo-stack impact for a single metadata parameter comment write.
+  - Scope: script-only, no BetterParameters runtime behavior changes.
+  - Implemented:
+    - Added `scripts/fusion_metadata_parameter_probe.py`.
+    - Script defaults to a fresh unsaved Fusion test design; set `BP_METADATA_PROBE_USE_ACTIVE_DOC=1` to use active design.
+    - Probe creates `_bp_probe_metadata_v1`, `_bp_probe_user_a`, and `_bp_probe_user_b`; tests comment payload readback up to 2 MiB targets; stores token snapshot in metadata comment for save/close/reopen rerun comparison; writes JSON/text reports to temp dir.
+    - Copied script to macOS live Fusion Scripts folder and verified SHA-256 hash match.
+  - Validation:
+    - `python3 -m py_compile scripts/fusion_metadata_parameter_probe.py` passed.
+  - Follow-up requested:
+    - User ran probe twice but reports showed `createdFreshDesign: True` and no previous payload, so no durability answer was produced.
+    - Updated script to use active Fusion design by default and create a fresh design only when no active design exists; report now includes `designSelectionReason`.
+  - Follow-up requested for large payload durability:
+    - Updated probe to create durable size payload parameters `_bp_probe_meta_4k`, `_bp_probe_meta_64k`, `_bp_probe_meta_256k`, `_bp_probe_meta_1m`, `_bp_probe_meta_2m`, `_bp_probe_meta_4m`, `_bp_probe_meta_8m`.
+    - Each durable param keeps a comment payload at target size in the file; index metadata records length/hash for next-run verification after save/close/reopen.
+    - Popup/report now show durable write ok/failed counts and previous durable hash verification count.
+  - Follow-up after Fusion save corruption with 4K..8M payload set:
+    - Latest report showed all seven durable payload writes succeeded in-memory, including `4m` and `8m`, but user then hit Fusion save error: `The file you are trying to save or operate is corrupt! The current operation will be aborted!`.
+    - Updated probe to checkpoint-save the active cloud document after each durable payload write, stop at first save failure, and attempt recovery by replacing the failing payload with a small marker then saving again.
+    - Report/popup now include checkpoint save ok/failed counts; final index write is also saved when possible.
+  - Follow-up after reopening checkpoint-saved large payload file:
+    - User observed latest saved version was `v6`, and reopened parameter list only showed durable params through `_bp_probe_meta_2m`.
+    - This strongly suggests larger durable payload parameters (`4m`, `8m`) are not reliable after reopen even when checkpoint save reports success.
+    - Updated probe so when a prior index exists, durable payload handling becomes verify-only and does not recreate missing large params; it preserves the previous durable index for continued verification.
+  - Follow-up to reduce probe UI stalls and isolate saved versions:
+    - Removed `4m` and `8m` durable sizes from the active probe.
+    - Changed durable-size testing to use a single reusable parameter `_bp_probe_meta_size`.
+    - Probe now writes/saves only one durable payload at a time in the same param: `4k` -> save, replace with `64k` -> save, replace with `256k` -> save, replace with `1m` -> save, replace with `2m` -> save.
+    - This lets user open individual Fusion versions to inspect native parameter-dialog behavior at each size without keeping multiple large params in one version.
+  - Follow-up after native Parameter dialog UX testing:
+    - User found `2m` and `1m` make Fusion's native parameter window unhappy/stalling; `256k` stutters but may be upper bound; `64k` tolerable; `4k` normal.
+    - Updated probe to remove `1m`/`2m` entirely and test only `4k`, `64k`, `128k`, and `256k` with single-param checkpoint saves.
+    - Reduced transient comment-capacity probe to stop at `256k` too, so the script no longer writes 1M/2M payloads even temporarily.
+  - Follow-up to make payload realistic:
+    - Updated durable checkpoints to create simulated real Fusion user parameters incrementally using counts from earlier estimates: `36`, `669`, `1344`, `2695`.
+    - For each checkpoint, the script writes compact BP-style metadata for the real entity tokens into the single reusable metadata parameter, then saves the doc.
+    - Report now shows simulated parameter count, entry count, target size, and actual compact JSON size per checkpoint.
+
+- Task start: implementing durable group-erasure mitigation.
+  - User repro: after a Fusion-side change in a doc with BP metadata, clicking back into BP appeared to delete all groups; closing without saving and reopening still showed groups gone.
+  - Hypothesis: routine refresh/snapshot path persisted transient blank group metadata into local `document_orders/*.json`, making the loss survive unsaved Fusion close/reopen.
+  - Direction: make routine snapshots preserve existing non-empty local group assignments when incoming group metadata is blank; explicit BP group delete/ungroup actions should remain able to clear groups.
+  - Implemented:
+    - `_collect_user_parameters()` now keeps the previous local non-empty group for display when incoming resolved Fusion metadata is blank.
+    - `_persist_document_order_snapshot()` now preserves previous non-empty group assignments when routine incoming rows carry a blank group.
+    - Explicit group delete/ungroup actions still clear groups through `_set_parameter_group_record()`.
+    - Added regressions for blank incoming refresh preserving local group in both display collection and local snapshot persistence.
+  - Validation:
+    - focused tests: `./.venv/bin/python -m pytest tests/test_minimal_fusion_writes.py -q` -> `10 passed`
+    - full suite: `./.venv/bin/python -m pytest` -> `459 passed`
+    - live add-in sync: `python3 BetterParameters/update_helper.py BetterParameters "$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters" ... --verify` -> `Done: 10 copied, 4 skipped, 0 error(s)`; `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
+- Task start: diagnosing native Fusion edit / undo-redo refresh regression.
+  - User repro: native Parameter dialog edits to name/expression and native Undo/Redo are not reflected in BP, even after BP Refresh.
+  - Suspect area: recent minimal-write changes around state collection/local snapshot persistence may be letting local `document_orders` stale values override live Fusion reads or refresh path may not force a true live re-read.
+  - Findings:
+    - Backend `refresh` still reads live `param.name` and `param.expression`; stale display was primarily FE refresh queuing/draft preservation for explicit refresh, plus no app-wide Fusion command termination refresh hook for native commands/Undo/Redo.
+  - Implemented:
+    - Added `FusionCommandTerminatedHandler` on `ui.commandTerminated` that refresh-pushes BP state only when a compact parameter-state signature changes, ignoring BP's own palette commands.
+    - Updated document-activated pushes to seed the same signature path.
+    - Made explicit BP Refresh force-apply backend state and clear pending row drafts/queued state, so manual refresh reflects Fusion truth instead of preserving stale local drafts.
+    - Added backend regressions for native command termination refresh behavior and Playwright regressions for forced Refresh and `renderState` push applying native parameter name/expression changes.
+  - Validation so far:
+    - focused backend tests: `./.venv/bin/python -m pytest tests/test_minimal_fusion_writes.py -q` -> `8 passed`
+    - focused FE browser tests: `./.venv/bin/python -m pytest tests/test_fe_browser_current.py::test_refresh_force_applies_backend_state_over_local_draft tests/test_fe_browser_current.py::test_render_state_push_reflects_native_fusion_parameter_change -q` -> `2 passed`
+    - full suite: `./.venv/bin/python -m pytest` -> `457 passed`
+    - live add-in sync: `python3 BetterParameters/update_helper.py BetterParameters "$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters" ... --verify` -> `Done: 10 copied, 4 skipped, 0 error(s)`; `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
+- Task start: reducing Fusion undo stack write pollution.
+  - User repro: one expression edit produced two parameter undo entries plus eight attribute undo entries.
+  - Direction: make Fusion writes diff-based, stop routine state refresh/snapshot code from writing embedded Fusion metadata, and preserve same visible BP behavior using local `document_orders/*.json` for routine revert/order state.
+  - Implemented:
+    - Added diff-based assignment helper; user/model parameter expression/comment/name/favorite writes now skip no-op assignments.
+    - Routine `_persist_document_order_snapshot()` no longer calls `_set_parameter_metadata_changed_at()` when only local revert/order snapshot state changes.
+    - Routine local-newer UI state reconciliation no longer writes Fusion document metadata during read/state payload generation; explicit order/group UI persistence still writes Fusion snapshots.
+    - Document and parameter attribute helpers now compare current serialized values and skip no-op `attribute.value` assignments.
+    - `setParameterGroup` exits early when the effective group is already unchanged.
+    - Added focused tests for no-op parameter edits, changed-field-only edits, routine snapshot no-Fusion-attr behavior, and unchanged document attribute writes.
+  - Follow-up after Fusion validation still showed five `Undo Edit an attribute value` entries:
+    - Removed the remaining routine full-state backfill in `_collect_user_parameters()` that wrote per-parameter attrs when local JSON metadata was newer than Fusion attrs.
+    - Added regression that `_collect_user_parameters()` does not call `_write_parameter_group_name()` even when local metadata wins display conflict resolution.
+  - Follow-up for rename regression:
+    - Restored direct `parameter.name = new_name` assignment in `_rename_parameter()` so explicit param renames always write to Fusion.
+    - Added regression asserting backend rename writes the Fusion name field.
+  - Validation:
+    - focused write tests: `./.venv/bin/python -m pytest tests/test_minimal_fusion_writes.py -q` -> `6 passed`
+    - full suite with browser escalation: `./.venv/bin/python -m pytest` -> `453 passed`
+    - live add-in sync: `python3 BetterParameters/update_helper.py BetterParameters "$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters" ... --verify` -> `Done: 10 copied, 4 skipped, 0 error(s)`; `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
 - Task start: diagnosing multi-select regression.
   - User repro: Ctrl/Cmd-click and Shift-click no longer select multiple/range rows in narrow or full table views, breaking multi-row group/delete actions.
   - Scope expected FE selection/event handling in `BetterParameters/palette.html`, with browser regression coverage if reproducible offline.

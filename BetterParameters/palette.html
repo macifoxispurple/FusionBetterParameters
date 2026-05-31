@@ -8218,7 +8218,14 @@
         });
       }
 
-      function applyState(payload) {
+      function clearPendingRowDraftState() {
+        state.rowDraftsByKey = {};
+        state.pendingRenderPushEnvelope = null;
+        state.pendingRenderPushAction = "";
+        state.pendingRenderPushNoticeShown = false;
+      }
+
+      function applyState(payload, options = {}) {
         if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
           setGlobalStatus("Ignored invalid state payload from backend.", "warning");
           return;
@@ -8228,7 +8235,12 @@
           return;
         }
 
-        captureRowDraftsFromDom();
+        const preserveDrafts = options.preserveDrafts !== false;
+        if (preserveDrafts) {
+          captureRowDraftsFromDom();
+        } else {
+          clearPendingRowDraftState();
+        }
 
         if (payload.document) {
           state.document = { ...state.document, ...payload.document };
@@ -8336,10 +8348,14 @@
               delete state.localPreviousExpressions[key];
             }
           });
-          remapAndPruneRowDrafts(parameterList);
+          if (preserveDrafts) {
+            remapAndPruneRowDrafts(parameterList);
+          }
 
           renderParameters(payload.parameters);
-          rehydrateRowDraftsFromState();
+          if (preserveDrafts) {
+            rehydrateRowDraftsFromState();
+          }
           setParameterSummary(payload.parameters);
           if (!state.initialLayoutDone) {
             scheduleInitialLayoutPass();
@@ -13780,9 +13796,11 @@
           return envelope;
         }
 
+        const forceIncomingState = context.force === true;
         const isMutatingResponseState = context.source === "response" && MUTATING_ACTIONS.has(context.action || "");
         if (
-          envelope.state
+          !forceIncomingState
+          && envelope.state
           && typeof envelope.state === "object"
           && hasActiveDragInteraction()
           && !isMutatingResponseState
@@ -13793,6 +13811,17 @@
             action: context.action || "renderState"
           });
           return envelope;
+        }
+
+        if (
+          envelope.state
+          && typeof envelope.state === "object"
+          && forceIncomingState
+        ) {
+          appendRawTrace("state.force-apply", {
+            source: context.source || "response",
+            action: context.action || "renderState"
+          });
         }
 
         if (
@@ -13821,6 +13850,7 @@
           && context.source === "response"
           && IGNORE_STATE_WHILE_EDITING_ACTIONS.has(context.action)
           && hasBlockingLocalEdits()
+          && !forceIncomingState
         ) {
           appendStatusHistory(`Ignored background "${context.action}" state update while editing to preserve local drafts.`, "warning");
           return envelope;
@@ -13832,6 +13862,7 @@
           && context.source === "response"
           && QUEUE_STATE_WHILE_EDITING_ACTIONS.has(context.action)
           && hasBlockingLocalEdits()
+          && !forceIncomingState
         ) {
           queuePendingStateEnvelope(envelope, context.action || "renderState");
           return envelope;
@@ -13839,7 +13870,7 @@
 
         if (envelope.state && typeof envelope.state === "object") {
           state.lastGoodState = envelope.state;
-          applyState(envelope.state);
+          applyState(envelope.state, { preserveDrafts: !forceIncomingState });
           const warnings = Array.isArray(envelope.state.migrationWarnings) ? envelope.state.migrationWarnings : [];
           if (warnings.length > 0) {
             setGlobalStatus(`Migration warnings: ${warnings.join(" | ")}`, "warning");
@@ -15645,7 +15676,7 @@
             throw new Error(response.message || "Refresh failed.");
           }
 
-          applyStateFromFusion(response, { source: "response", action: ACTION.REFRESH });
+          applyStateFromFusion(response, { source: "response", action: ACTION.REFRESH, force: true });
           if (!silentStatus) {
             setGlobalStatus(`Loaded ${state.parameters.length} parameter(s).`, "success");
           }

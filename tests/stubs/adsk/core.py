@@ -36,6 +36,10 @@ class UserInterfaceGeneralEventHandler:
     pass
 
 
+class ApplicationCommandEventHandler:
+    pass
+
+
 # --------------------------------------------------------------------------
 # Cast helpers
 # --------------------------------------------------------------------------
