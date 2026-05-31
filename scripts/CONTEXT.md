@@ -9,6 +9,16 @@ Canonical location: `scripts/CONTEXT.md` (repo root copies are deprecated/remove
 
 ## Session Updates (2026-05-30)
 
+- Task start: fixing FE duplicate `applyState` shadowing before metadata-parameter implementation.
+  - User requested implementation and live add-in sync for testing.
+  - Finding: `palette.html` had an option-aware `applyState(payload, options = {})` and a later duplicate `applyState(payload)` that shadowed it, causing forced refresh calls to ignore `{ preserveDrafts: false }`.
+  - Implemented:
+    - Renamed the later shadowing function to `applyStateLegacyShadowRemoved`, leaving the option-aware `applyState` as the active function.
+  - Validation so far:
+    - Focused browser regressions with Playwright escalation: `./.venv/bin/python -m pytest tests/test_fe_browser_current.py::test_refresh_force_applies_backend_state_over_local_draft tests/test_fe_browser_current.py::test_render_state_push_reflects_native_fusion_parameter_change -q` -> `2 passed`.
+    - Full suite with Playwright escalation: `./.venv/bin/python -m pytest` -> `459 passed`.
+    - Live add-in sync: `python3 BetterParameters/update_helper.py BetterParameters "$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters" ... --verify` -> `Done: 10 copied, 4 skipped, 0 error(s)`; `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
 - Task start: creating real-Fusion probe script for visible metadata-parameter storage feasibility.
   - Goal: let user run a standalone Fusion script to measure comment payload capacity, metadata parameter visibility/editability, entityToken durability across save/close/reopen, and manual undo-stack impact for a single metadata parameter comment write.
   - Scope: script-only, no BetterParameters runtime behavior changes.

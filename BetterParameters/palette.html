@@ -12805,7 +12805,7 @@
         setGlobalStatus(`Deleted group ${existing}.`, "success");
       }
 
-      function applyState(payload) {
+      function applyStateLegacyShadowRemoved(payload) {
         if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
           setGlobalStatus("Ignored invalid state payload from backend.", "warning");
           return;

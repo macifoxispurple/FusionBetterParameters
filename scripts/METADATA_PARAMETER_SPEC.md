@@ -494,5 +494,3 @@ Fusion harness/manual validation:
 - Metadata parameter can be manually edited/deleted in native Fusion UI.
 - Entity token stability must remain acceptable across save/reopen/cloud open.
 - Very large documents may still exceed safe comment size after compression.
-- Existing FE duplicate `applyState` issue may obscure refresh testing and should
-  be fixed separately.
