@@ -5,9 +5,60 @@ Canonical location: `scripts/CONTEXT.md` (repo root copies are deprecated/remove
 
 ## Current Task
 
-- Active implementation complete: BP package handling removed in favor of `_bp_metadata_v1` CSV transport.
+- Active implementation complete: first-run palette startup writes an initial left-docked settings file.
   - Source of truth docs read first this session: `scripts/HANDOFF.md`, `scripts/CONTEXT.md`, `scripts/METADATA_PARAMETER_SPEC.md`; `scripts/PUSHNOTES.md` read for earlier patch ship.
-  - Target: remove `.bpmeta.json` package UI/actions/helpers/tests and replace settings UI with a simple `Include BP Metadata Parameter` CSV export toggle. CSV import now automatically imports `_bp_metadata_v1` when present.
+  - User tested the transient-default approach and saw the palette floating at upper-left; real working settings were inspected and used to refine the first-run path.
+
+## Session Updates (2026-05-31)
+
+- First-run left-docked palette startup:
+  - First committed previous BP package removal work locally: `c1d403c` (`Remove BP package import export path`).
+  - Added explicit palette minimum constants: `MIN_PALETTE_WIDTH = 320`, `MIN_PALETTE_HEIGHT = 240`.
+  - Changed the palette create seed width from 420 to the minimum width (320).
+  - Kept general persisted/default geometry compatibility (`DEFAULT_PALETTE_WIDTH = 760`, `paletteDockingState = "floating"`) for existing settings files.
+  - Added `_first_run_settings(...)`: when no `settings.json` exists, `_load_settings()` now returns `paletteDockingState: "left"`, `paletteSize.width: 320`, and empty `palettePosition`.
+  - Existing settings files without explicit geometry continue to use the general defaults instead of being newly forced left-docked.
+  - Validation:
+    - focused: `./.venv/bin/python -m pytest tests/test_settings_persistence.py -q` -> `11 passed`
+    - full suite with Playwright escalation: `./.venv/bin/python -m pytest` -> `349 passed`
+    - live add-in sync: `python3 BetterParameters/update_helper.py BetterParameters "$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters" ... --verify` -> `Done: 10 copied, 4 skipped, 0 error(s)`; `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
+- Refined first-run docking after Fusion test:
+  - User observed previous attempt launched floating at the upper-left.
+  - Inspected real live `settings.json`; working docked restore shape is:
+    - `paletteDockingState: "left"`
+    - `palettePosition: {}`
+    - `paletteSize.width: 324`
+    - `paletteSize.height` is Fusion-derived after docking (`866` in the inspected live setup).
+  - Added `_ensure_initial_palette_settings_file()` before palette creation when no settings file exists.
+  - Initial settings file now persists `paletteDockingState: "left"`, `palettePosition: {}`, and `paletteSize: { "width": 324 }` only.
+  - `_apply_saved_palette_size()` now preserves Fusion-chosen height when a settings file omits `paletteSize.height`.
+  - Validation:
+    - focused: `./.venv/bin/python -m pytest tests/test_settings_persistence.py -q` -> `13 passed`
+    - full suite with Playwright escalation: `./.venv/bin/python -m pytest` -> `351 passed`
+    - live add-in sync: `python3 BetterParameters/update_helper.py BetterParameters "$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters" ... --verify` -> `Done: 10 copied, 4 skipped, 0 error(s)`; `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
+- Added first-run docking guard after observed overwrite:
+  - User reported no perceivable change and new settings still showed `paletteDockingState: "floating"`, `paletteSize: 760x640`, `palettePosition: {x:0,y:0}`.
+  - Added `paletteInitialDockingPending` internal setting.
+  - Initial settings file now marks pending dock restore.
+  - `savePaletteGeometry` and backend palette-close geometry persistence now route through `_save_palette_geometry_settings(...)`.
+  - While pending, the exact default floating startup geometry (`760x640` at origin) is ignored so it cannot overwrite the left-docked first-run file.
+  - Pending clears once a dock-width geometry save arrives.
+  - Validation:
+    - focused: `./.venv/bin/python -m pytest tests/test_settings_persistence.py -q` -> `15 passed`
+    - full suite with Playwright escalation: `./.venv/bin/python -m pytest` -> `353 passed`
+    - live add-in sync: `python3 BetterParameters/update_helper.py BetterParameters "$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters" ... --verify` -> `Done: 10 copied, 4 skipped, 0 error(s)`; `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
+- Moved first-run settings creation earlier and enabled auto-open by default:
+  - User proposed checking/writing the initial settings file before any palette exists, then continuing normal startup.
+  - `run()` now calls `_ensure_initial_palette_settings_file()` before command/event registration, before background update check, and before auto-open/palette creation.
+  - `DEFAULT_SETTINGS["autoOpenOnStart"]` is now `True`, so the initial settings file opens BP on Fusion startup.
+  - Render fixture generator, generated fixtures, mock bridge fixtures, and `scripts/BACKEND_API.md` were updated to reflect `autoOpenOnStart: true`.
+  - Validation:
+    - focused: `./.venv/bin/python -m pytest tests/test_settings_persistence.py tests/test_fe_current_baseline.py -q` -> `20 passed`
+    - full suite with Playwright escalation: `./.venv/bin/python -m pytest` -> `353 passed`
+    - live add-in sync: `python3 BetterParameters/update_helper.py BetterParameters "$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters" ... --verify` -> `Done: 10 copied, 4 skipped, 0 error(s)`; `VERIFY OK` for `BetterParameters.py` and `palette.html`.
 
 ## Session Updates (2026-05-30)
 

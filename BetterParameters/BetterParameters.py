@@ -55,9 +55,13 @@ COMMAND_RESOURCES = "./Resources/BetterParameters"
 SETTINGS_FILE = "settings.json"
 TEXT_TUNER_STATE_FILE = "text_tuner_temp.json"
 DOCUMENT_ORDER_DIRNAME = "document_orders"
+MIN_PALETTE_WIDTH = 320
+MIN_PALETTE_HEIGHT = 240
 DEFAULT_PALETTE_WIDTH = 760
 DEFAULT_PALETTE_HEIGHT = 640
-PALETTE_CREATE_SEED_WIDTH = 420
+FIRST_RUN_PALETTE_DOCKING_STATE = "left"
+FIRST_RUN_PALETTE_WIDTH = 324
+PALETTE_CREATE_SEED_WIDTH = FIRST_RUN_PALETTE_WIDTH
 PALETTE_CREATE_SEED_HEIGHT = 320
 ATTRIBUTE_NAMESPACE = "BetterParameters"
 ATTRIBUTE_PARAMETER_GROUP_NAME = "group"
@@ -131,6 +135,7 @@ DEFAULT_SETTINGS = {
     },
     "palettePosition": {},
     "paletteDockingState": "floating",
+    "paletteInitialDockingPending": False,
     "parameterTableColumns": {
         "parameter": 140,
         "name": 180,
@@ -171,7 +176,7 @@ DEFAULT_SETTINGS = {
     "pinnedUnits": [],
     "autoCheckUpdates": True,
     "updateCheck": {},
-    "autoOpenOnStart": False,
+    "autoOpenOnStart": True,
     "includeMetadataParameterInCsv": False,
 }
 # Maps new parameterTableColumns key names → old key names stored in settings before the rename.
@@ -322,6 +327,7 @@ def run(context):
                     CMD_NAME,
                 )
 
+        _ensure_initial_palette_settings_file()
         _register_command()
         _register_application_events()
         threading.Thread(target=_background_update_check, daemon=True).start()
@@ -518,6 +524,7 @@ def _ensure_palette():
     if palette:
         return palette
 
+    _ensure_initial_palette_settings_file()
     palette = ui.palettes.add(
         PALETTE_ID,
         PALETTE_NAME,
@@ -850,7 +857,7 @@ def _handle_palette_action(action, data):
         "saveSettings": lambda payload: _stateful_ok_response(data=payload, settings=_save_settings(payload), action="saveSettings"),
         "savePaletteGeometry": lambda payload: _stateful_ok_response(
             data=payload,
-            settings=_save_settings({k: payload[k] for k in ("paletteSize", "palettePosition", "paletteDockingState") if k in payload}),
+            settings=_save_palette_geometry_settings(payload),
             action="savePaletteGeometry",
         ),
         "cleanupAndDisable": lambda _payload: (lambda details: _ok_data(cleanup=details, runtimeDisabled=True))(_cleanup_and_disable_addin()),
@@ -2356,6 +2363,41 @@ def _persist_document_order_snapshot(parameters, previous_state=None):
     _write_document_order_state(next_state)
 
 
+def _first_run_settings(settings):
+    first_run = dict(settings)
+    first_run["paletteSize"] = dict(settings.get("paletteSize") or {})
+    first_run["paletteSize"]["width"] = FIRST_RUN_PALETTE_WIDTH
+    first_run["paletteDockingState"] = FIRST_RUN_PALETTE_DOCKING_STATE
+    first_run["paletteInitialDockingPending"] = True
+    first_run["palettePosition"] = {}
+    return first_run
+
+
+def _initial_palette_settings_payload():
+    settings = _first_run_settings({
+        key: (dict(value) if isinstance(value, dict) else list(value) if isinstance(value, list) else value)
+        for key, value in DEFAULT_SETTINGS.items()
+    })
+    settings["paletteSize"] = {"width": FIRST_RUN_PALETTE_WIDTH}
+    return settings
+
+
+def _ensure_initial_palette_settings_file():
+    settings_path = _settings_path()
+    if settings_path.exists():
+        return False
+    try:
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = settings_path.with_suffix(".tmp")
+        temp_path.write_text(json.dumps(_initial_palette_settings_payload(), indent=2), encoding="utf-8")
+        temp_path.replace(settings_path)
+        return True
+    except Exception:
+        if app:
+            app.log(f"Better Parameters initial palette settings write failed:\n{traceback.format_exc()}")
+        return False
+
+
 def _load_settings():
     settings = dict(DEFAULT_SETTINGS)
     settings["paletteSize"] = dict(DEFAULT_SETTINGS["paletteSize"])
@@ -2372,7 +2414,7 @@ def _load_settings():
     settings["updateCheck"] = {}
     settings_path = _settings_path()
     if not settings_path.exists():
-        return settings
+        return _first_run_settings(settings)
 
     try:
         loaded = json.loads(settings_path.read_text(encoding="utf-8"))
@@ -2389,9 +2431,9 @@ def _load_settings():
         if isinstance(loaded.get("paletteSize"), dict):
             width = loaded["paletteSize"].get("width")
             height = loaded["paletteSize"].get("height")
-            if isinstance(width, int) and width >= 320:
+            if isinstance(width, int) and width >= MIN_PALETTE_WIDTH:
                 settings["paletteSize"]["width"] = width
-            if isinstance(height, int) and height >= 240:
+            if isinstance(height, int) and height >= MIN_PALETTE_HEIGHT:
                 settings["paletteSize"]["height"] = height
         if isinstance(loaded.get("palettePosition"), dict):
             x = loaded["palettePosition"].get("x")
@@ -2403,6 +2445,8 @@ def _load_settings():
             normalized_docking_state = palette_docking_state.strip().lower()
             if normalized_docking_state in ALLOWED_PALETTE_DOCKING_STATE_NAMES:
                 settings["paletteDockingState"] = normalized_docking_state
+        if isinstance(loaded.get("paletteInitialDockingPending"), bool):
+            settings["paletteInitialDockingPending"] = loaded["paletteInitialDockingPending"]
         if isinstance(loaded.get("parameterTableColumns"), dict):
             stored_cols = loaded["parameterTableColumns"]
             for key in DEFAULT_SETTINGS["parameterTableColumns"]:
@@ -2528,12 +2572,12 @@ def _save_settings(data):
         width = palette_size.get("width")
         height = palette_size.get("height")
         if width is not None:
-            if not isinstance(width, int) or width < 320:
-                raise ValueError('"paletteSize.width" must be an integer greater than or equal to 320.')
+            if not isinstance(width, int) or width < MIN_PALETTE_WIDTH:
+                raise ValueError(f'"paletteSize.width" must be an integer greater than or equal to {MIN_PALETTE_WIDTH}.')
             settings["paletteSize"]["width"] = width
         if height is not None:
-            if not isinstance(height, int) or height < 240:
-                raise ValueError('"paletteSize.height" must be an integer greater than or equal to 240.')
+            if not isinstance(height, int) or height < MIN_PALETTE_HEIGHT:
+                raise ValueError(f'"paletteSize.height" must be an integer greater than or equal to {MIN_PALETTE_HEIGHT}.')
             settings["paletteSize"]["height"] = height
 
     palette_position = data.get("palettePosition")
@@ -2558,6 +2602,12 @@ def _save_settings(data):
         if normalized_docking_state not in ALLOWED_PALETTE_DOCKING_STATE_NAMES:
             raise ValueError('"paletteDockingState" must be one of: floating, left, right, top, bottom.')
         settings["paletteDockingState"] = normalized_docking_state
+
+    if "paletteInitialDockingPending" in data:
+        pending = data.get("paletteInitialDockingPending")
+        if not isinstance(pending, bool):
+            raise ValueError('"paletteInitialDockingPending" must be a boolean.')
+        settings["paletteInitialDockingPending"] = pending
 
     table_columns = data.get("parameterTableColumns")
     if table_columns is not None:
@@ -2692,6 +2742,47 @@ def _save_settings(data):
     temp_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
     temp_path.replace(settings_path)
     return settings
+
+
+def _looks_like_default_floating_palette_geometry(data):
+    if not isinstance(data, dict):
+        return False
+    docking_state = str(data.get("paletteDockingState") or "").strip().lower()
+    if docking_state and docking_state != "floating":
+        return False
+
+    size = data.get("paletteSize") if isinstance(data.get("paletteSize"), dict) else {}
+    position = data.get("palettePosition") if isinstance(data.get("palettePosition"), dict) else {}
+    width = size.get("width")
+    height = size.get("height")
+    x = position.get("x")
+    y = position.get("y")
+    has_default_size = (
+        isinstance(width, int)
+        and width >= DEFAULT_PALETTE_WIDTH - 10
+        and (not isinstance(height, int) or height >= DEFAULT_PALETTE_HEIGHT - 10)
+    )
+    has_origin_position = (
+        (x is None and y is None)
+        or (isinstance(x, int) and isinstance(y, int) and x == 0 and y == 0)
+    )
+    return has_default_size and has_origin_position
+
+
+def _save_palette_geometry_settings(data):
+    settings = _load_settings()
+    if settings.get("paletteInitialDockingPending") is True:
+        if _looks_like_default_floating_palette_geometry(data):
+            return settings
+        docking_state = str(data.get("paletteDockingState") or "").strip().lower()
+        size = data.get("paletteSize") if isinstance(data.get("paletteSize"), dict) else {}
+        width = size.get("width")
+        if docking_state == FIRST_RUN_PALETTE_DOCKING_STATE or (
+            not docking_state and isinstance(width, int) and width <= FIRST_RUN_PALETTE_WIDTH + 40
+        ):
+            data = dict(data)
+            data["paletteInitialDockingPending"] = False
+    return _save_settings({k: data[k] for k in ("paletteSize", "palettePosition", "paletteDockingState", "paletteInitialDockingPending") if k in data})
 
 
 def _reset_settings_to_defaults():
@@ -2948,9 +3039,18 @@ def _apply_saved_palette_size(palette):
     settings = _load_settings()
     width = settings["paletteSize"]["width"]
     height = settings["paletteSize"]["height"]
+    apply_height = True
+    try:
+        loaded = json.loads(_settings_path().read_text(encoding="utf-8"))
+        raw_size = loaded.get("paletteSize") if isinstance(loaded, dict) else None
+        if isinstance(raw_size, dict) and "height" not in raw_size:
+            apply_height = False
+    except Exception:
+        pass
     try:
         palette.width = width
-        palette.height = height
+        if apply_height:
+            palette.height = height
     except Exception:
         if app:
             app.log(f"Better Parameters palette size restore failed:\n{traceback.format_exc()}")
@@ -3054,14 +3154,14 @@ def _save_palette_geometry(palette):
 
     try:
         width = int(palette.width)
-        if width >= 320:
+        if width >= MIN_PALETTE_WIDTH:
             payload["paletteSize"]["width"] = width
     except Exception:
         pass
 
     try:
         height = int(palette.height)
-        if height >= 240:
+        if height >= MIN_PALETTE_HEIGHT:
             payload["paletteSize"]["height"] = height
     except Exception:
         pass
@@ -3082,7 +3182,7 @@ def _save_palette_geometry(palette):
     if not payload:
         return
 
-    _save_settings(payload)
+    _save_palette_geometry_settings(payload)
 
 
 def _update_parameter(data):

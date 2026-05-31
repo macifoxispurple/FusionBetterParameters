@@ -165,7 +165,7 @@ def _settings_payload() -> dict[str, object]:
         "includeMetadataParameterInCsv": False,
         "computeMode": "manual",
         "autoCheckUpdates": False,
-        "autoOpenOnStart": False,
+        "autoOpenOnStart": True,
     }
 
 

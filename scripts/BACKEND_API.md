@@ -385,7 +385,7 @@ All persisted UI settings. The full shape as stored and returned:
   "pinnedUnits": [],
   "autoCheckUpdates": true,
   "updateCheck": {},
-  "autoOpenOnStart": false
+  "autoOpenOnStart": true
 }
 ```
 
