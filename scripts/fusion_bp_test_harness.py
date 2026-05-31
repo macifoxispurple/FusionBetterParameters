@@ -221,13 +221,6 @@ def _create_temp_csv_rows(state: HarnessState, rows: List[List[str]]) -> str:
     return path
 
 
-def _create_temp_bpmeta_path(state: HarnessState) -> str:
-    fd, path = tempfile.mkstemp(prefix="bp_harness_", suffix=".bpmeta.json", text=True)
-    os.close(fd)
-    state.temp_files.append(path)
-    return path
-
-
 def _cleanup_files(state: HarnessState) -> None:
     for path in state.temp_files:
         try:
@@ -619,42 +612,6 @@ def _run_harness() -> HarnessState:
     except Exception as exc:
         _assert_true(state, "batch/exception", False, str(exc))
 
-    pkg_path = _create_temp_bpmeta_path(state)
-    try:
-        export_pkg = _call_action(
-            bp,
-            "exportParametersPackage",
-            {
-                "filePath": pkg_path,
-                "includeComments": True,
-                "includeGroups": True,
-                "includeFavorites": True,
-                "includeOrder": True,
-            },
-        )
-        _assert_true(state, "pkg-export/ok", bool(export_pkg.get("ok")), export_pkg.get("message", ""))
-        _assert_true(state, "pkg-export/file", os.path.isfile(pkg_path), "package file missing after export")
-
-        dry_pkg = _call_action(
-            bp,
-            "importParametersPackage",
-            {
-                "filePath": pkg_path,
-                "conflictPolicy": "merge-safe",
-                "applyExpressionsUnits": True,
-                "applyComments": True,
-                "applyGroups": True,
-                "applyFavorites": True,
-                "applyOrder": True,
-                "dryRun": True,
-            },
-        )
-        _assert_true(state, "pkg-dry/ok", bool(dry_pkg.get("ok")), dry_pkg.get("message", ""))
-        _assert_true(state, "pkg-dry/state-null", dry_pkg.get("state") is None, "state should be null on dryRun")
-        _assert_true(state, "pkg-dry/flag", dry_pkg.get("dryRun") is True, "dryRun echo should be true")
-    except Exception as exc:
-        _assert_true(state, "pkg/exception", False, str(exc))
-
     try:
         self_tests = _call_action(bp, "runSelfTestSuite", {"filter": "smoke"})
         _assert_true(state, "selftest/ok", bool(self_tests.get("ok")), self_tests.get("message", ""))
@@ -711,4 +668,3 @@ def run(_context: Any) -> None:
 
 def stop(_context: Any) -> None:
     _log("Harness stopped.")
-

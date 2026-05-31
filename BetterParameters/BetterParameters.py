@@ -80,7 +80,6 @@ METADATA_REVISION_RECORD_KEY = "metadata_revision"
 METADATA_WRITER_ID_RECORD_KEY = "metadata_writer_id"
 METADATA_WRITER_VERSION_RECORD_KEY = "metadata_writer_version"
 METADATA_SCHEMA_VERSION = 2
-BPMETA_SCHEMA_VERSION = 1
 UI_STATE_RECORD_KEY = "uiState"
 UI_STATE_REVISION_KEY = "revision"
 UI_STATE_CHANGED_AT_KEY = "changedAt"
@@ -173,6 +172,7 @@ DEFAULT_SETTINGS = {
     "autoCheckUpdates": True,
     "updateCheck": {},
     "autoOpenOnStart": False,
+    "includeMetadataParameterInCsv": False,
 }
 # Maps new parameterTableColumns key names → old key names stored in settings before the rename.
 # Used in _load_settings to migrate settings files written before the column key rename.
@@ -226,7 +226,7 @@ _READ_ONLY_ACTIONS = [
     "ready", "refresh", "validateParameterName", "validateExpression",
     "previewExpression", "validateUnit", "openHelpUrl",
     "getActiveDocumentInfo", "checkForUpdates", "getMetadataDebugSnapshot",
-    "validateParametersPackageImport", "exportParameters", "exportParametersPackage",
+    "exportParameters",
     "getParameterDependencyGraph", "getBackendContractInfo", "runSelfTestSuite",
     "copyToClipboard", "getModelParameters", "previewImportParametersFromDataPanel",
 ]
@@ -242,7 +242,7 @@ _MUTATING_ACTIONS = [
     "cleanupAndDisable",
     "saveTextTunerState", "downloadAndStageUpdate", "reinstallCurrentVersion",
     "syncMetadataJsonToFusion", "syncMetadataFusionToJson", "repairMetadata",
-    "importParametersPackage", "seedTestParameters", "resetTestState",
+    "seedTestParameters", "resetTestState",
     "batchUpdateParameters", "importParametersFromDataPanel", "retryImportParametersFromDataPanel",
 ]
 
@@ -688,7 +688,6 @@ def _stateful_ok_response(data=None, settings=None, action="", row_key=""):
         "importParameters",
         "importParametersFromDataPanel",
         "retryImportParametersFromDataPanel",
-        "importParametersPackage",
         "syncMetadataJsonToFusion",
         "syncMetadataFusionToJson",
         "repairMetadata",
@@ -755,6 +754,7 @@ def _handle_palette_action(action, data):
             "skippedCount": result["skippedCount"],
             "failedCount": result["failedCount"],
             "failedRows": result["failedRows"],
+            "metadataImported": bool(result.get("metadataImported", False)),
             "dryRun": dry_run,
         }
 
@@ -840,30 +840,6 @@ def _handle_palette_action(action, data):
             "dryRun": dry_run,
         }
 
-    def _handle_import_parameters_package(payload):
-        dry_run = bool(payload.get("dryRun", False))
-        result = _import_parameters_package(payload, dry_run=dry_run)
-        if result.get("cancelled"):
-            return _cancelled_response(
-                "Import cancelled.",
-                filePath="",
-                importedCount=0, updatedCount=0, skippedCount=0, failedCount=0, failedRows=[],
-                dryRun=dry_run,
-            )
-        state = _current_state_payload() if (result["ok"] and not dry_run) else None
-        return {
-            "ok": result["ok"],
-            "message": result["message"],
-            "state": state,
-            "filePath": result.get("filePath", ""),
-            "importedCount": result["importedCount"],
-            "updatedCount": result["updatedCount"],
-            "skippedCount": result["skippedCount"],
-            "failedCount": result["failedCount"],
-            "failedRows": result["failedRows"],
-            "dryRun": dry_run,
-        }
-
     complex_handlers = {
         "batchUpdateParameters": lambda payload: (lambda result: {**result, "state": _current_state_payload() if result["ok"] else None})(_batch_update_parameters(payload)),
         "deleteParameters": lambda payload: (lambda result: {**result, "state": _current_state_payload() if result["ok"] else None})(_delete_parameters_batch(payload)),
@@ -871,7 +847,6 @@ def _handle_palette_action(action, data):
         "previewImportParametersFromDataPanel": _handle_preview_import_data_panel,
         "importParametersFromDataPanel": _handle_import_from_data_panel,
         "retryImportParametersFromDataPanel": _handle_retry_import_from_data_panel,
-        "importParametersPackage": _handle_import_parameters_package,
         "saveSettings": lambda payload: _stateful_ok_response(data=payload, settings=_save_settings(payload), action="saveSettings"),
         "savePaletteGeometry": lambda payload: _stateful_ok_response(
             data=payload,
@@ -946,9 +921,7 @@ def _handle_palette_action(action, data):
             failedCount=result["failedCount"],
             results=result["results"],
         ))(_run_self_test_suite(payload)),
-        "exportParameters": lambda payload: (lambda result: _cancelled_response("Export cancelled.", exportedCount=0, filePath="") if result.get("cancelled") else _ok_data(exportedCount=result["exportedCount"], filePath=result["filePath"]))(_export_parameters(payload)),
-        "exportParametersPackage": lambda payload: (lambda result: _cancelled_response("Export cancelled.", exportedCount=0, filePath="", format="bpmeta.json") if result.get("cancelled") else _ok_data(exportedCount=result["exportedCount"], filePath=result["filePath"], format="bpmeta.json"))(_export_parameters_package(payload)),
-        "validateParametersPackageImport": lambda payload: (lambda result: _cancelled_response("Import cancelled.", filePath="", preview=None) if result.get("cancelled") else {"ok": True, "message": "", "state": None, "filePath": result["filePath"], "preview": result["preview"]})(_validate_parameters_package_import(payload)),
+        "exportParameters": lambda payload: (lambda result: _cancelled_response("Export cancelled.", exportedCount=0, filePath="", metadataExported=False) if result.get("cancelled") else _ok_data(exportedCount=result["exportedCount"], filePath=result["filePath"], metadataExported=bool(result.get("metadataExported", False))))(_export_parameters(payload)),
     }
 
     if action in ("ready", "refresh"):
@@ -2514,6 +2487,9 @@ def _load_settings():
         if isinstance(loaded.get("autoOpenOnStart"), bool):
             settings["autoOpenOnStart"] = loaded["autoOpenOnStart"]
 
+        if isinstance(loaded.get("includeMetadataParameterInCsv"), bool):
+            settings["includeMetadataParameterInCsv"] = loaded["includeMetadataParameterInCsv"]
+
         if isinstance(loaded.get("updateCheck"), dict):
             settings["updateCheck"] = _normalized_update_check(loaded["updateCheck"])
 
@@ -2672,6 +2648,12 @@ def _save_settings(data):
         if not isinstance(auto_fit_columns, bool):
             raise ValueError('"autoFitColumns" must be a boolean.')
         settings["autoFitColumns"] = auto_fit_columns
+
+    if "includeMetadataParameterInCsv" in data:
+        include_metadata_parameter = data.get("includeMetadataParameterInCsv")
+        if not isinstance(include_metadata_parameter, bool):
+            raise ValueError('"includeMetadataParameterInCsv" must be a boolean.')
+        settings["includeMetadataParameterInCsv"] = include_metadata_parameter
 
     if "pinnedUnits" in data:
         if not isinstance(data["pinnedUnits"], list):
@@ -4144,6 +4126,115 @@ def _serialize_parameters_to_csv(parameters):
     return buf.getvalue()
 
 
+def _metadata_parameter_csv_row(design):
+    parameter = _find_metadata_parameter(design)
+    if not parameter:
+        return None
+    comment = str(getattr(parameter, "comment", "") or "")
+    status = _decode_metadata_comment(comment)
+    if not status.get("ok"):
+        return {
+            "name": METADATA_PARAMETER_NAME,
+            "unit": "",
+            "expression": str(getattr(parameter, "expression", "") or "0"),
+            "value": "",
+            "comment": comment,
+            "isFavorite": False,
+        }
+
+    payload = status.get("payload") or {}
+    token_to_name = {}
+    params = getattr(design, "userParameters", None)
+    if params:
+        try:
+            for index in range(params.count):
+                candidate = params.item(index)
+                if not candidate or _is_metadata_parameter(candidate):
+                    continue
+                token_to_name[_parameter_entity_token(candidate)] = str(getattr(candidate, "name", "") or "")
+        except Exception:
+            pass
+    source_names = [
+        token_to_name.get(str(record[0] or "").strip(), "")
+        for record in (payload.get("p") or [])
+        if isinstance(record, list) and record
+    ]
+    return {
+        "name": METADATA_PARAMETER_NAME,
+        "unit": "",
+        "expression": str(getattr(parameter, "expression", "") or "0"),
+        "value": json.dumps({"sourceParameterNames": source_names}, ensure_ascii=False, separators=(",", ":")),
+        "comment": comment,
+        "isFavorite": False,
+    }
+
+
+def _remap_metadata_model_to_design_by_names(model, design, source_names):
+    if not source_names or not design:
+        return model
+    params = getattr(design, "userParameters", None)
+    if not params:
+        return model
+    name_to_token = {}
+    try:
+        for index in range(params.count):
+            parameter = params.item(index)
+            if not parameter or _is_metadata_parameter(parameter):
+                continue
+            name = str(getattr(parameter, "name", "") or "")
+            if name and name.casefold() not in name_to_token:
+                name_to_token[name.casefold()] = _parameter_entity_token(parameter)
+    except Exception:
+        return model
+
+    source_tokens = list(model.get("orderedTokens") or [])
+    source_groups = model.get("groupsByToken") if isinstance(model.get("groupsByToken"), dict) else {}
+    remapped_order = []
+    remapped_groups = {}
+    seen = set()
+    for index, source_token in enumerate(source_tokens):
+        source_name = str(source_names[index] if index < len(source_names) else "").strip()
+        dest_token = name_to_token.get(source_name.casefold()) if source_name else ""
+        if not dest_token:
+            continue
+        if dest_token not in seen:
+            seen.add(dest_token)
+            remapped_order.append(dest_token)
+        group = _normalize_group_name(source_groups.get(source_token) or "")
+        if group:
+            remapped_groups[dest_token] = group
+    next_model = dict(model)
+    next_model["orderedTokens"] = remapped_order
+    next_model["groupsByToken"] = remapped_groups
+    return next_model
+
+
+def _import_metadata_parameter_csv_row(row, design, dry_run=False, row_number=0):
+    comment = str((row or {}).get("comment") or "")
+    decoded = _decode_metadata_comment(comment)
+    if not decoded.get("ok"):
+        raise ValueError(decoded.get("error") or "Invalid Better Parameters metadata payload.")
+    model = _metadata_model_from_payload(
+        decoded.get("payload") or {},
+        _metadata_status("csvMetadataParameter", True)
+    )
+    source_names = []
+    try:
+        value_payload = json.loads(str((row or {}).get("value") or "") or "{}")
+        if isinstance(value_payload, dict) and isinstance(value_payload.get("sourceParameterNames"), list):
+            source_names = [str(name or "") for name in value_payload.get("sourceParameterNames") or []]
+    except Exception:
+        source_names = []
+    model = _remap_metadata_model_to_design_by_names(model, design, source_names)
+    if not dry_run:
+        _write_metadata_parameter_model(design, model, allow_overwrite_corrupt=True, skip_legacy_migration=True)
+    return {
+        "row": row_number,
+        "recordCount": len(model.get("orderedTokens") or []),
+        "remappedByName": bool(source_names),
+    }
+
+
 def _parse_parameters_csv(content):
     """Parse CSV content into a list of row dicts.
 
@@ -4163,6 +4254,7 @@ def _parse_parameters_csv(content):
                 "name": row.get("name", ""),
                 "expression": row.get("expression", ""),
                 "unit": row.get("unit", ""),
+                "value": row.get("value", ""),
                 "comment": row.get("comment", ""),
                 "group": row.get("group", ""),
             })
@@ -4195,11 +4287,18 @@ def _export_parameters(data):
         if not file_path.lower().endswith(".csv"):
             file_path += ".csv"
 
+    design = _require_design()
     parameters = _collect_user_parameters()
+    metadata_exported = False
+    if bool(data.get("includeMetadataParameter", False)):
+        metadata_row = _metadata_parameter_csv_row(design)
+        if metadata_row:
+            parameters = list(parameters) + [metadata_row]
+            metadata_exported = True
     content = _serialize_parameters_to_csv(parameters)
     # UTF-8 with BOM for Excel compatibility on Windows.
     Path(file_path).write_text(content, encoding="utf-8-sig")
-    return {"cancelled": False, "filePath": file_path, "exportedCount": len(parameters)}
+    return {"cancelled": False, "filePath": file_path, "exportedCount": len(parameters), "metadataExported": metadata_exported}
 
 
 def _import_parameters(data, dry_run=False):
@@ -4253,13 +4352,36 @@ def _import_parameters(data, dry_run=False):
         raise ValueError(parse_error)
 
     design = _require_design()
+    metadata_rows = []
+    normal_rows = []
+    for index, row in enumerate(rows):
+        if str(row.get("name") or "").strip() == METADATA_PARAMETER_NAME:
+            metadata_rows.append((index, row))
+        else:
+            normal_rows.append(row)
     import_result = _import_parameter_rows_into_design(
-        rows,
+        normal_rows,
         design,
         conflict_policy=conflict_policy,
         dry_run=dry_run,
         row_number_base=2
     )
+    metadata_imported = False
+    for source_index, metadata_row in metadata_rows:
+        row_number = 2 + source_index
+        try:
+            _import_metadata_parameter_csv_row(metadata_row, design, dry_run=dry_run, row_number=row_number)
+            metadata_imported = True
+        except Exception as exc:
+            import_result["failedRows"].append({
+                "row": row_number,
+                "name": METADATA_PARAMETER_NAME,
+                "message": str(exc),
+                "expression": str(metadata_row.get("expression") or ""),
+                "unit": str(metadata_row.get("unit") or ""),
+                "comment": str(metadata_row.get("comment") or ""),
+                "group": "",
+            })
     imported_count = import_result["importedCount"]
     skipped_count = import_result["skippedCount"]
     failed_rows = import_result["failedRows"]
@@ -4283,6 +4405,7 @@ def _import_parameters(data, dry_run=False):
         "skippedCount": skipped_count,
         "failedCount": failed_count,
         "failedRows": failed_rows,
+        "metadataImported": metadata_imported,
     }
 
 
@@ -4321,6 +4444,9 @@ def _import_parameter_rows_into_design(rows, design, conflict_policy="skip", dry
             "group": group,
         }
 
+        if name == METADATA_PARAMETER_NAME:
+            failed_rows.append({"row": row_number, "name": name, "message": f'"{METADATA_PARAMETER_NAME}" must be imported through the metadata CSV path.', **row_payload})
+            continue
         if not name:
             failed_rows.append({"row": row_number, "name": "", "message": "Name is required.", **row_payload})
             continue
@@ -4753,483 +4879,6 @@ def _retry_import_parameters_from_data_panel(data, dry_run=False):
     }
 
 
-def _normalized_conflict_policy(data):
-    """Normalize conflictPolicy from request data. Returns 'skip', 'overwrite', or 'merge-safe'."""
-    value = str(data.get("conflictPolicy") or "skip").strip().lower()
-    if value not in ("skip", "overwrite", "merge-safe"):
-        value = "skip"
-    return value
-
-
-def _extract_apply_knobs(data):
-    """Extract and normalize the apply* boolean knobs from a package import request."""
-    return {
-        "applyExpressionsUnits": bool(data.get("applyExpressionsUnits", False)),
-        "applyComments": bool(data.get("applyComments", True)),
-        "applyGroups": bool(data.get("applyGroups", True)),
-        "applyFavorites": bool(data.get("applyFavorites", True)),
-        "applyOrder": bool(data.get("applyOrder", False)),
-    }
-
-
-def _parse_bpmeta_package(raw_text):
-    """Parse a .bpmeta.json package string.
-
-    Returns (package_dict, error_message). package_dict is None on failure.
-    """
-    try:
-        package = json.loads(raw_text)
-    except Exception as exc:
-        return None, f"JSON parse error: {exc}"
-    if not isinstance(package, dict):
-        return None, "Invalid package format: expected a JSON object."
-    schema_version = package.get("schemaVersion")
-    if schema_version is None:
-        return None, 'Invalid package: missing "schemaVersion".'
-    if not isinstance(schema_version, int) or schema_version < 1:
-        return None, f'Invalid package: "schemaVersion" must be a positive integer.'
-    if schema_version > BPMETA_SCHEMA_VERSION:
-        return None, (
-            f"Package schema version {schema_version} is newer than supported "
-            f"({BPMETA_SCHEMA_VERSION}). Update BetterParameters and try again."
-        )
-    if not isinstance(package.get("parameters"), list):
-        return None, 'Invalid package: "parameters" must be an array.'
-    return package, ""
-
-
-def _open_package_save_dialog(file_path):
-    """Open OS save dialog for .bpmeta.json if file_path is empty.
-
-    Returns resolved file_path string, or '' on cancel/failure.
-    Raises RuntimeError if UI is unavailable.
-    """
-    if file_path:
-        if not file_path.lower().endswith(".bpmeta.json"):
-            file_path += ".bpmeta.json"
-        return file_path
-    if not ui:
-        raise RuntimeError("UI is not available to open a save dialog.")
-    dialog = ui.createFileDialog()
-    dialog.isMultiSelectEnabled = False
-    dialog.title = "Export Parameters Package — Better Parameters"
-    dialog.filter = "BP Meta Package (*.bpmeta.json)"
-    dialog.filterIndex = 0
-    result = dialog.showSave()
-    if result != adsk.core.DialogResults.DialogOK:
-        return ""
-    resolved = str(dialog.filename or "").strip()
-    if resolved and not resolved.lower().endswith(".bpmeta.json"):
-        resolved += ".bpmeta.json"
-    return resolved
-
-
-def _open_package_open_dialog(file_path):
-    """Open OS file-open dialog for .bpmeta.json if file_path is empty.
-
-    Returns resolved file_path string, or '' on cancel/failure.
-    Raises RuntimeError if UI is unavailable.
-    """
-    if file_path:
-        return file_path
-    if not ui:
-        raise RuntimeError("UI is not available to open a file dialog.")
-    dialog = ui.createFileDialog()
-    dialog.isMultiSelectEnabled = False
-    dialog.title = "Import Parameters Package — Better Parameters"
-    dialog.filter = "BP Meta Package (*.bpmeta.json)"
-    dialog.filterIndex = 0
-    result = dialog.showOpen()
-    if result != adsk.core.DialogResults.DialogOK:
-        return ""
-    return str(dialog.filename or "").strip()
-
-
-def _apply_package_metadata_updates(design, group_updates=None, order_updates=None, previous_state=None):
-    """Apply package group/order metadata with one metadata-parameter comment write."""
-    group_updates = group_updates or {}
-    order_updates = order_updates or []
-    if not group_updates and not order_updates:
-        return
-    if previous_state is None:
-        previous_state = _read_document_order_state()
-
-    model = _metadata_model_for_current_document(design, previous_state)
-    params = design.userParameters
-    name_to_key = {}
-    all_keys_in_order = []
-    for i in range(params.count):
-        param = params.item(i)
-        if not param or _is_metadata_parameter(param):
-            continue
-        key = _parameter_entity_token(param)
-        name_to_key[param.name] = key
-        all_keys_in_order.append(key)
-
-    changed = False
-    groups_by_token = dict(model.get("groupsByToken") or {})
-    for name, group_name in group_updates.items():
-        key = name_to_key.get(name)
-        if not key:
-            continue
-        normalized_group = _normalize_group_name(group_name or "")
-        if normalized_group:
-            if groups_by_token.get(key) != normalized_group:
-                groups_by_token[key] = normalized_group
-                changed = True
-        elif key in groups_by_token:
-            groups_by_token.pop(key, None)
-            changed = True
-    model["groupsByToken"] = groups_by_token
-
-    if order_updates:
-        sorted_updates = sorted(order_updates, key=lambda x: x[0])
-        ordered_keys = []
-        seen_keys = set()
-        for _, name in sorted_updates:
-            key = name_to_key.get(name)
-            if key and key not in seen_keys:
-                ordered_keys.append(key)
-                seen_keys.add(key)
-
-        remaining_keys = [k for k in all_keys_in_order if k not in seen_keys]
-        final_key_order = ordered_keys + remaining_keys
-        if final_key_order != list(model.get("orderedTokens") or []):
-            model["orderedTokens"] = final_key_order
-            changed = True
-
-    if changed:
-        _write_metadata_parameter_model(design, model)
-
-
-def _apply_package_display_order(design, order_updates, previous_state=None):
-    """Apply displayOrder indices from a bpmeta package to metadata parameter order."""
-    _apply_package_metadata_updates(design, {}, order_updates, previous_state)
-
-
-def _export_parameters_package(data):
-    """Export user parameters with BP metadata to a .bpmeta.json file.
-
-    Returns dict with: cancelled, filePath, exportedCount.
-    """
-    include_comments = bool(data.get("includeComments", True))
-    include_groups = bool(data.get("includeGroups", True))
-    include_favorites = bool(data.get("includeFavorites", True))
-    include_order = bool(data.get("includeOrder", False))
-
-    file_path = _open_package_save_dialog(str(data.get("filePath") or "").strip())
-    if not file_path:
-        return {"cancelled": True, "filePath": "", "exportedCount": 0}
-
-    parameters = _collect_user_parameters()
-
-    design = _design()
-    doc_name = ""
-    if design:
-        try:
-            doc_name = str(design.parentDocument.name or "")
-        except Exception:
-            pass
-
-    records = []
-    for idx, p in enumerate(parameters):
-        record = {
-            "name": p.get("name", ""),
-            "expression": p.get("expression", ""),
-            "unit": p.get("unit", ""),
-        }
-        if include_comments:
-            record["comment"] = p.get("comment", "")
-        if include_groups:
-            record["group"] = p.get("group", "")
-        if include_favorites:
-            record["isFavorite"] = bool(p.get("isFavorite", False))
-        if include_order:
-            record["displayOrder"] = idx
-        # Advisory metadata — always included for round-trip traceability.
-        record["metadataRevision"] = int(p.get("metadataRevision") or 0)
-        record["metadataChangedAt"] = int(p.get("metadataChangedAt") or 0)
-        records.append(record)
-
-    package = {
-        "schemaVersion": BPMETA_SCHEMA_VERSION,
-        "exportedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "sourceDocument": {"name": doc_name},
-        "parameters": records,
-    }
-
-    Path(file_path).write_text(json.dumps(package, indent=2, ensure_ascii=False), encoding="utf-8")
-    return {"cancelled": False, "filePath": file_path, "exportedCount": len(records)}
-
-
-def _validate_parameters_package_import(data):
-    """Preflight check for importing a .bpmeta.json package. No mutations applied.
-
-    Opens OS dialog if data['filePath'] is absent.
-    Returns dict with: cancelled, ok, message, filePath, preview.
-    preview contains: addCount, updateCount, skipCount, potentialFailCount, warnings[], failedRows[].
-    """
-    # Require design before opening dialog so we fail fast on no-document condition.
-    design = _require_design()
-
-    conflict_policy = _normalized_conflict_policy(data)
-    apply_knobs = _extract_apply_knobs(data)
-
-    file_path = _open_package_open_dialog(str(data.get("filePath") or "").strip())
-    if not file_path:
-        return {"cancelled": True, "ok": False, "message": "Import cancelled.", "filePath": "", "preview": None}
-
-    try:
-        raw = Path(file_path).read_text(encoding="utf-8")
-    except Exception as exc:
-        raise ValueError(f"Could not read file: {exc}")
-
-    package, parse_error = _parse_bpmeta_package(raw)
-    if package is None:
-        raise ValueError(parse_error)
-
-    records = package.get("parameters", [])
-    seen_names = set()
-    failed_rows = []
-    add_count = 0
-    update_count = 0
-    skip_count = 0
-    potential_fail_count = 0
-    warnings = []
-
-    for idx, record in enumerate(records):
-        name = str(record.get("name") or "").strip()
-
-        if not name:
-            failed_rows.append({"row": idx + 1, "name": "", "message": "Name is required."})
-            continue
-
-        name_folded = name.casefold()
-        if name_folded in seen_names:
-            failed_rows.append({"row": idx + 1, "name": name, "message": f'Duplicate name "{name}" in package.'})
-            continue
-        seen_names.add(name_folded)
-
-        existing = design.userParameters.itemByName(name)
-        if existing:
-            if conflict_policy == "skip":
-                skip_count += 1
-            else:
-                update_count += 1
-                if apply_knobs["applyExpressionsUnits"]:
-                    expression = str(record.get("expression") or "").strip()
-                    if expression:
-                        unit = str(record.get("unit") or existing.unit or "").strip()
-                        expr_check = _validate_expression_response(expression, name, unit)
-                        if not expr_check["ok"] and not expr_check.get("isIncomplete"):
-                            potential_fail_count += 1
-                            warnings.append(f'"{name}": expression may fail — {expr_check["message"]}')
-                    else:
-                        potential_fail_count += 1
-                        warnings.append(f'"{name}": applyExpressionsUnits is set but expression is missing in package.')
-        else:
-            expression = str(record.get("expression") or "").strip()
-            if not expression:
-                failed_rows.append({"row": idx + 1, "name": name, "message": "Expression is required to create a new parameter."})
-                continue
-            name_check = _validate_parameter_name_response(name)
-            if not name_check["ok"]:
-                failed_rows.append({"row": idx + 1, "name": name, "message": name_check["message"]})
-                continue
-            unit = str(record.get("unit") or "").strip()
-            expr_check = _validate_expression_response(expression, name, unit)
-            if not expr_check["ok"] and not expr_check.get("isIncomplete"):
-                potential_fail_count += 1
-                warnings.append(f'"{name}": expression may fail — {expr_check["message"]}')
-            add_count += 1
-
-    return {
-        "cancelled": False,
-        "ok": True,
-        "message": "",
-        "filePath": file_path,
-        "preview": {
-            "addCount": add_count,
-            "updateCount": update_count,
-            "skipCount": skip_count,
-            "potentialFailCount": potential_fail_count,
-            "warnings": warnings,
-            "failedRows": failed_rows,
-        },
-    }
-
-
-def _import_parameters_package(data, dry_run=False):
-    """Import user parameters from a .bpmeta.json package.
-
-    Opens OS dialog if data['filePath'] is absent.
-    dry_run=True runs full decision/validation logic without applying mutations.
-
-    Returns dict with: cancelled, ok, message, importedCount, updatedCount, skippedCount, failedCount, failedRows.
-    Does NOT return state — the action handler adds it.
-    """
-    design = _require_design()
-
-    conflict_policy = _normalized_conflict_policy(data)
-    apply_knobs = _extract_apply_knobs(data)
-
-    file_path = _open_package_open_dialog(str(data.get("filePath") or "").strip())
-    if not file_path:
-        return {
-            "cancelled": True,
-            "ok": False, "message": "Import cancelled.",
-            "importedCount": 0, "updatedCount": 0, "skippedCount": 0,
-            "failedCount": 0, "failedRows": [],
-        }
-
-    try:
-        raw = Path(file_path).read_text(encoding="utf-8")
-    except Exception as exc:
-        raise ValueError(f"Could not read file: {exc}")
-
-    package, parse_error = _parse_bpmeta_package(raw)
-    if package is None:
-        raise ValueError(parse_error)
-
-    records = package.get("parameters", [])
-    previous_state = _read_document_order_state()
-
-    seen_names = set()
-    failed_rows = []
-    imported_count = 0
-    updated_count = 0
-    skipped_count = 0
-    order_updates = []  # (displayOrder, name) pairs, collected if applyOrder is enabled
-    group_updates = {}
-
-    for idx, record in enumerate(records):
-        name = str(record.get("name") or "").strip()
-
-        if not name:
-            failed_rows.append({"row": idx + 1, "name": "", "message": "Name is required."})
-            continue
-
-        name_folded = name.casefold()
-        if name_folded in seen_names:
-            failed_rows.append({"row": idx + 1, "name": name, "message": f'Duplicate name "{name}" in package.'})
-            continue
-        seen_names.add(name_folded)
-
-        expression = str(record.get("expression") or "").strip()
-        unit = str(record.get("unit") or "").strip()
-        comment = str(record.get("comment") or "")
-        group = _normalize_group_name(str(record.get("group") or ""))
-        is_favorite = bool(record.get("isFavorite", False))
-        display_order = record.get("displayOrder")
-
-        existing = design.userParameters.itemByName(name)
-        if existing:
-            if conflict_policy == "skip":
-                skipped_count += 1
-                continue
-            # overwrite or merge-safe: apply each checked field independently.
-            if dry_run:
-                updated_count += 1
-                if apply_knobs["applyOrder"] and display_order is not None:
-                    order_updates.append((int(display_order), name))
-            else:
-                try:
-                    if apply_knobs["applyExpressionsUnits"] and expression:
-                        _assign_if_changed(existing, "expression", expression)
-                    if apply_knobs["applyComments"]:
-                        _assign_if_changed(existing, "comment", comment)
-                    if apply_knobs["applyFavorites"]:
-                        try:
-                            _assign_if_changed(existing, "isFavorite", is_favorite)
-                        except Exception:
-                            pass
-                    if apply_knobs["applyGroups"] and group:
-                        group_updates[name] = group
-                    updated_count += 1
-                    if apply_knobs["applyOrder"] and display_order is not None:
-                        order_updates.append((int(display_order), name))
-                except Exception as exc:
-                    failed_rows.append({"row": idx + 1, "name": name, "message": str(exc)})
-        else:
-            # New parameter: expression is always required.
-            if not expression:
-                failed_rows.append({"row": idx + 1, "name": name, "message": "Expression is required to create a new parameter."})
-                continue
-            name_check = _validate_parameter_name_response(name)
-            if not name_check["ok"]:
-                failed_rows.append({"row": idx + 1, "name": name, "message": name_check["message"]})
-                continue
-            if dry_run:
-                imported_count += 1
-                if apply_knobs["applyOrder"] and display_order is not None:
-                    order_updates.append((int(display_order), name))
-            else:
-                try:
-                    value_input = adsk.core.ValueInput.createByString(expression)
-                    created = design.userParameters.add(
-                        name,
-                        value_input,
-                        unit,
-                        comment if apply_knobs["applyComments"] else "",
-                    )
-                    if not created:
-                        raise ValueError("Fusion rejected the parameter.")
-                    if apply_knobs["applyFavorites"]:
-                        try:
-                            _assign_if_changed(created, "isFavorite", is_favorite)
-                        except Exception:
-                            pass
-                    if apply_knobs["applyGroups"] and group:
-                        group_updates[name] = group
-                    imported_count += 1
-                    if apply_knobs["applyOrder"] and display_order is not None:
-                        order_updates.append((int(display_order), name))
-                except Exception as exc:
-                    failed_rows.append({"row": idx + 1, "name": name, "message": str(exc)})
-
-    if not dry_run and ((apply_knobs["applyGroups"] and group_updates) or (apply_knobs["applyOrder"] and order_updates)):
-        try:
-            _apply_package_metadata_updates(
-                design,
-                group_updates if apply_knobs["applyGroups"] else {},
-                order_updates if apply_knobs["applyOrder"] else [],
-                previous_state,
-            )
-        except Exception:
-            pass  # Metadata application failure is non-fatal.
-
-    failed_count = len(failed_rows)
-    total_touched = imported_count + updated_count
-    if total_touched == 0 and failed_count > 0:
-        ok = False
-        message = (
-            failed_rows[0]["message"]
-            if len(failed_rows) == 1
-            else f"No parameters were imported. {failed_count} rows failed."
-        )
-    elif total_touched == 0 and skipped_count > 0:
-        ok = True
-        message = f"{skipped_count} parameter(s) already exist and were skipped (conflictPolicy: skip)."
-    elif failed_count > 0:
-        ok = True
-        message = f"{failed_count} row(s) could not be imported."
-    else:
-        ok = True
-        message = ""
-
-    return {
-        "cancelled": False,
-        "ok": ok,
-        "message": message,
-        "filePath": file_path,
-        "importedCount": imported_count,
-        "updatedCount": updated_count,
-        "skippedCount": skipped_count,
-        "failedCount": failed_count,
-        "failedRows": failed_rows,
-    }
-
-
 # ---------------------------------------------------------------------------
 # Dependency graph
 # ---------------------------------------------------------------------------
@@ -5275,11 +4924,10 @@ def _get_backend_contract_info():
     """Return stable metadata describing this backend's API surface.
 
     Useful for FE feature detection and version compatibility checks.
-    Returns dict with: contractVersion, bpmetaSchemaVersion, metadataSchemaVersion, actions.
+    Returns dict with: contractVersion, metadataSchemaVersion, actions.
     """
     return {
         "contractVersion": CONTRACT_VERSION,
-        "bpmetaSchemaVersion": BPMETA_SCHEMA_VERSION,
         "metadataSchemaVersion": METADATA_SCHEMA_VERSION,
         "actions": {
             "readOnly": list(_READ_ONLY_ACTIONS),
@@ -5437,7 +5085,7 @@ def _bptest_smoke_contract_info(ctx):
     """Smoke: getBackendContractInfo returns expected keys."""
     info = _get_backend_contract_info()
     ctx.assert_in("contractVersion", info, "contractVersion present")
-    ctx.assert_in("bpmetaSchemaVersion", info, "bpmetaSchemaVersion present")
+    ctx.assert_in("metadataSchemaVersion", info, "metadataSchemaVersion present")
     ctx.assert_in("actions", info, "actions present")
     ctx.assert_in("readOnly", info["actions"], "actions.readOnly present")
     ctx.assert_in("mutating", info["actions"], "actions.mutating present")
@@ -5498,28 +5146,11 @@ def _bptest_smoke_validate_name(ctx):
     ctx.assert_false(digit_result["ok"], "digit-start name rejected")
 
 
-def _bptest_smoke_bpmeta_parse(ctx):
-    """Smoke: _parse_bpmeta_package accepts valid and rejects bad input."""
-    valid_json = json.dumps({
-        "schemaVersion": 1,
-        "exportedAt": "2026-01-01T00:00:00Z",
-        "sourceDocument": {"name": "Test"},
-        "parameters": [],
-    })
-    pkg, err = _parse_bpmeta_package(valid_json)
-    ctx.assert_true(pkg is not None, "valid package parsed")
-    ctx.assert_equal(err, "", "no error for valid package")
-    bad_pkg, bad_err = _parse_bpmeta_package("not json")
-    ctx.assert_true(bad_pkg is None, "invalid JSON → None")
-    ctx.assert_true(len(bad_err) > 0, "error message non-empty")
-
-
 _BP_TEST_REGISTRY = [
     ("smoke/contract_info", _bptest_smoke_contract_info),
     ("smoke/dependency_graph", _bptest_smoke_dependency_graph),
     ("smoke/dry_run_import_csv", _bptest_smoke_dry_run_import_csv),
     ("smoke/validate_name", _bptest_smoke_validate_name),
-    ("smoke/bpmeta_parse", _bptest_smoke_bpmeta_parse),
 ]
 
 

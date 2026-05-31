@@ -5,11 +5,24 @@ Canonical location: `scripts/CONTEXT.md` (repo root copies are deprecated/remove
 
 ## Current Task
 
-- Active implementation: settings pane organization cleanup after metadata-parameter patch ship.
-  - Source of truth docs read first this session: `scripts/HANDOFF.md`, `scripts/CONTEXT.md`, `scripts/METADATA_PARAMETER_SPEC.md`; `scripts/PUSHNOTES.md` read for patch ship.
-  - Target: split the old mixed Appearance controls into Appearance, Behavior, and Maintenance sections, with persistent boolean preferences using the same sliding switch style.
+- Active implementation complete: BP package handling removed in favor of `_bp_metadata_v1` CSV transport.
+  - Source of truth docs read first this session: `scripts/HANDOFF.md`, `scripts/CONTEXT.md`, `scripts/METADATA_PARAMETER_SPEC.md`; `scripts/PUSHNOTES.md` read for earlier patch ship.
+  - Target: remove `.bpmeta.json` package UI/actions/helpers/tests and replace settings UI with a simple `Include BP Metadata Parameter` CSV export toggle. CSV import now automatically imports `_bp_metadata_v1` when present.
 
 ## Session Updates (2026-05-30)
+
+- Removed BP package handling:
+  - Deleted frontend BP Package import/export controls, package option persistence, package action constants, package request builders, and package button handlers.
+  - Added `Include BP Metadata Parameter` toggle in Settings > Parameter Files; persisted as `includeMetadataParameterInCsv`.
+  - CSV export can append `_bp_metadata_v1` with its encoded metadata comment plus a compact source-name mapping for cross-file token remap.
+  - CSV import automatically detects `_bp_metadata_v1` rows, writes the metadata parameter after normal parameter import, and reports `metadataImported`.
+  - Backend package actions removed from normative contract: `exportParametersPackage`, `validateParametersPackageImport`, `importParametersPackage`.
+  - Removed `.bpmeta.json` parser/import/export helpers, package dry-run path, harness coverage, backend API doc sections, and package-specific tests.
+  - Validation:
+    - focused: `./.venv/bin/python -m pytest tests/test_csv.py tests/test_contract_info.py tests/test_error_codes.py tests/test_fe_current_baseline.py tests/test_dry_run.py -q` -> `76 passed`
+    - full suite with Playwright escalation: `./.venv/bin/python -m pytest` -> `347 passed`
+    - old package runtime/code sweep: no matches in `BetterParameters`, `tests`, or `scripts/*.py` for package action names, `.bpmeta`, old package option keys, or removed package helpers.
+    - live add-in sync: `python3 BetterParameters/update_helper.py BetterParameters "$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters" ... --verify` -> `Done: 10 copied, 4 skipped, 0 error(s)`; `VERIFY OK` for `BetterParameters.py` and `palette.html`.
 
 - Reorganized settings pane controls:
   - Split old mixed `Appearance` control cluster into:

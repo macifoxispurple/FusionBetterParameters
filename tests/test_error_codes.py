@@ -104,7 +104,6 @@ def test_read_only_actions_list():
 def test_mutating_actions_list():
     assert "seedTestParameters" in BP._MUTATING_ACTIONS
     assert "resetTestState" in BP._MUTATING_ACTIONS
-    assert "importParametersPackage" in BP._MUTATING_ACTIONS
     assert "importParametersFromDataPanel" in BP._MUTATING_ACTIONS
     assert "retryImportParametersFromDataPanel" in BP._MUTATING_ACTIONS
 

@@ -2938,21 +2938,8 @@
           "computeMode": "manual",
           "customUnits": [],
           "hideGroups": false,
+          "includeMetadataParameterInCsv": false,
           "lastUnit": "",
-          "packageConflictPolicy": "skip",
-          "packageExportOptions": {
-            "includeComments": true,
-            "includeFavorites": true,
-            "includeGroups": true,
-            "includeOrder": true
-          },
-          "packageImportOptions": {
-            "applyComments": true,
-            "applyExpressionsUnits": true,
-            "applyFavorites": true,
-            "applyGroups": true,
-            "applyOrder": true
-          },
           "parameterTableColumnOrder": [
             "parameter",
             "name",
@@ -3434,21 +3421,8 @@
           "computeMode": "manual",
           "customUnits": [],
           "hideGroups": false,
+          "includeMetadataParameterInCsv": false,
           "lastUnit": "",
-          "packageConflictPolicy": "skip",
-          "packageExportOptions": {
-            "includeComments": true,
-            "includeFavorites": true,
-            "includeGroups": true,
-            "includeOrder": true
-          },
-          "packageImportOptions": {
-            "applyComments": true,
-            "applyExpressionsUnits": true,
-            "applyFavorites": true,
-            "applyGroups": true,
-            "applyOrder": true
-          },
           "parameterTableColumnOrder": [
             "parameter",
             "name",
@@ -3671,21 +3645,8 @@
           "computeMode": "manual",
           "customUnits": [],
           "hideGroups": false,
+          "includeMetadataParameterInCsv": false,
           "lastUnit": "",
-          "packageConflictPolicy": "skip",
-          "packageExportOptions": {
-            "includeComments": true,
-            "includeFavorites": true,
-            "includeGroups": true,
-            "includeOrder": true
-          },
-          "packageImportOptions": {
-            "applyComments": true,
-            "applyExpressionsUnits": true,
-            "applyFavorites": true,
-            "applyGroups": true,
-            "applyOrder": true
-          },
           "parameterTableColumnOrder": [
             "parameter",
             "name",
@@ -3831,7 +3792,6 @@
       return { ok: false, message: "Expression is required.", state: null };
     }
     return okReadOnly({
-      preview: expression,
       valuePreview: expression,
       expression: expression
     });

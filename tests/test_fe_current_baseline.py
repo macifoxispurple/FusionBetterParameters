@@ -40,7 +40,7 @@ def test_palette_contains_core_controls_ids():
         "applyAllButton",
         "discardAllButton",
         "importParametersButton",
-        "importParametersPackageButton",
+        "includeMetadataParameterCsvToggle",
         "timelineSortButton",
         "parameterRows",
         "createShortcutTip",

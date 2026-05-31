@@ -2936,21 +2936,8 @@
           "computeMode": "manual",
           "customUnits": [],
           "hideGroups": false,
+          "includeMetadataParameterInCsv": false,
           "lastUnit": "",
-          "packageConflictPolicy": "skip",
-          "packageExportOptions": {
-            "includeComments": true,
-            "includeFavorites": true,
-            "includeGroups": true,
-            "includeOrder": true
-          },
-          "packageImportOptions": {
-            "applyComments": true,
-            "applyExpressionsUnits": true,
-            "applyFavorites": true,
-            "applyGroups": true,
-            "applyOrder": true
-          },
           "parameterTableColumnOrder": [
             "parameter",
             "name",
@@ -3432,21 +3419,8 @@
           "computeMode": "manual",
           "customUnits": [],
           "hideGroups": false,
+          "includeMetadataParameterInCsv": false,
           "lastUnit": "",
-          "packageConflictPolicy": "skip",
-          "packageExportOptions": {
-            "includeComments": true,
-            "includeFavorites": true,
-            "includeGroups": true,
-            "includeOrder": true
-          },
-          "packageImportOptions": {
-            "applyComments": true,
-            "applyExpressionsUnits": true,
-            "applyFavorites": true,
-            "applyGroups": true,
-            "applyOrder": true
-          },
           "parameterTableColumnOrder": [
             "parameter",
             "name",
@@ -3669,21 +3643,8 @@
           "computeMode": "manual",
           "customUnits": [],
           "hideGroups": false,
+          "includeMetadataParameterInCsv": false,
           "lastUnit": "",
-          "packageConflictPolicy": "skip",
-          "packageExportOptions": {
-            "includeComments": true,
-            "includeFavorites": true,
-            "includeGroups": true,
-            "includeOrder": true
-          },
-          "packageImportOptions": {
-            "applyComments": true,
-            "applyExpressionsUnits": true,
-            "applyFavorites": true,
-            "applyGroups": true,
-            "applyOrder": true
-          },
           "parameterTableColumnOrder": [
             "parameter",
             "name",

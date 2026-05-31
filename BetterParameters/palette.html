@@ -2242,34 +2242,6 @@
         margin: 2px 0;
       }
 
-      .package-options-grid {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        gap: 6px 12px;
-      }
-
-      .package-option {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        min-width: 0;
-        color: var(--ink);
-        font-size: 12px;
-      }
-
-      .package-option input[type="checkbox"] {
-        margin: 0;
-        width: 14px;
-        height: 14px;
-        flex: 0 0 14px;
-      }
-
-      @media (max-width: 560px) {
-        .package-options-grid {
-          grid-template-columns: minmax(0, 1fr);
-        }
-      }
-
       .theme-toggle::after {
         display: none;
       }
@@ -3540,10 +3512,14 @@
             <div class="section-header">
               <div>
                 <h2>Parameter Files</h2>
-                <p>CSV and BP package import/export for user parameters.</p>
+                <p>CSV import/export for user parameters.</p>
               </div>
             </div>
             <div class="settings-subheading">CSV</div>
+            <div class="toggle-row">
+              <span class="toggle-label">Include BP Metadata Parameter</span>
+              <button id="includeMetadataParameterCsvToggle" class="toggle" type="button" aria-pressed="false" aria-label="Toggle BP metadata parameter in CSV exports"></button>
+            </div>
             <div class="toggle-row toggle-row-inline-select">
               <span class="toggle-label">Import Conflict Policy</span>
               <select id="importConflictPolicySelect" aria-label="Import conflict policy">
@@ -3555,38 +3531,6 @@
               <button id="exportParametersButton" class="ghost" type="button">Export CSV</button>
               <button id="importParametersButton" class="ghost" type="button">Import CSV</button>
               <button id="importDataPanelParametersButton" class="ghost" type="button">Import From Fusion File</button>
-            </div>
-            <hr class="settings-divider" />
-            <div class="settings-subheading">BP Package (.bpmeta.json)</div>
-            <div class="settings-subheading">Package Export Includes</div>
-            <div class="package-options-grid" aria-label="Package export include options">
-              <label class="package-option"><input id="packageIncludeComments" type="checkbox" checked />Include comments</label>
-              <label class="package-option"><input id="packageIncludeGroups" type="checkbox" checked />Include groups</label>
-              <label class="package-option"><input id="packageIncludeFavorites" type="checkbox" checked />Include favorites</label>
-              <label class="package-option"><input id="packageIncludeOrder" type="checkbox" checked />Include order</label>
-            </div>
-            <div class="actions">
-              <button id="exportParametersPackageButton" class="ghost" type="button">Export Package</button>
-            </div>
-            <hr class="settings-divider" />
-            <div class="settings-subheading">Package Import</div>
-            <div class="toggle-row toggle-row-inline-select">
-              <span class="toggle-label">Package Conflict Policy</span>
-              <select id="packageConflictPolicySelect" aria-label="Package import conflict policy">
-                <option value="skip">Skip existing</option>
-                <option value="overwrite">Overwrite existing</option>
-                <option value="merge-safe">Merge safe</option>
-              </select>
-            </div>
-            <div class="package-options-grid" aria-label="Package import options">
-              <label class="package-option"><input id="packageApplyExpressionsUnits" type="checkbox" checked />Apply expressions/units</label>
-              <label class="package-option"><input id="packageApplyComments" type="checkbox" checked />Apply comments</label>
-              <label class="package-option"><input id="packageApplyGroups" type="checkbox" checked />Apply groups</label>
-              <label class="package-option"><input id="packageApplyFavorites" type="checkbox" checked />Apply favorites</label>
-              <label class="package-option"><input id="packageApplyOrder" type="checkbox" checked />Apply order</label>
-            </div>
-            <div class="actions">
-              <button id="importParametersPackageButton" class="ghost" type="button">Import Package</button>
             </div>
             <pre id="parameterFileSummary" class="release-notes-body" style="display:none"></pre>
             <div id="parameterFileFollowupActions" class="actions" style="display:none">
@@ -3808,7 +3752,6 @@
       const FIELD_HELPER_CLOSE_DELAY_MS = 120;
       const COMMENTS_MIN_WIDTH_PX = 120;
       const REVERT_COL_WIDTH_PX = 86;
-      const PACKAGE_PREFS_STORAGE_KEY = "bp_package_ui_prefs";
       const LAYOUT_DEBUG_STORAGE_KEY = "bp_layout_debug";
       const DEBUG_CAPTURE_ENABLED_STORAGE_KEY = "bp_debug_capture_enabled";
       const DEBUG_CAPTURE_LOG_STORAGE_KEY = "bp_debug_capture_log_v1";
@@ -3862,9 +3805,6 @@
         IMPORT_PARAMETERS_FROM_DATA_PANEL: "importParametersFromDataPanel",
         RETRY_IMPORT_PARAMETERS_FROM_DATA_PANEL: "retryImportParametersFromDataPanel",
         EXPORT_PARAMETERS: "exportParameters",
-        EXPORT_PARAMETERS_PACKAGE: "exportParametersPackage",
-        VALIDATE_PARAMETERS_PACKAGE_IMPORT: "validateParametersPackageImport",
-        IMPORT_PARAMETERS_PACKAGE: "importParametersPackage",
         COPY_TO_CLIPBOARD: "copyToClipboard",
         OPEN_HELP_URL: "openHelpUrl",
         CHECK_FOR_UPDATES: "checkForUpdates",
@@ -3916,9 +3856,6 @@
         [ACTION.IMPORT_PARAMETERS_FROM_DATA_PANEL]: { mutating: true, stateOptional: true },
         [ACTION.RETRY_IMPORT_PARAMETERS_FROM_DATA_PANEL]: { mutating: true },
         [ACTION.EXPORT_PARAMETERS]: { readOnly: true },
-        [ACTION.EXPORT_PARAMETERS_PACKAGE]: { readOnly: true },
-        [ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT]: { readOnly: true },
-        [ACTION.IMPORT_PARAMETERS_PACKAGE]: { mutating: true, stateOptional: true },
         [ACTION.COPY_TO_CLIPBOARD]: { readOnly: true },
         [ACTION.OPEN_HELP_URL]: { readOnly: true },
         [ACTION.CHECK_FOR_UPDATES]: { mutating: true },
@@ -4006,109 +3943,6 @@
           localStorage.setItem(TABLE_SORT_STATE_STORAGE_KEY, JSON.stringify(payload));
         } catch (_) {}
       }
-
-      function getDefaultPackageImportOptions() {
-        return {
-          applyExpressionsUnits: true,
-          applyComments: true,
-          applyGroups: true,
-          applyFavorites: true,
-          applyOrder: true
-        };
-      }
-
-      function getDefaultPackageExportOptions() {
-        return {
-          includeComments: true,
-          includeGroups: true,
-          includeFavorites: true,
-          includeOrder: true
-        };
-      }
-
-      function normalizePackageConflictPolicy(raw) {
-        const value = String(raw || "").trim().toLowerCase();
-        if (value === "overwrite" || value === "merge-safe") {
-          return value;
-        }
-        return "skip";
-      }
-
-      function normalizePackageImportOptions(raw, fallback = null) {
-        const source = raw && typeof raw === "object" ? raw : {};
-        const defaults = fallback && typeof fallback === "object" ? fallback : getDefaultPackageImportOptions();
-        const has = (key) => Object.prototype.hasOwnProperty.call(source, key);
-        return {
-          applyExpressionsUnits: has("applyExpressionsUnits")
-            ? source.applyExpressionsUnits === true
-            : defaults.applyExpressionsUnits === true,
-          applyComments: has("applyComments")
-            ? source.applyComments === true
-            : defaults.applyComments === true,
-          applyGroups: has("applyGroups")
-            ? source.applyGroups === true
-            : defaults.applyGroups === true,
-          applyFavorites: has("applyFavorites")
-            ? source.applyFavorites === true
-            : defaults.applyFavorites === true,
-          applyOrder: has("applyOrder")
-            ? source.applyOrder === true
-            : defaults.applyOrder === true
-        };
-      }
-
-      function normalizePackageExportOptions(raw, fallback = null) {
-        const source = raw && typeof raw === "object" ? raw : {};
-        const defaults = fallback && typeof fallback === "object" ? fallback : getDefaultPackageExportOptions();
-        const has = (key) => Object.prototype.hasOwnProperty.call(source, key);
-        return {
-          includeComments: has("includeComments")
-            ? source.includeComments === true
-            : defaults.includeComments === true,
-          includeGroups: has("includeGroups")
-            ? source.includeGroups === true
-            : defaults.includeGroups === true,
-          includeFavorites: has("includeFavorites")
-            ? source.includeFavorites === true
-            : defaults.includeFavorites === true,
-          includeOrder: has("includeOrder")
-            ? source.includeOrder === true
-            : defaults.includeOrder === true
-        };
-      }
-
-      function loadPackagePrefsFromLocal() {
-        try {
-          const raw = localStorage.getItem(PACKAGE_PREFS_STORAGE_KEY);
-          if (!raw) {
-            return null;
-          }
-          const parsed = JSON.parse(raw);
-          if (!parsed || typeof parsed !== "object") {
-            return null;
-          }
-          return {
-            packageConflictPolicy: normalizePackageConflictPolicy(parsed.packageConflictPolicy),
-            packageImportOptions: normalizePackageImportOptions(parsed.packageImportOptions),
-            packageExportOptions: normalizePackageExportOptions(parsed.packageExportOptions)
-          };
-        } catch (_) {
-          return null;
-        }
-      }
-
-      function savePackagePrefsToLocal() {
-        try {
-          const payload = {
-            packageConflictPolicy: normalizePackageConflictPolicy(state.settings.packageConflictPolicy),
-            packageImportOptions: normalizePackageImportOptions(state.settings.packageImportOptions),
-            packageExportOptions: normalizePackageExportOptions(state.settings.packageExportOptions)
-          };
-          localStorage.setItem(PACKAGE_PREFS_STORAGE_KEY, JSON.stringify(payload));
-        } catch (_) {}
-      }
-
-      const localPackagePrefs = loadPackagePrefsFromLocal();
 
       const EXPRESSION_FUNCTIONS = [
         "abs", "acos", "acosh", "and", "asin", "asinh", "atan", "atanh",
@@ -4300,9 +4134,7 @@
           hideGroups: false,
           autoFitColumns: true,
           pinnedUnits: [],
-          packageConflictPolicy: normalizePackageConflictPolicy(localPackagePrefs?.packageConflictPolicy),
-          packageImportOptions: normalizePackageImportOptions(localPackagePrefs?.packageImportOptions),
-          packageExportOptions: normalizePackageExportOptions(localPackagePrefs?.packageExportOptions),
+          includeMetadataParameterInCsv: false,
           computeMode: (function () {
             try {
               const raw = String(localStorage.getItem(COMPUTE_MODE_STORAGE_KEY) || "").trim().toLowerCase();
@@ -7236,19 +7068,9 @@
           hideGroups: typeof settings.hideGroups === "boolean"
             ? settings.hideGroups
             : (state.settings.hideGroups === true),
-          packageConflictPolicy: normalizePackageConflictPolicy(
-            Object.prototype.hasOwnProperty.call(settings, "packageConflictPolicy")
-              ? settings.packageConflictPolicy
-              : state.settings.packageConflictPolicy
-          ),
-          packageImportOptions: normalizePackageImportOptions(
-            settings.packageImportOptions,
-            state.settings.packageImportOptions
-          ),
-          packageExportOptions: normalizePackageExportOptions(
-            settings.packageExportOptions,
-            state.settings.packageExportOptions
-          ),
+          includeMetadataParameterInCsv: typeof settings.includeMetadataParameterInCsv === "boolean"
+            ? settings.includeMetadataParameterInCsv
+            : (state.settings.includeMetadataParameterInCsv === true),
           computeMode: normalizeComputeMode(state.settings.computeMode)
         };
         if (fromBackend && Object.prototype.hasOwnProperty.call(settings, "lastUnit")) {
@@ -7256,7 +7078,6 @@
           state.hasRememberedUnitSelection = backendLastUnit !== "" || state.explicitNoUnitsRemembered;
         }
 
-        savePackagePrefsToLocal();
         applyTheme(state.settings.theme);
         persistComputeMode(state.settings.computeMode);
         renderToggle("rememberUnitToggle", !!state.settings.rememberUnit);
@@ -7269,9 +7090,9 @@
         renderHideGroupsToggle();
         renderTextTunerSidebarToggle();
         renderComputeModeButton();
+        renderIncludeMetadataParameterCsvToggle();
         applyComputeModeClasses();
         renderImportConflictPolicySelect();
-        renderPackageImportExportControls();
         document.body.classList.toggle("hide-comment", state.settings.showCommentColumn !== true);
         applyTextTunerSidebarVisibility();
         renderUnitPicker();
@@ -12144,19 +11965,9 @@
           hideGroups: typeof settings.hideGroups === "boolean"
             ? settings.hideGroups
             : (state.settings.hideGroups === true),
-          packageConflictPolicy: normalizePackageConflictPolicy(
-            Object.prototype.hasOwnProperty.call(settings, "packageConflictPolicy")
-              ? settings.packageConflictPolicy
-              : state.settings.packageConflictPolicy
-          ),
-          packageImportOptions: normalizePackageImportOptions(
-            settings.packageImportOptions,
-            state.settings.packageImportOptions
-          ),
-          packageExportOptions: normalizePackageExportOptions(
-            settings.packageExportOptions,
-            state.settings.packageExportOptions
-          ),
+          includeMetadataParameterInCsv: typeof settings.includeMetadataParameterInCsv === "boolean"
+            ? settings.includeMetadataParameterInCsv
+            : (state.settings.includeMetadataParameterInCsv === true),
           computeMode: normalizeComputeMode(state.settings.computeMode)
         };
         if (fromBackend && Object.prototype.hasOwnProperty.call(settings, "lastUnit")) {
@@ -12164,7 +11975,6 @@
           state.hasRememberedUnitSelection = backendLastUnit !== "" || state.explicitNoUnitsRemembered;
         }
 
-        savePackagePrefsToLocal();
         applyTheme(state.settings.theme);
         persistComputeMode(state.settings.computeMode);
         renderToggle("rememberUnitToggle", !!state.settings.rememberUnit);
@@ -12177,9 +11987,9 @@
         renderHideGroupsToggle();
         renderTextTunerSidebarToggle();
         renderComputeModeButton();
+        renderIncludeMetadataParameterCsvToggle();
         applyComputeModeClasses();
         renderImportConflictPolicySelect();
-        renderPackageImportExportControls();
         document.body.classList.toggle("hide-comment", state.settings.showCommentColumn !== true);
         applyTextTunerSidebarVisibility();
         renderUnitPicker();
@@ -13411,55 +13221,8 @@
         select.value = normalizeConflictPolicy(state.importConflictPolicy);
       }
 
-      function renderPackageImportExportControls() {
-        const conflictSelect = document.getElementById("packageConflictPolicySelect");
-        if (conflictSelect) {
-          conflictSelect.value = normalizePackageConflictPolicy(state.settings.packageConflictPolicy);
-        }
-
-        const importOptions = state.settings.packageImportOptions || {};
-        const exportOptions = state.settings.packageExportOptions || {};
-        const setChecked = (id, value) => {
-          const node = document.getElementById(id);
-          if (node) {
-            node.checked = value === true;
-          }
-        };
-
-        setChecked("packageApplyExpressionsUnits", importOptions.applyExpressionsUnits === true);
-        setChecked("packageApplyComments", importOptions.applyComments !== false);
-        setChecked("packageApplyGroups", importOptions.applyGroups !== false);
-        setChecked("packageApplyFavorites", importOptions.applyFavorites !== false);
-        setChecked("packageApplyOrder", importOptions.applyOrder === true);
-
-        setChecked("packageIncludeComments", exportOptions.includeComments !== false);
-        setChecked("packageIncludeGroups", exportOptions.includeGroups !== false);
-        setChecked("packageIncludeFavorites", exportOptions.includeFavorites !== false);
-        setChecked("packageIncludeOrder", exportOptions.includeOrder === true);
-      }
-
-      function buildPackageImportRequest(filePath = "") {
-        const options = state.settings.packageImportOptions || {};
-        return {
-          filePath: String(filePath || ""),
-          conflictPolicy: normalizePackageConflictPolicy(state.settings.packageConflictPolicy),
-          applyExpressionsUnits: options.applyExpressionsUnits === true,
-          applyComments: options.applyComments !== false,
-          applyGroups: options.applyGroups !== false,
-          applyFavorites: options.applyFavorites !== false,
-          applyOrder: options.applyOrder === true
-        };
-      }
-
-      function buildPackageExportRequest(filePath = "") {
-        const options = state.settings.packageExportOptions || {};
-        return {
-          filePath: String(filePath || ""),
-          includeComments: options.includeComments !== false,
-          includeGroups: options.includeGroups !== false,
-          includeFavorites: options.includeFavorites !== false,
-          includeOrder: options.includeOrder === true
-        };
+      function renderIncludeMetadataParameterCsvToggle() {
+        renderToggle("includeMetadataParameterCsvToggle", state.settings.includeMetadataParameterInCsv === true);
       }
 
       function buildRowsNeedingAttentionLines(failedRows, limit = 50) {
@@ -13782,7 +13545,6 @@
                 message: "",
                 state: null,
                 contractVersion: "2026-04-17",
-                bpmetaSchemaVersion: 1,
                 metadataSchemaVersion: 2,
                 actions: {
                   readOnly: Array.from(READ_ONLY_OR_VALIDATION_ACTIONS),
@@ -14270,7 +14032,6 @@
           }
           state.backendContractInfo = {
             contractVersion: String(response.contractVersion || ""),
-            bpmetaSchemaVersion: Number(response.bpmetaSchemaVersion || 0),
             metadataSchemaVersion: Number(response.metadataSchemaVersion || 0),
             actions: response.actions && typeof response.actions === "object"
               ? {
@@ -17960,112 +17721,18 @@
         state.importConflictPolicy = normalizeConflictPolicy(event.currentTarget.value);
       });
 
-      function persistPackageUiSettings(partial, contextLabel) {
-        savePackagePrefsToLocal();
-        return saveSettingsPartial(partial).catch((error) => {
-          const reason = String(error?.message || "Settings save failed.");
-          appendStatusHistory(`${contextLabel}: backend settings save failed (${reason}). Using local UI preference fallback.`, "warning");
-        });
-      }
-
-      document.getElementById("packageConflictPolicySelect").addEventListener("change", (event) => {
-        state.settings.packageConflictPolicy = normalizePackageConflictPolicy(event.currentTarget.value);
-        persistPackageUiSettings(
-          { packageConflictPolicy: state.settings.packageConflictPolicy },
-          "Package conflict policy"
-        );
-      });
-
-      document.getElementById("packageApplyExpressionsUnits").addEventListener("change", (event) => {
-        state.settings.packageImportOptions = {
-          ...normalizePackageImportOptions(state.settings.packageImportOptions),
-          applyExpressionsUnits: event.currentTarget.checked === true
-        };
-        persistPackageUiSettings(
-          { packageImportOptions: state.settings.packageImportOptions },
-          "Package import options"
-        );
-      });
-      document.getElementById("packageApplyComments").addEventListener("change", (event) => {
-        state.settings.packageImportOptions = {
-          ...normalizePackageImportOptions(state.settings.packageImportOptions),
-          applyComments: event.currentTarget.checked === true
-        };
-        persistPackageUiSettings(
-          { packageImportOptions: state.settings.packageImportOptions },
-          "Package import options"
-        );
-      });
-      document.getElementById("packageApplyGroups").addEventListener("change", (event) => {
-        state.settings.packageImportOptions = {
-          ...normalizePackageImportOptions(state.settings.packageImportOptions),
-          applyGroups: event.currentTarget.checked === true
-        };
-        persistPackageUiSettings(
-          { packageImportOptions: state.settings.packageImportOptions },
-          "Package import options"
-        );
-      });
-      document.getElementById("packageApplyFavorites").addEventListener("change", (event) => {
-        state.settings.packageImportOptions = {
-          ...normalizePackageImportOptions(state.settings.packageImportOptions),
-          applyFavorites: event.currentTarget.checked === true
-        };
-        persistPackageUiSettings(
-          { packageImportOptions: state.settings.packageImportOptions },
-          "Package import options"
-        );
-      });
-      document.getElementById("packageApplyOrder").addEventListener("change", (event) => {
-        state.settings.packageImportOptions = {
-          ...normalizePackageImportOptions(state.settings.packageImportOptions),
-          applyOrder: event.currentTarget.checked === true
-        };
-        persistPackageUiSettings(
-          { packageImportOptions: state.settings.packageImportOptions },
-          "Package import options"
-        );
-      });
-
-      document.getElementById("packageIncludeComments").addEventListener("change", (event) => {
-        state.settings.packageExportOptions = {
-          ...normalizePackageExportOptions(state.settings.packageExportOptions),
-          includeComments: event.currentTarget.checked === true
-        };
-        persistPackageUiSettings(
-          { packageExportOptions: state.settings.packageExportOptions },
-          "Package export options"
-        );
-      });
-      document.getElementById("packageIncludeGroups").addEventListener("change", (event) => {
-        state.settings.packageExportOptions = {
-          ...normalizePackageExportOptions(state.settings.packageExportOptions),
-          includeGroups: event.currentTarget.checked === true
-        };
-        persistPackageUiSettings(
-          { packageExportOptions: state.settings.packageExportOptions },
-          "Package export options"
-        );
-      });
-      document.getElementById("packageIncludeFavorites").addEventListener("change", (event) => {
-        state.settings.packageExportOptions = {
-          ...normalizePackageExportOptions(state.settings.packageExportOptions),
-          includeFavorites: event.currentTarget.checked === true
-        };
-        persistPackageUiSettings(
-          { packageExportOptions: state.settings.packageExportOptions },
-          "Package export options"
-        );
-      });
-      document.getElementById("packageIncludeOrder").addEventListener("change", (event) => {
-        state.settings.packageExportOptions = {
-          ...normalizePackageExportOptions(state.settings.packageExportOptions),
-          includeOrder: event.currentTarget.checked === true
-        };
-        persistPackageUiSettings(
-          { packageExportOptions: state.settings.packageExportOptions },
-          "Package export options"
-        );
+      document.getElementById("includeMetadataParameterCsvToggle").addEventListener("click", async () => {
+        const previousValue = state.settings.includeMetadataParameterInCsv === true;
+        const nextValue = !previousValue;
+        state.settings.includeMetadataParameterInCsv = nextValue;
+        renderIncludeMetadataParameterCsvToggle();
+        try {
+          await saveSettingsPartial({ includeMetadataParameterInCsv: nextValue });
+        } catch (error) {
+          state.settings.includeMetadataParameterInCsv = previousValue;
+          renderIncludeMetadataParameterCsvToggle();
+          setGlobalStatus(error.message, "error");
+        }
       });
 
       document.getElementById("importParametersButton").addEventListener("click", async () => {
@@ -18090,10 +17757,12 @@
           const previewSkipped = readResponseCountField(previewResponse, "skippedCount", "CSV preview");
           const previewFailed = readResponseCountField(previewResponse, "failedCount", "CSV preview");
           const previewFailedRows = readResponseArrayField(previewResponse, "failedRows", "CSV preview");
+          const previewMetadata = previewResponse.metadataImported === true;
           const previewLines = [
             `Will add/update: ${previewImported}`,
             `Will skip: ${previewSkipped}`,
             `Potential failures: ${previewFailed}`,
+            `BP metadata parameter: ${previewMetadata ? "will import" : "not present"}`,
             resolvedFilePath ? `File: ${resolvedFilePath}` : ""
           ].filter(Boolean);
           const previewRowDetailLines = buildRowsNeedingAttentionLines(previewFailedRows);
@@ -18143,6 +17812,7 @@
           const skipped = readResponseCountField(response, "skippedCount", "CSV import");
           const failed = readResponseCountField(response, "failedCount", "CSV import");
           const failedRows = readResponseArrayField(response, "failedRows", "CSV import");
+          const metadataImported = response.metadataImported === true;
           parameterFileImportSession = {
             kind: "csv",
             sourceName: String(response.filePath || resolvedFilePath || "").trim() || "CSV file",
@@ -18154,7 +17824,8 @@
             parameterFileImportSession.filePath ? `Source: ${parameterFileImportSession.filePath}` : "Source: CSV file",
             `Added/Updated: ${imported}`,
             `Skipped: ${skipped}`,
-            `Failed: ${failed}`
+            `Failed: ${failed}`,
+            `BP metadata parameter: ${metadataImported ? "imported" : "not imported"}`
           ];
           const rowDetailLines = buildRowsNeedingAttentionLines(failedRows);
           if (rowDetailLines.length) {
@@ -18169,7 +17840,8 @@
             summary,
             `Added/Updated: ${imported}`,
             `Skipped: ${skipped}`,
-            `Failed: ${failed}`
+            `Failed: ${failed}`,
+            `BP metadata parameter: ${metadataImported ? "imported" : "not imported"}`
           ]);
         } catch (error) {
           parameterFileImportSession = null;
@@ -18488,7 +18160,9 @@
         setParameterFileSummary("");
         setGlobalStatus("Exporting parameters to CSV...");
         try {
-          const response = await sendToFusion(ACTION.EXPORT_PARAMETERS, {});
+          const response = await sendToFusion(ACTION.EXPORT_PARAMETERS, {
+            includeMetadataParameter: state.settings.includeMetadataParameterInCsv === true
+          });
           if (isDialogCancelledResponse(response)) {
             return;
           }
@@ -18497,8 +18171,10 @@
           }
           const exported = Number(response.exportedCount || 0);
           const path = String(response.filePath || "").trim();
+          const metadataExported = response.metadataExported === true;
           const lines = [
             `Wrote: ${exported}`,
+            `BP metadata parameter: ${metadataExported ? "included" : "not included"}`,
             path ? `Path: ${path}` : ""
           ].filter(Boolean);
           setGlobalStatus(`Export complete. Wrote ${exported} parameters.`, "success");
@@ -18506,173 +18182,6 @@
         } catch (error) {
           setGlobalStatus(error.message, "error");
           setParameterFileSummary(String(error.message || "Export failed."), "error");
-        }
-      });
-
-      document.getElementById("importParametersPackageButton").addEventListener("click", async () => {
-        setParameterFileSummary("");
-        setGlobalStatus("Previewing BP package import...");
-        try {
-          const previewPayload = {
-            ...buildPackageImportRequest(""),
-            dryRun: true
-          };
-          const previewResponse = await sendToFusion(ACTION.VALIDATE_PARAMETERS_PACKAGE_IMPORT, previewPayload);
-          if (isDialogCancelledResponse(previewResponse)) {
-            return;
-          }
-          if (!previewResponse.ok) {
-            throw new Error(previewResponse.message || "Package preflight failed.");
-          }
-
-          const filePath = String(previewResponse.filePath || "").trim();
-          const previewData = (previewResponse.preview && typeof previewResponse.preview === "object")
-            ? previewResponse.preview
-            : previewResponse;
-          const addCount = readResponseCountField(previewData, "addCount", "Package preflight");
-          const updateCount = readResponseCountField(previewData, "updateCount", "Package preflight");
-          const skipCount = readResponseCountField(previewData, "skipCount", "Package preflight");
-          const potentialFailCount = readResponseCountField(previewData, "potentialFailCount", "Package preflight");
-          const previewWarnings = readResponseArrayField(previewData, "warnings", "Package preflight");
-          const previewFailedRows = readResponseArrayField(previewData, "failedRows", "Package preflight");
-          const previewLines = [
-            `Will add: ${addCount}`,
-            `Will update: ${updateCount}`,
-            `Will skip: ${skipCount}`,
-            `Potential issues: ${potentialFailCount}`
-          ];
-          if (filePath) {
-            previewLines.push(`File: ${filePath}`);
-          }
-          if (previewWarnings.length) {
-            previewLines.push("");
-            previewLines.push("Caution notes:");
-            previewWarnings.slice(0, 20).forEach((warning) => {
-              previewLines.push(`- ${String(warning || "").trim()}`);
-            });
-          }
-          if (skipCount > 0) {
-            const policy = normalizePackageConflictPolicy(previewPayload.conflictPolicy);
-            previewLines.push("");
-            if (policy === "skip") {
-              previewLines.push('Skip reason: conflict policy is "Skip existing" for matching parameter names.');
-            } else {
-              previewLines.push("Skip reason: no-op rows can occur when selected apply options do not change destination values.");
-            }
-          }
-          if (potentialFailCount > 0) {
-            previewLines.push("");
-            previewLines.push("Potential issue meaning: preflight sees rows that may fail during actual apply.");
-          }
-          const previewFailedLines = buildRowsNeedingAttentionLines(previewFailedRows);
-          if (previewFailedLines.length) {
-            previewLines.push("");
-            previewLines.push(...previewFailedLines);
-          }
-          const hasPreviewCaution = potentialFailCount > 0 || previewWarnings.length > 0 || previewFailedRows.length > 0;
-          setParameterFileSummary(previewLines.join("\n"), hasPreviewCaution ? "warning" : "success");
-
-          const confirmSummary = buildPackageImportConfirmationMessage({
-            addCount,
-            updateCount,
-            skipCount,
-            potentialFailCount,
-            warnings: previewWarnings,
-            failedRows: previewFailedRows
-          }, previewPayload);
-          const confirmed = await requestConfirmation(confirmSummary, {
-            title: "Import BP Package",
-            confirmLabel: "Import",
-            cancelLabel: "Cancel",
-            preserveLineBreaks: true
-          });
-          if (!confirmed) {
-            return;
-          }
-
-          setGlobalStatus("Importing BP package...");
-          const importPayload = {
-            ...buildPackageImportRequest(filePath),
-            dryRun: false
-          };
-          const importResponse = await sendToFusion(ACTION.IMPORT_PARAMETERS_PACKAGE, importPayload);
-          if (isDialogCancelledResponse(importResponse)) {
-            return;
-          }
-          if (!importResponse.ok) {
-            const failedRows = readResponseArrayField(importResponse, "failedRows", "Package import");
-            const detailLines = buildRowsNeedingAttentionLines(failedRows);
-            if (detailLines.length) {
-              const lines = [
-                String(importResponse.message || "Package import failed."),
-                "",
-                ...detailLines
-              ];
-              setParameterFileSummary(lines.join("\n"), "error");
-            }
-            throw new Error(importResponse.message || "Package import failed.");
-          }
-          if (importResponse.dryRun === true) {
-            appendStatusHistory("Package import returned dryRun=true during commit call; import was not applied.", "warning");
-            setGlobalStatus("Package import did not apply (backend returned dryRun=true).", "warning");
-            return;
-          }
-
-          if (hasObjectStatePayload(importResponse.state)) {
-            applyStateFromFusion(importResponse, { source: "response", action: ACTION.IMPORT_PARAMETERS_PACKAGE });
-          } else {
-            appendStatusHistory('Package import response omitted state; running refresh for compatibility.', "warning");
-            await refreshParameters();
-          }
-          const imported = readResponseCountField(importResponse, "importedCount", "Package import");
-          const updated = readResponseCountField(importResponse, "updatedCount", "Package import");
-          const skipped = readResponseCountField(importResponse, "skippedCount", "Package import");
-          const failed = readResponseCountField(importResponse, "failedCount", "Package import");
-          const failedRows = readResponseArrayField(importResponse, "failedRows", "Package import");
-          const summary = `Import complete. Added ${imported}, updated ${updated}, skipped ${skipped}.${failed > 0 ? ` Failed: ${failed}.` : ""}`;
-          setGlobalStatus(summary, failed > 0 ? "warning" : "success");
-
-          const lines = [
-            `Added: ${imported}`,
-            `Updated: ${updated}`,
-            `Skipped: ${skipped}`,
-            `Failed: ${failed}`
-          ];
-          const rowDetailLines = buildRowsNeedingAttentionLines(failedRows);
-          if (rowDetailLines.length) {
-            lines.push("");
-            lines.push(...rowDetailLines);
-          }
-          setParameterFileSummary(lines.join("\n"), failed > 0 ? "warning" : "success");
-        } catch (error) {
-          setGlobalStatus(error.message, "error");
-          setParameterFileSummary(String(error.message || "Package import failed."), "error");
-        }
-      });
-
-      document.getElementById("exportParametersPackageButton").addEventListener("click", async () => {
-        setParameterFileSummary("");
-        setGlobalStatus("Exporting BP package...");
-        try {
-          const response = await sendToFusion(ACTION.EXPORT_PARAMETERS_PACKAGE, buildPackageExportRequest(""));
-          if (isDialogCancelledResponse(response)) {
-            return;
-          }
-          if (!response.ok) {
-            throw new Error(response.message || "Package export failed.");
-          }
-          const exported = Number(response.exportedCount || 0);
-          const path = String(response.filePath || "").trim();
-          const lines = [
-            `Wrote: ${exported}`,
-            path ? `Path: ${path}` : "",
-            "Format: bpmeta.json"
-          ].filter(Boolean);
-          setGlobalStatus(`Export complete. Wrote ${exported} parameters.`, "success");
-          setParameterFileSummary(lines.join("\n"), "success");
-        } catch (error) {
-          setGlobalStatus(error.message, "error");
-          setParameterFileSummary(String(error.message || "Package export failed."), "error");
         }
       });
 

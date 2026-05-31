@@ -1,11 +1,7 @@
 """
 helpers.py — shared mock factories for BetterParameters offline tests.
 """
-import json
 from unittest.mock import MagicMock
-
-BPMETA_SCHEMA_VERSION = 1  # keep in sync with BetterParameters.BPMETA_SCHEMA_VERSION
-
 
 def make_mock_param(name="width", expression="10 mm", unit="mm", comment="", is_favorite=False):
     """Return a MagicMock that looks like a Fusion UserParameter."""
@@ -15,6 +11,7 @@ def make_mock_param(name="width", expression="10 mm", unit="mm", comment="", is_
     p.unit = unit
     p.comment = comment
     p.isFavorite = is_favorite
+    p.entityToken = f"token:{name}"
     return p
 
 
@@ -49,6 +46,8 @@ def make_mock_design(existing_params=None):
 
     design = MagicMock()
     design.userParameters.itemByName.side_effect = item_by_name
+    design.userParameters.count = len(param_list)
+    design.userParameters.item.side_effect = all_params_item
     design.allParameters.itemByName.side_effect = item_by_name
     # Support count + item(index) iteration used by _collect_all_parameter_names.
     design.allParameters.count = len(param_list)
@@ -57,26 +56,3 @@ def make_mock_design(existing_params=None):
     # isValidExpression defaults to True; override per-test as needed.
     design.unitsManager.isValidExpression.return_value = True
     return design
-
-
-def make_package(parameters, schema_version=BPMETA_SCHEMA_VERSION, exported_at=None, source_doc=None):
-    """Build a minimal valid bpmeta package dict."""
-    pkg = {
-        "schemaVersion": schema_version,
-        "exportedAt": exported_at or "2026-01-01T00:00:00Z",
-        "sourceDocument": source_doc or {"name": "TestDoc"},
-        "parameters": parameters,
-    }
-    return pkg
-
-
-def make_package_json(parameters, **kwargs):
-    """Build a bpmeta package and return it as a JSON string."""
-    return json.dumps(make_package(parameters, **kwargs))
-
-
-def make_param_record(name="width", expression="10 mm", unit="mm", **extra):
-    """Return a minimal valid package parameter record."""
-    record = {"name": name, "expression": expression, "unit": unit}
-    record.update(extra)
-    return record

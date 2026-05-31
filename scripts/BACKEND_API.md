@@ -34,9 +34,6 @@ Canonical location: `scripts/BACKEND_API.md` (repo root copy removed).
    - [sortByTimelineOrder](#sortbytimelineorder)
    - [exportParameters](#exportparameters)
    - [importParameters](#importparameters)
-   - [exportParametersPackage](#exportparameterspackage)
-   - [validateParametersPackageImport](#validateparameterspackageimport)
-   - [importParametersPackage](#importparameterspackage)
    - [revertParameter](#revertparameter)
    - [setParameterFavorite](#setparameterfavorite)
    - [setParameterGroup](#setparametergroup)
@@ -1026,261 +1023,6 @@ Import user parameters from a CSV file. Opens a native OS open dialog unless `fi
 
 ---
 
-### `exportParametersPackage`
-
-Export user parameters with optional BP metadata (groups, favorites, display order, comments) to a `.bpmeta.json` file. Opens a native OS save dialog unless `filePath` is provided. Read-only — `state` is always `null`.
-
-**Request payload:**
-```json
-{
-  "filePath": "/optional/explicit/path/output.bpmeta.json",
-  "includeComments": true,
-  "includeGroups": true,
-  "includeFavorites": true,
-  "includeOrder": false
-}
-```
-
-| Field | Required | Default | Description |
-|---|---|---|---|
-| `filePath` | No | — | Absolute path to write. If absent or empty, a native OS save dialog is shown. Extension `.bpmeta.json` appended automatically if missing. |
-| `includeComments` | No | `true` | Include `comment` field in each record. |
-| `includeGroups` | No | `true` | Include `group` field in each record. |
-| `includeFavorites` | No | `true` | Include `isFavorite` field in each record. |
-| `includeOrder` | No | `false` | Include `displayOrder` (0-based index) in each record to preserve current display ordering on import. |
-
-**Response (success):**
-```json
-{ "ok": true, "message": "", "state": null, "exportedCount": 5, "filePath": "/path/to/output.bpmeta.json", "format": "bpmeta.json" }
-```
-
-**Response (cancelled):**
-```json
-{ "ok": false, "message": "Export cancelled.", "state": null, "exportedCount": 0, "filePath": "", "format": "bpmeta.json" }
-```
-
-| Extra field | Type | Description |
-|---|---|---|
-| `exportedCount` | `number` | Parameters written to the package. |
-| `filePath` | `string` | Resolved path of the written file. |
-| `format` | `string` | Always `"bpmeta.json"` for this action (distinguishes from CSV export). |
-
-**Package format:** See [BP Meta Package Format](#bp-meta-package-format).
-
-**Notes:**
-- `metadataRevision` and `metadataChangedAt` are always written as advisory fields regardless of the include flags.
-- Scope: user parameters only. Model parameters are not exported.
-- Cloud file management is outside the scope of this add-in.
-
----
-
-### `validateParametersPackageImport`
-
-Preflight check for a `.bpmeta.json` import. Parses the package, classifies each row, and returns a preview summary. **No mutations are applied.** Read-only — `state` is always `null`.
-
-Opens a native OS open dialog if `filePath` is absent. The resolved `filePath` is returned so FE can pass it to `importParametersPackage` without re-opening the dialog.
-
-**Request payload:**
-```json
-{
-  "filePath": "",
-  "conflictPolicy": "skip",
-  "applyExpressionsUnits": false,
-  "applyComments": true,
-  "applyGroups": true,
-  "applyFavorites": true,
-  "applyOrder": false
-}
-```
-
-| Field | Required | Default | Description |
-|---|---|---|---|
-| `filePath` | No | — | Absolute path. If absent or empty, shows OS open dialog. |
-| `conflictPolicy` | No | `"skip"` | `"skip"`, `"overwrite"`, or `"merge-safe"`. See [Package Conflict Policies](#package-conflict-policies). |
-| `applyExpressionsUnits` | No | `false` | Apply `expression` and `unit` from the package when updating existing parameters. Always applied when creating new parameters. |
-| `applyComments` | No | `true` | Apply `comment` from the package. |
-| `applyGroups` | No | `true` | Apply `group` from the package. |
-| `applyFavorites` | No | `true` | Apply `isFavorite` from the package. |
-| `applyOrder` | No | `false` | Apply `displayOrder` from the package to set display ordering. |
-
-**Response (success):**
-```json
-{
-  "ok": true,
-  "message": "",
-  "state": null,
-  "filePath": "/resolved/path/file.bpmeta.json",
-  "preview": {
-    "addCount": 2,
-    "updateCount": 3,
-    "skipCount": 1,
-    "potentialFailCount": 0,
-    "warnings": [],
-    "failedRows": []
-  }
-}
-```
-
-**Response (cancelled):**
-```json
-{ "ok": false, "message": "Import cancelled.", "state": null, "filePath": "", "preview": null }
-```
-
-| Preview field | Type | Description |
-|---|---|---|
-| `addCount` | `number` | Parameters that will be created (name not in destination). |
-| `updateCount` | `number` | Existing parameters that will be updated (based on conflict policy). |
-| `skipCount` | `number` | Existing parameters that will be skipped (conflictPolicy: `"skip"`). |
-| `potentialFailCount` | `number` | Rows that may fail (expression validation warnings). Not hard failures. |
-| `warnings` | `string[]` | Human-readable per-parameter warning strings for `potentialFailCount` rows. |
-| `failedRows` | `object[]` | Rows that will definitely fail: missing name, duplicate name in package, invalid name format, or missing expression for new params. `{ row, name, message }`. |
-
-**Notes:**
-- Use the returned `filePath` as the `filePath` input to `importParametersPackage` to skip re-opening the dialog.
-- `failedRows` in the preview are definite failures. `warnings` are advisory — the actual import may still succeed if Fusion accepts the expression.
-- Validate knobs must match the knobs you pass to `importParametersPackage` to get an accurate preview.
-
----
-
-### `importParametersPackage`
-
-Import user parameters from a `.bpmeta.json` package. Opens a native OS open dialog unless `filePath` is provided. Mutating — returns full State Payload on success.
-
-**Request payload:** Same fields as `validateParametersPackageImport`.
-
-```json
-{
-  "filePath": "/resolved/path/file.bpmeta.json",
-  "conflictPolicy": "skip",
-  "applyExpressionsUnits": false,
-  "applyComments": true,
-  "applyGroups": true,
-  "applyFavorites": true,
-  "applyOrder": false
-}
-```
-
-**Request also accepts `dryRun: true`** — runs all validation and conflict logic but applies no mutations. Same response shape; `state` is always `null` on dry-run.
-
-**Response (success — all imported):**
-```json
-{ "ok": true, "message": "", "state": { /* State Payload */ }, "filePath": "/path/to/file.bpmeta.json", "importedCount": 2, "updatedCount": 3, "skippedCount": 0, "failedCount": 0, "failedRows": [], "dryRun": false }
-```
-
-**Response (dry-run):**
-```json
-{ "ok": true, "message": "", "state": null, "filePath": "/path/to/file.bpmeta.json", "importedCount": 2, "updatedCount": 3, "skippedCount": 0, "failedCount": 0, "failedRows": [], "dryRun": true }
-```
-
-**Response (partial success):**
-```json
-{ "ok": true, "message": "1 row(s) could not be imported.", "state": { /* State Payload */ }, "filePath": "/path/to/file.bpmeta.json", "importedCount": 1, "updatedCount": 2, "skippedCount": 0, "failedCount": 1, "failedRows": [{ "row": 3, "name": "bad", "message": "Fusion rejected the parameter." }], "dryRun": false }
-```
-
-**Response (all skipped):**
-```json
-{ "ok": true, "message": "3 parameter(s) already exist and were skipped (conflictPolicy: skip).", "state": { /* State Payload */ }, "filePath": "/path/to/file.bpmeta.json", "importedCount": 0, "updatedCount": 0, "skippedCount": 3, "failedCount": 0, "failedRows": [], "dryRun": false }
-```
-
-**Response (all failed — none imported):**
-```json
-{ "ok": false, "message": "No parameters were imported. ...", "state": null, "filePath": "/path/to/file.bpmeta.json", "importedCount": 0, "updatedCount": 0, "skippedCount": 0, "failedCount": 2, "failedRows": [ ... ], "dryRun": false }
-```
-
-**Response (cancelled):**
-```json
-{ "ok": false, "message": "Import cancelled.", "state": null, "filePath": "", "importedCount": 0, "updatedCount": 0, "skippedCount": 0, "failedCount": 0, "failedRows": [], "dryRun": false }
-```
-
-| Extra field | Type | Description |
-|---|---|---|
-| `filePath` | `string` | Absolute path of the file read. Always echoed — empty string if cancelled before file selection. Pass back as `filePath` on commit after dry-run. |
-| `importedCount` | `number` | New parameters created. |
-| `updatedCount` | `number` | Existing parameters updated (overwrite or merge-safe policy). |
-| `skippedCount` | `number` | Existing parameters skipped (skip policy). |
-| `failedCount` | `number` | Rows that failed. |
-| `failedRows` | `object[]` | Per-row failure info: `{ row, name, message }`. |
-| `dryRun` | `boolean` | Echoes the `dryRun` flag from the request. |
-
-**`ok` semantics:** `true` if file was read and processed, even if `importedCount + updatedCount = 0` (all-skipped is not an error). `false` if cancelled, file unreadable, invalid format, or zero touched with at least one failed row.
-
-**`state` semantics:** non-null when `ok: true` and `dryRun: false`; `null` otherwise.
-
-**Row-level validation:**
-- `name` missing → row fails
-- Duplicate `name` within the package → row fails
-- `name` fails `validateParameterName` checks → row fails (create path only)
-- `expression` missing for new parameter → row fails
-- Fusion rejects the parameter → row fails with Fusion error message
-
-**Notes:**
-- For new parameters, `expression` is always applied regardless of `applyExpressionsUnits`.
-- `applyExpressionsUnits` controls whether `expression` is updated on **existing** parameters.
-- Order application (`applyOrder`) failure is non-fatal — import result is not affected.
-- Rows are processed in package order. A row failure does not abort remaining rows.
-
----
-
-#### Package Conflict Policies
-
-| Policy | Existing parameters | New parameters |
-|---|---|---|
-| `"skip"` | Unchanged (skipped). `skippedCount` incremented. | Created normally. |
-| `"overwrite"` | All checked apply-fields applied. | Created normally. |
-| `"merge-safe"` | Checked apply-fields applied; expression/unit only if `applyExpressionsUnits: true`. | Created normally. |
-
-`"overwrite"` and `"merge-safe"` have identical runtime semantics — both respect the `applyExpressionsUnits` flag. The distinction is intent: use `"merge-safe"` when you want to apply organizational metadata (groups, favorites) to an already-configured document without accidentally overwriting expressions; use `"overwrite"` when replacing is the explicit goal.
-
----
-
-#### BP Meta Package Format
-
-Schema version: `1`.
-
-```json
-{
-  "schemaVersion": 1,
-  "exportedAt": "2026-04-17T12:00:00Z",
-  "sourceDocument": { "name": "MyPart v1" },
-  "parameters": [
-    {
-      "name": "width",
-      "expression": "100 mm",
-      "unit": "mm",
-      "comment": "Overall width",
-      "group": "Dimensions",
-      "isFavorite": true,
-      "displayOrder": 0,
-      "metadataRevision": 3,
-      "metadataChangedAt": 1713350400000
-    }
-  ]
-}
-```
-
-| Top-level field | Required | Description |
-|---|---|---|
-| `schemaVersion` | Yes | Integer schema version. Currently `1`. Import fails if newer than supported. |
-| `exportedAt` | No | ISO-8601 UTC timestamp. Advisory — not used by importer. |
-| `sourceDocument` | No | Descriptor object. Advisory — not used by importer. |
-| `parameters` | Yes | Array of parameter records. |
-
-| Record field | Present when | Description |
-|---|---|---|
-| `name` | Always | Parameter name. Used as primary match key on import. |
-| `expression` | Always | Expression string. Required to create new parameters. |
-| `unit` | Always | Unit string. |
-| `comment` | `includeComments: true` | Comment text. Empty string if absent. |
-| `group` | `includeGroups: true` | Group name. Empty string if absent. |
-| `isFavorite` | `includeFavorites: true` | Favorite flag. Defaults to `false` if absent. |
-| `displayOrder` | `includeOrder: true` | 0-based display index within the export. Advisory on import. |
-| `metadataRevision` | Always | Advisory — source document's metadata revision at export time. |
-| `metadataChangedAt` | Always | Advisory — source document's metadata timestamp at export time. |
-
-**Identity:** Import matches records to destination parameters by `name` only. Entity tokens are document-local and are not stored in or consumed from package files.
-
----
-
 ### `setParameterFavorite`
 
 Toggle or set the favorite status of a parameter.
@@ -1935,7 +1677,6 @@ Return stable metadata about this backend's API surface. Intended for FE feature
   "message": "",
   "state": null,
   "contractVersion": "2026-04-17",
-  "bpmetaSchemaVersion": 1,
   "metadataSchemaVersion": 2,
   "actions": {
     "readOnly": ["ready", "refresh", "getBackendContractInfo", "..."],
@@ -1949,7 +1690,6 @@ Return stable metadata about this backend's API surface. Intended for FE feature
 | Field | Type | Description |
 |---|---|---|
 | `contractVersion` | `string` | Date-stamp string identifying the contract revision |
-| `bpmetaSchemaVersion` | `number` | Current supported `.bpmeta.json` schema version |
 | `metadataSchemaVersion` | `number` | Current parameter metadata schema version |
 | `actions.readOnly` | `string[]` | All actions that do not mutate the design |
 | `actions.mutating` | `string[]` | All actions that may mutate the design |
@@ -2111,7 +1851,6 @@ Execute the backend's built-in self-test suite inside the live Fusion process. R
 | `smoke/dependency_graph` | `getParameterDependencyGraph` returns `nodes`/`edges` lists |
 | `smoke/dry_run_import_csv` | `dry_run=True` on CSV import does not mutate the design |
 | `smoke/validate_name` | Name validator accepts valid names and rejects empty/digit-start |
-| `smoke/bpmeta_parse` | Package parser accepts valid JSON and rejects invalid input |
 
 **Notes:**
 - `ok` is always `true` even if tests fail — test failures are reported in `results[].failures`, not via the envelope `ok` field.
@@ -2415,24 +2154,6 @@ These changes were agreed between frontend and backend before any UI fixtures we
 
 ---
 
-### API version 1 — M6 metadata package export/import (2026-04-17)
-
-Three new actions added for metadata-aware portable parameter transfer. All additive — no existing actions or response shapes changed.
-
-| New action | Type | Notes |
-|---|---|---|
-| `exportParametersPackage` | Read-only (`state: null`) | Writes `.bpmeta.json` package. Extra fields: `exportedCount`, `filePath`, `format`. |
-| `validateParametersPackageImport` | Read-only (`state: null`) | Preflight only, no mutations. Returns `filePath` (resolved from dialog if absent) and `preview` object. |
-| `importParametersPackage` | Mutating | Apply package to destination document. Extra fields: `importedCount`, `updatedCount`, `skippedCount`, `failedCount`, `failedRows`. |
-
-**FE integration notes:**
-- Recommended two-step flow: call `validateParametersPackageImport` first (opens OS dialog, returns preview + resolved `filePath`), show summary to user, then call `importParametersPackage` with the resolved `filePath`.
-- Direct single-step import (`importParametersPackage` without preflight) is supported — just omit `filePath` to get the dialog.
-- `importParametersPackage` adds `updatedCount` (existing params changed) separate from `importedCount` (new params created). FE should display both.
-- Cancel from OS dialog is silent on both actions — no error toast.
-- For fixture coverage: validate needs cancel, success-with-no-warnings, success-with-warnings, and definite-fail-rows cases. Import needs cancel, all-created, all-updated, mixed, all-skipped, partial-fail, all-fail.
-
----
 
 ### API version 1 — model parameter stable component identity (2026-04-18c)
 
@@ -2813,7 +2534,6 @@ Seven additions:
 | `resetTestState` | Mutating | Delete all `_bptest_*` parameters. Requires `confirm: "RESET"`. |
 | `runSelfTestSuite` | Read-only (`state: null`) | Execute built-in smoke tests in live Fusion process. |
 | `importParameters` + `dryRun` | Mutating (dry) | `dryRun: true` runs validation/decision logic without mutations. |
-| `importParametersPackage` + `dryRun` | Mutating (dry) | Same. |
 
 **Error taxonomy additions:**
 
@@ -2823,5 +2543,5 @@ All `ok: false` responses now include an `errorCode` field with a stable string 
 - `getBackendContractInfo` can be called at any time — no design required.
 - `getParameterDependencyGraph` requires an active design.
 - `seedTestParameters` / `resetTestState` / `runSelfTestSuite`: only call from dev/test tooling. Do not expose in production palette UI.
-- `dryRun: true` on `importParameters` / `importParametersPackage`: response includes `dryRun: true` field. `state` is always `null` when `dryRun: true`. Use counts from dry-run response to build a confirmation UI before committing.
+- `dryRun: true` on `importParameters`: response includes `dryRun: true` field. `state` is always `null` when `dryRun: true`. Use counts from dry-run response to build a confirmation UI before committing.
 - `runSelfTestSuite` `ok` field: always `true` even if individual tests fail. Test failures appear in `results[].failures`. `ok: false` means a runtime error in the suite itself.
