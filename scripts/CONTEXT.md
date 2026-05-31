@@ -5,9 +5,58 @@ Canonical location: `scripts/CONTEXT.md` (repo root copies are deprecated/remove
 
 ## Current Task
 
-- Active investigation: Fusion undo stack pollution from BetterParameters backend operations; map current mutating API calls, research Fusion undo grouping/options, and propose solution paths.
+- Active implementation: metadata-parameter persistence design in the real BetterParameters add-in.
+  - Source of truth docs read first: `scripts/HANDOFF.md`, `scripts/CONTEXT.md`, `scripts/METADATA_PARAMETER_SPEC.md`.
+  - Target: reserve `_bp_metadata_v1`, store compact `BPM1Z:` document metadata in its comment, hide it from BP rows, route explicit group/order/UI metadata edits to one comment write, keep legacy attrs/local JSON as fallback/cache.
 
 ## Session Updates (2026-05-30)
+
+- Implemented metadata-parameter persistence design:
+  - Added reserved `_bp_metadata_v1` user parameter support with compact `BPM1Z:<sha256>:<base64-zlib-json>` comment encoding/decoding and validation.
+  - BP now hides `_bp_metadata_v1` from user parameter rows and parameter name lists, blocks normal BP edits/deletes/renames/favorites for it, and rejects creating a user parameter with the reserved name.
+  - Routine state reads prefer valid metadata-parameter payloads over local JSON/legacy attrs, seed local JSON cache from metadata parameter, and do not create/write the metadata parameter.
+  - Explicit group/order/group-UI writes now update the metadata model and write one metadata parameter comment instead of fanning out per-parameter metadata attributes.
+  - Package import group/order application now batches BP metadata updates into one metadata-parameter comment write.
+  - Copy/unit-change group carryover updates the metadata model for the new entity token.
+  - Corrupt existing metadata parameter payloads surface as metadata status and are not silently overwritten by normal metadata writes.
+  - Added backend regressions for codec round trip/hash mismatch, metadata parameter hiding, refresh no-create behavior, metadata authority over local JSON, and one-comment writes for group/order edits.
+  - Validation:
+    - focused: `./.venv/bin/python -m pytest tests/test_import_package.py tests/test_minimal_fusion_writes.py -q` -> `42 passed`
+    - full suite with Playwright escalation: `./.venv/bin/python -m pytest` -> `466 passed`
+    - live add-in sync: `python3 BetterParameters/update_helper.py BetterParameters "$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters" ... --verify` -> `Done: 10 copied, 4 skipped, 0 error(s)`; `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
+- Updated Debug Hub Metadata tools for metadata-parameter era:
+  - `Refresh Debug` now calls backend `getMetadataDebugSnapshot` when Debug Hub > Metadata is visible, reads `_bp_metadata_v1`, and reports metadata-param status/size/revision plus per-row metadata-vs-local JSON comparison.
+  - `JSON -> Metadata Param` now writes local `document_orders` metadata into `_bp_metadata_v1` as one comment write, with write processing/commit+verify timing.
+  - `Metadata Param -> JSON` now reads `_bp_metadata_v1`, seeds local JSON cache, and reports read/decode/process timing.
+  - `Repair Metadata` now rebuilds/rewrites `_bp_metadata_v1` from the current metadata parameter when valid, or from best legacy/local sources when missing/corrupt, with overwrite allowed only through this explicit debug action.
+  - Metadata timing UI is visible in the Metadata section and only updates when that Debug Hub section is visible/open.
+  - Added regressions for debug JSON->metadata-param write and metadata-param->JSON cache update/timing.
+  - Validation:
+    - focused: `./.venv/bin/python -m pytest tests/test_minimal_fusion_writes.py tests/test_fe_current_baseline.py -q` -> `24 passed`
+    - palette load: `./.venv/bin/python -m pytest tests/test_fe_browser_current.py::test_palette_loads_directly -q` -> `1 passed`
+    - full suite with Playwright escalation: `./.venv/bin/python -m pytest` -> `468 passed`
+    - live add-in sync: `python3 BetterParameters/update_helper.py BetterParameters "$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters" ... --verify` -> `Done: 10 copied, 4 skipped, 0 error(s)`; `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
+- Tightened legacy attribute migration/removal:
+  - Removed old legacy attribute write/sync/diagnostic helpers from normal code paths.
+  - Legacy per-parameter/document metadata attributes are now read only by the one-time migration/explicit repair path.
+  - If `_bp_metadata_v1` is missing and legacy Fusion BP metadata exists, BP migrates it into `_bp_metadata_v1`, updates the local cache from the new model, and best-effort deletes the old per-parameter/document BP attributes.
+  - If `_bp_metadata_v1` exists but is corrupt, normal reads no longer fall back to legacy attrs; explicit Debug Hub repair can rebuild/overwrite from legacy/local sources.
+  - Removed normal group/order/copy/unit-change fallbacks to legacy attrs; those paths now use metadata parameter/local cache only.
+  - Added regression for one-time legacy param-attribute migration and cleanup.
+  - Validation:
+    - focused: `./.venv/bin/python -m pytest tests/test_minimal_fusion_writes.py tests/test_import_package.py tests/test_model_parameters.py tests/test_fe_current_baseline.py -q` -> `90 passed`
+    - full suite with Playwright escalation: `./.venv/bin/python -m pytest` -> `468 passed`
+    - live add-in sync: `python3 BetterParameters/update_helper.py BetterParameters "$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/BetterParameters" ... --verify` -> `Done: 10 copied, 4 skipped, 0 error(s)`; `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
+- Fixed Debug Hub metadata snapshot contract registration:
+  - User hit `Backend contract error (getMetadataDebugSnapshot): Action "getMetadataDebugSnapshot" is not in normative API list.` when opening/checking Debug Hub Metadata.
+  - Root cause: frontend `ACTION.GET_METADATA_DEBUG_SNAPSHOT` existed and backend handler was wired, but the action was missing from `ACTION_METADATA`, so the palette contract validator rejected it before dispatch.
+  - Fix: registered `getMetadataDebugSnapshot` as read-only in `ACTION_METADATA`.
+  - Validation:
+    - focused: `./.venv/bin/python -m pytest tests/test_fe_current_baseline.py tests/test_minimal_fusion_writes.py -q` -> `24 passed`
+    - full suite with Playwright escalation: `./.venv/bin/python -m pytest` -> `468 passed`
 
 - Task start: fixing FE duplicate `applyState` shadowing before metadata-parameter implementation.
   - User requested implementation and live add-in sync for testing.

@@ -3183,13 +3183,14 @@
             <details id="debugMetadataSection" class="tuner-section">
               <summary>Metadata</summary>
               <div class="settings-collapsible-body">
-                <p>Inspect JSON and Fusion attribute metadata sources, then force sync either direction for testing.</p>
+                <p>Inspect local JSON and the Fusion metadata parameter, then force sync either direction for testing.</p>
                 <div class="actions">
                   <button id="debugRefreshButton" class="ghost" type="button">Refresh Debug</button>
-                  <button id="debugJsonToFusionButton" class="ghost" type="button">JSON -> Fusion</button>
-                  <button id="debugFusionToJsonButton" class="ghost" type="button">Fusion -> JSON</button>
+                  <button id="debugJsonToFusionButton" class="ghost" type="button">JSON -> Metadata Param</button>
+                  <button id="debugFusionToJsonButton" class="ghost" type="button">Metadata Param -> JSON</button>
                   <button id="debugRepairButton" class="ghost" type="button">Repair Metadata</button>
                 </div>
+                <div id="debugMetadataTiming" class="section-meta">Metadata timing: not measured.</div>
                 <div id="debugSummary" class="section-meta"></div>
                 <pre id="debugOutput" class="release-notes-body">Debug data not loaded yet.</pre>
               </div>
@@ -3806,7 +3807,8 @@
         REINSTALL_CURRENT_VERSION: "reinstallCurrentVersion",
         SYNC_METADATA_JSON_TO_FUSION: "syncMetadataJsonToFusion",
         SYNC_METADATA_FUSION_TO_JSON: "syncMetadataFusionToJson",
-        REPAIR_METADATA: "repairMetadata"
+        REPAIR_METADATA: "repairMetadata",
+        GET_METADATA_DEBUG_SNAPSHOT: "getMetadataDebugSnapshot"
       });
       const ACTION_METADATA = Object.freeze({
         [ACTION.READY]: { mutating: true },
@@ -3857,6 +3859,7 @@
         [ACTION.CHECK_FOR_UPDATES]: { mutating: true },
         [ACTION.DOWNLOAD_AND_STAGE_UPDATE]: { mutating: true },
         [ACTION.REINSTALL_CURRENT_VERSION]: { mutating: true },
+        [ACTION.GET_METADATA_DEBUG_SNAPSHOT]: { readOnly: true },
         [ACTION.SYNC_METADATA_JSON_TO_FUSION]: { mutating: true },
         [ACTION.SYNC_METADATA_FUSION_TO_JSON]: { mutating: true },
         [ACTION.REPAIR_METADATA]: { mutating: true }
@@ -8882,15 +8885,19 @@
 
       function renderMetadataDebug(debugData, syncResult = null) {
         const summary = document.getElementById("debugSummary");
+        const timing = document.getElementById("debugMetadataTiming");
         const output = document.getElementById("debugOutput");
         const data = debugData || {};
         const rows = Array.isArray(data.rows) ? data.rows : [];
         const refreshedAt = new Date().toISOString();
         const documentName = (data.document && data.document.name) ? data.document.name : "(untitled)";
         const recordCount = Number(data.recordCount || 0);
-        const docMeta = (data.docMeta && typeof data.docMeta === "object") ? data.docMeta : {};
-        const docMetaVersion = Number(docMeta.docMetaVersion || 0);
-        const fusionNewer = rows.filter((row) => row.latestSource === "fusion").length;
+        const metaParam = (data.metadataParameter && typeof data.metadataParameter === "object") ? data.metadataParameter : {};
+        const metaStatus = (metaParam.status && typeof metaParam.status === "object") ? metaParam.status : {};
+        const readTiming = (metaParam.timing && typeof metaParam.timing === "object") ? metaParam.timing : {};
+        const lastReadTiming = (syncResult && syncResult.readTiming && typeof syncResult.readTiming === "object") ? syncResult.readTiming : readTiming;
+        const lastWriteTiming = (syncResult && syncResult.writeTiming && typeof syncResult.writeTiming === "object") ? syncResult.writeTiming : null;
+        const metadataNewer = rows.filter((row) => row.latestSource === "metadataParameter").length;
         const jsonNewer = rows.filter((row) => row.latestSource === "json").length;
         const equal = rows.filter((row) => row.latestSource === "equal").length;
 
@@ -8919,7 +8926,14 @@
             }
           }
         }
-        summary.textContent = `Doc: ${documentName}. JSON records: ${recordCount}. Doc meta version: ${docMetaVersion}. Fusion newer: ${fusionNewer}. JSON newer: ${jsonNewer}. Equal: ${equal}.${syncText} Refreshed: ${refreshedAt}.`;
+        if (timing) {
+          const readText = `read ${Number(lastReadTiming.readMs || 0).toFixed(3)} ms, process ${Number(lastReadTiming.processMs || 0).toFixed(3)} ms, total ${Number(lastReadTiming.totalMs || 0).toFixed(3)} ms`;
+          const writeText = lastWriteTiming
+            ? ` write process ${Number(lastWriteTiming.processMs || 0).toFixed(3)} ms, commit+verify ${Number(lastWriteTiming.writeMs || 0).toFixed(3)} ms, total ${Number(lastWriteTiming.totalMs || 0).toFixed(3)} ms`
+            : " write not measured";
+          timing.textContent = `Metadata timing: ${readText};${writeText}.`;
+        }
+        summary.textContent = `Doc: ${documentName}. Metadata param: ${metaParam.exists ? "present" : "missing"} (${metaStatus.ok === false ? "invalid" : "ok"}, ${Number(metaStatus.encodedSize || 0)} bytes). JSON records: ${recordCount}. Metadata newer: ${metadataNewer}. JSON newer: ${jsonNewer}. Equal: ${equal}.${syncText} Refreshed: ${refreshedAt}.`;
 
         if (!rows.length) {
           output.textContent = "No user parameters found.";
@@ -8931,13 +8945,16 @@
         const shownRows = rows.slice(0, maxRows);
         lines.push(`refreshedAt | ${refreshedAt}`);
         lines.push("--- | ---");
-        lines.push(`docMetaVersion | ${docMetaVersion}`);
+        lines.push(`metadataParameter | ${metaParam.exists ? "present" : "missing"}`);
+        lines.push(`metadataStatus | ${metaStatus.ok === false ? (metaStatus.error || "invalid") : "ok"}`);
+        lines.push(`metadataRevision | ${Number(metaStatus.revision || 0)}`);
+        lines.push(`metadataEncodedBytes | ${Number(metaStatus.encodedSize || 0)}`);
         lines.push("--- | ---");
-        lines.push("name | latest | fusionGroup | fusionRev | fusionChangedAt | jsonGroup | jsonRev | jsonChangedAt");
+        lines.push("name | latest | metadataGroup | metadataRev | metadataChangedAt | metadataOrder | jsonGroup | jsonRev | jsonChangedAt");
         lines.push("--- | --- | --- | --- | --- | --- | --- | ---");
         shownRows.forEach((row) => {
           lines.push(
-            `${row.name || "-"} | ${row.latestSource || "-"} | ${row.fusionGroup || "-"} | ${Number(row.fusionMetadataRevision || 0)} | ${formatMetadataTimestamp(row.fusionMetadataChangedAt)} | ${row.jsonGroup || "-"} | ${Number(row.jsonMetadataRevision || 0)} | ${formatMetadataTimestamp(row.jsonMetadataChangedAt)}`
+            `${row.name || "-"} | ${row.latestSource || "-"} | ${row.metadataGroup || "-"} | ${Number(row.metadataRevision || 0)} | ${formatMetadataTimestamp(row.metadataChangedAt)} | ${Number(row.metadataOrder ?? -1)} | ${row.jsonGroup || "-"} | ${Number(row.jsonMetadataRevision || 0)} | ${formatMetadataTimestamp(row.jsonMetadataChangedAt)}`
           );
         });
         if (rows.length > maxRows) {
@@ -13025,7 +13042,12 @@
           if (Object.prototype.hasOwnProperty.call(stored, id)) {
             details.open = stored[id] === true;
           }
-          details.addEventListener("toggle", saveDebugHubSectionState);
+          details.addEventListener("toggle", () => {
+            saveDebugHubSectionState();
+            if (id === "debugMetadataSection" && isMetadataDebugVisible()) {
+              void refreshMetadataDebug();
+            }
+          });
         });
       }
 
@@ -13118,6 +13140,9 @@
         applyColumnWidths();
         syncBodyColspansToVisibleColumns();
         scheduleLayoutDebugPanelUpdate();
+        if (next && isMetadataDebugVisible()) {
+          void refreshMetadataDebug();
+        }
       }
 
       function renderAutoOpenToggle() {
@@ -13790,7 +13815,7 @@
             return envelope;
           }
           setGlobalStatus(envelope.message || "Action failed.", "error");
-          if (state.debugMetadataSnapshot) {
+          if (state.debugMetadataSnapshot && isMetadataDebugVisible()) {
             renderMetadataDebug(state.debugMetadataSnapshot, state.lastSyncResult);
           }
           return envelope;
@@ -13877,7 +13902,7 @@
           }
         }
 
-        if (state.debugMetadataSnapshot) {
+        if (state.debugMetadataSnapshot && isMetadataDebugVisible()) {
           renderMetadataDebug(state.debugMetadataSnapshot, state.lastSyncResult);
         }
 
@@ -15697,15 +15722,30 @@
       }
 
       async function refreshMetadataDebug() {
-        if (state.debugMetadataSnapshot) {
-          renderMetadataDebug(state.debugMetadataSnapshot, state.lastSyncResult);
-          setGlobalStatus("Metadata debug refreshed from latest sync result.", "success");
+        if (!isMetadataDebugVisible()) {
+          setGlobalStatus("Open Debug Hub > Metadata to measure metadata timing.", "warning");
           return;
         }
-        setGlobalStatus("Metadata debug is populated by sync/repair actions.", "warning");
+        try {
+          const response = await sendToFusion(ACTION.GET_METADATA_DEBUG_SNAPSHOT);
+          if (!response.ok) {
+            throw new Error(response.message || "Metadata debug refresh failed.");
+          }
+          if (response.debugMetadata && typeof response.debugMetadata === "object") {
+            state.debugMetadataSnapshot = response.debugMetadata;
+            renderMetadataDebug(response.debugMetadata, state.lastSyncResult);
+          }
+          setGlobalStatus("Metadata debug refreshed.", "success");
+        } catch (error) {
+          setGlobalStatus(error.message, "error");
+        }
       }
 
       async function runMetadataSync(action, successMessage) {
+        if (!isMetadataDebugVisible()) {
+          setGlobalStatus("Open Debug Hub > Metadata before running metadata debug actions.", "warning");
+          return;
+        }
         try {
           const response = await sendToFusion(action);
           if (!response.ok) {
@@ -15721,6 +15761,12 @@
       function isSettingsPanelOpen() {
         const panel = document.getElementById("settingsPanel");
         return !!(panel && !panel.hidden);
+      }
+
+      function isMetadataDebugVisible() {
+        const panel = document.getElementById("layoutDebugSidebar");
+        const section = document.getElementById("debugMetadataSection");
+        return !!(panel && !panel.hidden && section && section.open === true);
       }
 
       function setSettingsPanelOpen(isOpen) {
@@ -15788,18 +15834,21 @@
 
       const debugRefreshButton = document.getElementById("debugRefreshButton");
       if (debugRefreshButton) {
-        debugRefreshButton.disabled = true;
-        debugRefreshButton.title = "Debug metadata updates from sync/repair actions.";
+        debugRefreshButton.disabled = false;
+        debugRefreshButton.title = "Measure and refresh metadata parameter debug data.";
+        debugRefreshButton.addEventListener("click", async () => {
+          await refreshMetadataDebug();
+        });
       }
 
       document.getElementById("debugJsonToFusionButton").addEventListener("click", async () => {
-        setGlobalStatus("Syncing JSON metadata to Fusion attributes...");
-        await runMetadataSync(ACTION.SYNC_METADATA_JSON_TO_FUSION, "Metadata synced: JSON -> Fusion.");
+        setGlobalStatus("Syncing local JSON metadata to the Fusion metadata parameter...");
+        await runMetadataSync(ACTION.SYNC_METADATA_JSON_TO_FUSION, "Metadata synced: JSON -> metadata parameter.");
       });
 
       document.getElementById("debugFusionToJsonButton").addEventListener("click", async () => {
-        setGlobalStatus("Syncing Fusion metadata to JSON...");
-        await runMetadataSync(ACTION.SYNC_METADATA_FUSION_TO_JSON, "Metadata synced: Fusion -> JSON.");
+        setGlobalStatus("Syncing Fusion metadata parameter to local JSON...");
+        await runMetadataSync(ACTION.SYNC_METADATA_FUSION_TO_JSON, "Metadata synced: metadata parameter -> JSON.");
       });
 
       document.getElementById("debugRepairButton").addEventListener("click", async () => {

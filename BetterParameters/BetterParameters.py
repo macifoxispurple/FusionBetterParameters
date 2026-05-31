@@ -1,3 +1,4 @@
+import base64
 import csv
 import ctypes
 import io
@@ -18,6 +19,7 @@ import urllib.request
 import uuid
 import webbrowser
 import zipfile
+import zlib
 from pathlib import Path
 
 import adsk.core
@@ -66,6 +68,11 @@ ATTRIBUTE_METADATA_WRITER_VERSION_NAME = "metadataWriterVersion"
 ATTRIBUTE_DOCUMENT_METADATA_MAP_NAME = "parameterMetadataMap"
 ATTRIBUTE_DOCUMENT_METADATA_STATE_NAME = "metadataState"
 ATTRIBUTE_DOCUMENT_METADATA_ITEM_NAMESPACE = "BetterParametersMeta"
+METADATA_PARAMETER_NAME = "_bp_metadata_v1"
+METADATA_COMMENT_PREFIX = "BPM1Z:"
+METADATA_COMMENT_SOFT_WARNING_BYTES = 64 * 1024
+METADATA_COMMENT_STRONG_WARNING_BYTES = 128 * 1024
+METADATA_COMMENT_HARD_LIMIT_BYTES = 256 * 1024
 GROUP_UNGROUPED_LABEL = "Ungrouped"
 MAX_GROUP_NAME_LENGTH = 80
 METADATA_CHANGED_AT_RECORD_KEY = "metadata_changed_at"
@@ -649,18 +656,11 @@ def _build_user_parameter_row_patch(token_or_name):
         return None
     units_manager = design.unitsManager
     order_state = _sync_ui_state_between_local_and_fusion(design, _read_document_order_state())
+    metadata_model = _metadata_model_for_current_document(design, order_state)
     saved_records = _resolve_document_order_records(design, order_state.get("parameters") or {})
     parameter_key = _parameter_entity_token(param)
     saved_record = saved_records.get(parameter_key) or {}
-    fusion_payload = _parameter_metadata_payload(param)
-    json_payload = _normalized_metadata_payload(
-        group_name=saved_record.get("group") or "",
-        metadata_changed_at=saved_record.get(METADATA_CHANGED_AT_RECORD_KEY),
-        revision=saved_record.get(METADATA_REVISION_RECORD_KEY),
-        writer_id=saved_record.get(METADATA_WRITER_ID_RECORD_KEY),
-        writer_version=saved_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
-    )
-    latest_payload = _choose_latest_metadata(fusion_payload, json_payload)
+    latest_payload = _metadata_payload_for_token(metadata_model, parameter_key, saved_record)
     row = {
         "key": parameter_key,
         "name": param.name,
@@ -1029,13 +1029,15 @@ def _current_state_payload(settings=None):
     active_settings = settings if settings is not None else _load_settings()
     design = _design()
     order_state = _sync_ui_state_between_local_and_fusion(design, _read_document_order_state()) if design else _read_document_order_state()
-    parameters = _collect_user_parameters(order_state)
+    metadata_model = _metadata_model_for_current_document(design, order_state) if design else _empty_metadata_model()
+    parameters = _collect_user_parameters(order_state, metadata_model)
+    group_ui = metadata_model.get("groupUi") if metadata_model.get("source") == "metadataParameter" else order_state.get("groupUi", {"order": [], "collapsed": {}})
     payload = {
         "ok": True,
         "apiVersion": 1,
         "parameters": parameters,
         "groups": _collect_parameter_groups(parameters),
-        "groupUi": order_state.get("groupUi", {"order": [], "collapsed": {}}),
+        "groupUi": _normalized_group_ui_state(group_ui),
         "parameterNames": _collect_all_parameter_names(),
         "settings": active_settings,
         "document": _active_document_info(),
@@ -1046,6 +1048,7 @@ def _current_state_payload(settings=None):
         "textTunerState": _load_text_tuner_state(),
         "fusionTheme": _detect_fusion_theme(),
         "updateInfo": _build_update_info_payload(active_settings),
+        "metadataStatus": metadata_model.get("status", _metadata_status("none", True)),
     }
     elapsed_ms = round((time.perf_counter() - perf_start) * 1000.0, 3)
     _perf_log("current_state_payload", elapsed_ms=elapsed_ms, parameter_count=len(parameters))
@@ -1082,7 +1085,7 @@ def _design():
     return adsk.fusion.Design.cast(product)
 
 
-def _collect_user_parameters(order_state=None):
+def _collect_user_parameters(order_state=None, metadata_model=None):
     design = _design()
     if not design:
         return []
@@ -1090,28 +1093,29 @@ def _collect_user_parameters(order_state=None):
     units_manager = design.unitsManager
     if order_state is None:
         order_state = _sync_ui_state_between_local_and_fusion(design, _read_document_order_state())
+    if metadata_model is None:
+        metadata_model = _metadata_model_for_current_document(design, order_state)
     saved_records = _resolve_document_order_records(design, order_state.get("parameters") or {})
+    metadata_order = {
+        token: index for index, token in enumerate(metadata_model.get("orderedTokens") or [])
+    }
     results = []
     params = design.userParameters
     for index in range(params.count):
         param = params.item(index)
         if not param:
             continue
+        if _is_metadata_parameter(param):
+            continue
 
         parameter_key = _parameter_entity_token(param)
         saved_record = saved_records.get(parameter_key) or {}
-        sort_order = saved_record.get("order")
+        sort_order = metadata_order.get(parameter_key)
+        if not isinstance(sort_order, int):
+            sort_order = saved_record.get("order")
         if not isinstance(sort_order, int):
             sort_order = params.count + index
-        fusion_payload = _parameter_metadata_payload(param)
-        json_payload = _normalized_metadata_payload(
-            group_name=saved_record.get("group") or "",
-            metadata_changed_at=saved_record.get(METADATA_CHANGED_AT_RECORD_KEY),
-            revision=saved_record.get(METADATA_REVISION_RECORD_KEY),
-            writer_id=saved_record.get(METADATA_WRITER_ID_RECORD_KEY),
-            writer_version=saved_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
-        )
-        latest_payload = _choose_latest_metadata(fusion_payload, json_payload)
+        latest_payload = _metadata_payload_for_token(metadata_model, parameter_key, saved_record)
         display_group = _normalize_group_name(latest_payload.get("group") or saved_record.get("group") or "")
 
         results.append(
@@ -1152,6 +1156,8 @@ def _collect_user_parameters_from_design(design):
         param = params.item(index)
         if not param:
             continue
+        if _is_metadata_parameter(param):
+            continue
         results.append({
             "name": str(param.name or ""),
             "expression": _normalize_text_expression_for_ui(param.expression, param.unit),
@@ -1189,6 +1195,8 @@ def _collect_all_parameter_names():
     for index in range(params.count):
         param = params.item(index)
         if not param or not param.name:
+            continue
+        if _is_metadata_parameter(param):
             continue
         names.append(param.name)
 
@@ -1590,6 +1598,636 @@ def _parameter_entity_token(param):
         return param.entityToken or param.name or ""
     except Exception:
         return getattr(param, "name", "") or ""
+
+
+def _metadata_parameter_name():
+    return METADATA_PARAMETER_NAME
+
+
+def _is_metadata_parameter(param):
+    try:
+        return str(getattr(param, "name", "") or "") == METADATA_PARAMETER_NAME
+    except Exception:
+        return False
+
+
+def _find_metadata_parameter(design):
+    if not design:
+        return None
+    params = getattr(design, "userParameters", None)
+    if not params:
+        return None
+    try:
+        found = params.itemByName(METADATA_PARAMETER_NAME)
+        if found:
+            return found
+    except Exception:
+        pass
+    try:
+        for index in range(params.count):
+            candidate = params.item(index)
+            if _is_metadata_parameter(candidate):
+                return candidate
+    except Exception:
+        pass
+    return None
+
+
+def _ensure_metadata_parameter(design):
+    existing = _find_metadata_parameter(design)
+    if existing:
+        return existing
+    if not design:
+        return None
+    value_input = adsk.core.ValueInput.createByString("0")
+    created = design.userParameters.add(METADATA_PARAMETER_NAME, value_input, "", "")
+    if created:
+        try:
+            _assign_if_changed(created, "isFavorite", False)
+        except Exception:
+            pass
+    return created
+
+
+def _reject_reserved_parameter(parameter):
+    if _is_metadata_parameter(parameter):
+        raise ValueError(f'"{METADATA_PARAMETER_NAME}" is reserved for Better Parameters metadata.')
+
+
+def _canonical_metadata_json(payload):
+    return json.dumps(payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+
+
+def _encode_metadata_comment(payload):
+    raw = _canonical_metadata_json(payload)
+    hash_hex = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    compressed = zlib.compress(raw.encode("utf-8"), level=6)
+    encoded = base64.b64encode(compressed).decode("ascii")
+    return f"{METADATA_COMMENT_PREFIX}{hash_hex}:{encoded}"
+
+
+def _decode_metadata_comment(comment):
+    comment_text = str(comment or "")
+    if not comment_text.strip():
+        return {"ok": False, "error": "missing metadata payload", "payload": None}
+    if comment_text.lstrip().startswith("{"):
+        try:
+            payload = json.loads(comment_text)
+        except Exception as exc:
+            return {"ok": False, "error": f"invalid plain JSON metadata payload: {exc}", "payload": None}
+        validation = _validate_metadata_payload(payload)
+        if not validation.get("ok"):
+            return validation
+        return {"ok": True, "payload": payload, "format": "json"}
+    if not comment_text.startswith(METADATA_COMMENT_PREFIX):
+        return {"ok": False, "error": "unsupported metadata payload prefix", "payload": None}
+    body = comment_text[len(METADATA_COMMENT_PREFIX):]
+    hash_hex, sep, encoded = body.partition(":")
+    if sep != ":" or not re.fullmatch(r"[0-9a-fA-F]{64}", hash_hex or ""):
+        return {"ok": False, "error": "invalid metadata hash header", "payload": None}
+    try:
+        compressed = base64.b64decode(encoded.encode("ascii"), validate=True)
+        raw_bytes = zlib.decompress(compressed)
+        raw_json = raw_bytes.decode("utf-8")
+    except Exception as exc:
+        return {"ok": False, "error": f"metadata decode failed: {exc}", "payload": None}
+    actual_hash = hashlib.sha256(raw_json.encode("utf-8")).hexdigest()
+    if actual_hash.lower() != hash_hex.lower():
+        return {"ok": False, "error": "metadata hash mismatch", "payload": None}
+    try:
+        payload = json.loads(raw_json)
+    except Exception as exc:
+        return {"ok": False, "error": f"metadata JSON parse failed: {exc}", "payload": None}
+    validation = _validate_metadata_payload(payload)
+    if not validation.get("ok"):
+        return validation
+    return {"ok": True, "payload": payload, "format": "BPM1Z"}
+
+
+def _validate_metadata_payload(payload):
+    if not isinstance(payload, dict):
+        return {"ok": False, "error": "metadata payload must be an object", "payload": None}
+    if int(payload.get("s") or 0) != 1:
+        return {"ok": False, "error": "unsupported metadata schema", "payload": None}
+    if not isinstance(payload.get("p", []), list):
+        return {"ok": False, "error": "metadata parameter records must be an array", "payload": None}
+    if not isinstance(payload.get("g", []), list):
+        return {"ok": False, "error": "metadata groups must be an array", "payload": None}
+    return {"ok": True, "payload": payload}
+
+
+def _metadata_status(source, ok, revision=0, encoded_size=0, warning="", error=""):
+    return {
+        "source": source,
+        "ok": bool(ok),
+        "revision": _metadata_revision_value(revision),
+        "encodedSize": int(encoded_size or 0),
+        "warning": str(warning or ""),
+        "error": str(error or ""),
+    }
+
+
+def _empty_metadata_model(status=None):
+    return {
+        "schema": 1,
+        "revision": 0,
+        "changedAt": 0,
+        "writerId": "",
+        "writerVersion": "",
+        "groupsByToken": {},
+        "orderedTokens": [],
+        "groupUi": {"order": [], "collapsed": {}},
+        "source": "none",
+        "status": status or _metadata_status("none", True),
+    }
+
+
+def _group_id_for_name(group_name):
+    normalized = _normalize_group_name(group_name or "")
+    if not normalized:
+        return ""
+    return f"u:{normalized.casefold()}"
+
+
+def _metadata_model_from_payload(payload, status=None):
+    validation = _validate_metadata_payload(payload)
+    if not validation.get("ok"):
+        model = _empty_metadata_model(_metadata_status("metadataParameter", False, error=validation.get("error") or "invalid metadata payload"))
+        return model
+
+    groups = []
+    for group in payload.get("g") or []:
+        normalized = _normalize_group_name(group or "")
+        if normalized and normalized not in groups:
+            groups.append(normalized)
+
+    groups_by_token = {}
+    ordered_tokens = []
+    seen = set()
+    for record in payload.get("p") or []:
+        if not isinstance(record, list) or not record:
+            continue
+        token = str(record[0] or "").strip()
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        ordered_tokens.append(token)
+        group_index = -1
+        if len(record) > 1:
+            try:
+                group_index = int(record[1])
+            except Exception:
+                group_index = -1
+        if 0 <= group_index < len(groups):
+            groups_by_token[token] = groups[group_index]
+
+    model = _empty_metadata_model(status)
+    model.update({
+        "revision": _metadata_revision_value(payload.get("r")),
+        "changedAt": _metadata_changed_at_value(payload.get("t")),
+        "writerId": _metadata_writer_id_value(payload.get("w")),
+        "writerVersion": _metadata_writer_version_value(payload.get("wv")),
+        "groupsByToken": groups_by_token,
+        "orderedTokens": ordered_tokens,
+        "groupUi": _normalized_group_ui_state({
+            "order": payload.get("go") or [],
+            "collapsed": {group_id: True for group_id in (payload.get("gc") or []) if isinstance(group_id, str) and group_id},
+        }),
+        "source": (status or {}).get("source") or "metadataParameter",
+        "status": status or _metadata_status("metadataParameter", True, revision=payload.get("r")),
+    })
+    return model
+
+
+def _payload_from_metadata_model(model):
+    normalized = model if isinstance(model, dict) else {}
+    groups_by_token = normalized.get("groupsByToken") if isinstance(normalized.get("groupsByToken"), dict) else {}
+    ordered = [str(token or "").strip() for token in (normalized.get("orderedTokens") or []) if str(token or "").strip()]
+    seen = set()
+    final_order = []
+    for token in ordered + [token for token in groups_by_token.keys() if token not in ordered]:
+        if token and token not in seen:
+            seen.add(token)
+            final_order.append(token)
+
+    group_names = []
+    group_index_by_name = {}
+    records = []
+    for token in final_order:
+        group_name = _normalize_group_name(groups_by_token.get(token) or "")
+        group_index = -1
+        if group_name:
+            folded = group_name.casefold()
+            if folded not in group_index_by_name:
+                group_index_by_name[folded] = len(group_names)
+                group_names.append(group_name)
+            group_index = group_index_by_name[folded]
+        records.append([token, group_index])
+
+    group_ui = _normalized_group_ui_state(normalized.get("groupUi"))
+    collapsed = [
+        group_id for group_id, is_collapsed in (group_ui.get("collapsed") or {}).items()
+        if is_collapsed
+    ]
+    payload = {
+        "s": 1,
+        "r": _metadata_revision_value(normalized.get("revision")),
+        "t": _metadata_changed_at_value(normalized.get("changedAt")),
+        "w": _metadata_writer_id_value(normalized.get("writerId")),
+        "wv": _metadata_writer_version_value(normalized.get("writerVersion")),
+        "g": group_names,
+        "p": records,
+    }
+    if group_ui.get("order"):
+        payload["go"] = list(group_ui.get("order") or [])
+    if collapsed:
+        payload["gc"] = collapsed
+    return payload
+
+
+def _metadata_model_from_legacy_fusion_metadata(design, order_state):
+    model = _empty_metadata_model(_metadata_status("legacyFusion", True))
+    if not design:
+        return model
+    records = _resolve_document_order_records(design, (order_state or {}).get("parameters") or {})
+    params = design.userParameters
+    ordered = []
+    groups_by_token = {}
+    sortable = []
+    max_revision = 0
+    max_changed_at = 0
+    writer_id = ""
+    writer_version = ""
+    for index in range(params.count):
+        parameter = params.item(index)
+        if not parameter or _is_metadata_parameter(parameter):
+            continue
+        token = _parameter_entity_token(parameter)
+        if not token:
+            continue
+        legacy_payload = _choose_latest_metadata(
+            _parameter_metadata_payload(parameter),
+            _document_metadata_entry(design, parameter),
+        )
+        if not _legacy_metadata_payload_has_data(legacy_payload):
+            continue
+        record = records.get(token) if isinstance(records.get(token), dict) else {}
+        group_name = _normalize_group_name(legacy_payload.get("group") or "")
+        if group_name:
+            groups_by_token[token] = group_name
+        max_revision = max(max_revision, _metadata_revision_value(legacy_payload.get(METADATA_REVISION_RECORD_KEY)))
+        max_changed_at = max(max_changed_at, _metadata_changed_at_value(legacy_payload.get(METADATA_CHANGED_AT_RECORD_KEY)))
+        writer_id = writer_id or _metadata_writer_id_value(legacy_payload.get(METADATA_WRITER_ID_RECORD_KEY))
+        writer_version = writer_version or _metadata_writer_version_value(legacy_payload.get(METADATA_WRITER_VERSION_RECORD_KEY))
+        order_value = record.get("order") if isinstance(record.get("order"), int) else params.count + index
+        sortable.append((order_value, index, token))
+    ordered = [token for _, _, token in sorted(sortable)]
+    model.update({
+        "revision": max_revision,
+        "changedAt": max_changed_at,
+        "writerId": writer_id,
+        "writerVersion": writer_version,
+        "groupsByToken": groups_by_token,
+        "orderedTokens": ordered,
+        "groupUi": _normalized_group_ui_state((order_state or {}).get("groupUi")),
+        "source": "legacyFusion",
+        "status": _metadata_status("legacyFusion", True, revision=max_revision),
+    })
+    return model
+
+
+def _legacy_metadata_payload_has_data(payload):
+    payload = payload if isinstance(payload, dict) else {}
+    return bool(
+        _normalize_group_name(payload.get("group") or "")
+        or _metadata_changed_at_value(payload.get(METADATA_CHANGED_AT_RECORD_KEY)) > 0
+        or _metadata_revision_value(payload.get(METADATA_REVISION_RECORD_KEY)) > 0
+    )
+
+
+def _legacy_fusion_metadata_exists(design):
+    if not design:
+        return False
+    if _read_document_metadata_map(design):
+        return True
+    legacy_state = _read_document_metadata_state(design)
+    if (
+        _metadata_revision_value(legacy_state.get("docMetaVersion")) > 0
+        or legacy_state.get("parameterOrder")
+        or _normalized_group_ui_state(legacy_state.get("groupUi")) != {"order": [], "collapsed": {}}
+    ):
+        return True
+    params = design.userParameters
+    for index in range(params.count):
+        parameter = params.item(index)
+        if not parameter or _is_metadata_parameter(parameter):
+            continue
+        if _legacy_metadata_payload_has_data(_parameter_metadata_payload(parameter)):
+            return True
+    return False
+
+
+def _delete_attribute_if_present(attributes, namespace, name):
+    if attributes is None:
+        return False
+    try:
+        attribute = attributes.itemByName(namespace, name)
+    except Exception:
+        attribute = None
+    if attribute is None:
+        return False
+    try:
+        attribute.deleteMe()
+        return True
+    except Exception:
+        try:
+            attribute.value = ""
+            return True
+        except Exception:
+            return False
+
+
+def _cleanup_legacy_fusion_metadata(design):
+    if not design:
+        return {"deletedCount": 0, "failedCount": 0}
+    deleted = 0
+    failed = 0
+    params = design.userParameters
+    for index in range(params.count):
+        parameter = params.item(index)
+        if not parameter or _is_metadata_parameter(parameter):
+            continue
+        attributes = getattr(parameter, "attributes", None)
+        for name in (
+            ATTRIBUTE_PARAMETER_GROUP_NAME,
+            ATTRIBUTE_METADATA_CHANGED_AT_NAME,
+            ATTRIBUTE_METADATA_REVISION_NAME,
+            ATTRIBUTE_METADATA_WRITER_ID_NAME,
+            ATTRIBUTE_METADATA_WRITER_VERSION_NAME,
+        ):
+            if _delete_attribute_if_present(attributes, ATTRIBUTE_NAMESPACE, name):
+                deleted += 1
+    for owner in _document_metadata_owner_candidates(design):
+        attributes = getattr(owner, "attributes", None)
+        for namespace, name in (
+            (ATTRIBUTE_NAMESPACE, ATTRIBUTE_DOCUMENT_METADATA_MAP_NAME),
+            (ATTRIBUTE_NAMESPACE, ATTRIBUTE_DOCUMENT_METADATA_STATE_NAME),
+        ):
+            if _delete_attribute_if_present(attributes, namespace, name):
+                deleted += 1
+        try:
+            # Fusion has no namespace enumeration in this add-in's test stubs; delete
+            # known per-parameter document-item names derived from current tokens.
+            for index in range(params.count):
+                parameter = params.item(index)
+                if not parameter or _is_metadata_parameter(parameter):
+                    continue
+                item_name = _document_metadata_item_name(_parameter_entity_token(parameter))
+                if _delete_attribute_if_present(attributes, ATTRIBUTE_DOCUMENT_METADATA_ITEM_NAMESPACE, item_name):
+                    deleted += 1
+        except Exception:
+            failed += 1
+    return {"deletedCount": deleted, "failedCount": failed}
+
+
+def _migrate_legacy_fusion_metadata_to_parameter(design, order_state=None):
+    if not design or _find_metadata_parameter(design) is not None or not _legacy_fusion_metadata_exists(design):
+        return None
+    model = _metadata_model_from_legacy_fusion_metadata(design, order_state or _read_document_order_state())
+    written_model = _write_metadata_parameter_model(design, model, allow_overwrite_corrupt=False, skip_legacy_migration=True)
+    cleanup = _cleanup_legacy_fusion_metadata(design)
+    written_model["migration"] = {
+        "source": "legacyFusion",
+        "cleanup": cleanup,
+    }
+    return written_model
+
+
+def _metadata_model_from_local_json(design, order_state):
+    model = _empty_metadata_model(_metadata_status("localJson", True))
+    if not design:
+        return model
+    records = _resolve_document_order_records(design, (order_state or {}).get("parameters") or {})
+    params = design.userParameters
+    sortable = []
+    groups_by_token = {}
+    max_revision = 0
+    max_changed_at = 0
+    writer_id = ""
+    writer_version = ""
+    for index in range(params.count):
+        parameter = params.item(index)
+        if not parameter or _is_metadata_parameter(parameter):
+            continue
+        token = _parameter_entity_token(parameter)
+        if not token:
+            continue
+        record = records.get(token) if isinstance(records.get(token), dict) else {}
+        group_name = _normalize_group_name(record.get("group") or "")
+        if group_name:
+            groups_by_token[token] = group_name
+        max_revision = max(max_revision, _metadata_revision_value(record.get(METADATA_REVISION_RECORD_KEY)))
+        max_changed_at = max(max_changed_at, _metadata_changed_at_value(record.get(METADATA_CHANGED_AT_RECORD_KEY)))
+        writer_id = writer_id or _metadata_writer_id_value(record.get(METADATA_WRITER_ID_RECORD_KEY))
+        writer_version = writer_version or _metadata_writer_version_value(record.get(METADATA_WRITER_VERSION_RECORD_KEY))
+        order_value = record.get("order") if isinstance(record.get("order"), int) else params.count + index
+        sortable.append((order_value, index, token))
+    model.update({
+        "revision": max_revision,
+        "changedAt": max_changed_at,
+        "writerId": writer_id,
+        "writerVersion": writer_version,
+        "groupsByToken": groups_by_token,
+        "orderedTokens": [token for _, _, token in sorted(sortable)],
+        "groupUi": _normalized_group_ui_state((order_state or {}).get("groupUi")),
+        "source": "localJson",
+        "status": _metadata_status("localJson", True, revision=max_revision),
+    })
+    return model
+
+
+def _read_metadata_parameter_payload(design):
+    parameter = _find_metadata_parameter(design)
+    if not parameter:
+        return {"ok": False, "status": _metadata_status("none", True), "payload": None, "parameter": None}
+    comment = str(getattr(parameter, "comment", "") or "")
+    decoded = _decode_metadata_comment(comment)
+    encoded_size = len(comment.encode("utf-8"))
+    if not decoded.get("ok"):
+        return {
+            "ok": False,
+            "status": _metadata_status("metadataParameter", False, encoded_size=encoded_size, error=decoded.get("error") or "invalid metadata payload"),
+            "payload": None,
+            "parameter": parameter,
+        }
+    payload = decoded.get("payload") or {}
+    warning = ""
+    if encoded_size > METADATA_COMMENT_STRONG_WARNING_BYTES:
+        warning = "metadata payload exceeds 128 KiB"
+    elif encoded_size > METADATA_COMMENT_SOFT_WARNING_BYTES:
+        warning = "metadata payload exceeds 64 KiB"
+    return {
+        "ok": True,
+        "status": _metadata_status("metadataParameter", True, revision=payload.get("r"), encoded_size=encoded_size, warning=warning),
+        "payload": payload,
+        "parameter": parameter,
+    }
+
+
+def _timed_metadata_parameter_model_read(design):
+    timing = {"readMs": 0.0, "processMs": 0.0, "totalMs": 0.0}
+    total_start = time.perf_counter()
+    read_start = time.perf_counter()
+    read_result = _read_metadata_parameter_payload(design)
+    timing["readMs"] = round((time.perf_counter() - read_start) * 1000.0, 3)
+
+    process_start = time.perf_counter()
+    if read_result.get("ok"):
+        model = _metadata_model_from_payload(read_result.get("payload") or {}, read_result.get("status"))
+    else:
+        model = _empty_metadata_model(read_result.get("status") or _metadata_status("none", True))
+    timing["processMs"] = round((time.perf_counter() - process_start) * 1000.0, 3)
+    timing["totalMs"] = round((time.perf_counter() - total_start) * 1000.0, 3)
+    return {
+        "ok": bool(read_result.get("ok")),
+        "model": model,
+        "status": read_result.get("status") or model.get("status") or _metadata_status("none", True),
+        "parameterExists": read_result.get("parameter") is not None,
+        "timing": timing,
+    }
+
+
+def _metadata_model_for_current_document(design, order_state=None, allow_legacy=True):
+    read_result = _read_metadata_parameter_payload(design)
+    if read_result.get("ok"):
+        model = _metadata_model_from_payload(read_result.get("payload") or {}, read_result.get("status"))
+        _apply_metadata_model_to_local_cache(design, model, order_state)
+        return model
+    if read_result.get("parameter") is not None and not read_result.get("ok"):
+        return _empty_metadata_model(read_result.get("status") or _metadata_status("metadataParameter", False))
+    if allow_legacy:
+        migrated_model = _migrate_legacy_fusion_metadata_to_parameter(design, order_state)
+        if migrated_model:
+            return migrated_model
+    return _metadata_model_from_local_json(design, order_state or _read_document_order_state())
+
+
+def _prepare_metadata_model_for_write(design, model):
+    next_model = dict(model or _empty_metadata_model())
+    existing = _read_metadata_parameter_payload(design)
+    existing_revision = 0
+    if existing.get("ok"):
+        existing_revision = _metadata_revision_value((existing.get("payload") or {}).get("r"))
+    else:
+        existing_revision = _metadata_revision_value(next_model.get("revision"))
+    next_model["revision"] = existing_revision + 1
+    next_model["changedAt"] = _now_metadata_timestamp_ms()
+    next_model["writerId"] = _current_writer_id()
+    next_model["writerVersion"] = _current_writer_version()
+    next_model["source"] = "metadataParameter"
+    return next_model
+
+
+def _write_metadata_parameter_model(design, model, timing=None, allow_overwrite_corrupt=False, skip_legacy_migration=False):
+    if not design:
+        raise ValueError("No Fusion design is active.")
+    existing_read = _read_metadata_parameter_payload(design)
+    if existing_read.get("parameter") is not None and not existing_read.get("ok") and not allow_overwrite_corrupt:
+        status = existing_read.get("status") or {}
+        raise ValueError(f"Better Parameters metadata parameter is corrupt: {status.get('error') or 'invalid payload'}")
+    process_start = time.perf_counter()
+    next_model = _prepare_metadata_model_for_write(design, model)
+    payload = _payload_from_metadata_model(next_model)
+    comment = _encode_metadata_comment(payload)
+    encoded_size = len(comment.encode("utf-8"))
+    if encoded_size > METADATA_COMMENT_HARD_LIMIT_BYTES:
+        raise ValueError("Better Parameters metadata is too large to store safely in the Fusion file.")
+    if isinstance(timing, dict):
+        timing["processMs"] = round((time.perf_counter() - process_start) * 1000.0, 3)
+    write_start = time.perf_counter()
+    parameter = _ensure_metadata_parameter(design)
+    if not parameter:
+        raise ValueError("Could not create Better Parameters metadata parameter.")
+    if not _string_values_equal(getattr(parameter, "comment", ""), comment):
+        parameter.comment = comment
+    verify = _decode_metadata_comment(str(getattr(parameter, "comment", "") or ""))
+    if not verify.get("ok"):
+        raise ValueError(f"Metadata parameter write verification failed: {verify.get('error') or 'unknown error'}")
+    verified_payload = verify.get("payload") or {}
+    if hashlib.sha256(_canonical_metadata_json(verified_payload).encode("utf-8")).hexdigest() != hashlib.sha256(_canonical_metadata_json(payload).encode("utf-8")).hexdigest():
+        raise ValueError("Metadata parameter write verification failed: payload mismatch.")
+    if isinstance(timing, dict):
+        timing["writeMs"] = round((time.perf_counter() - write_start) * 1000.0, 3)
+        timing["totalMs"] = round(float(timing.get("processMs") or 0.0) + float(timing.get("writeMs") or 0.0), 3)
+    written_model = _metadata_model_from_payload(payload, _metadata_status("metadataParameter", True, revision=payload.get("r"), encoded_size=encoded_size))
+    _apply_metadata_model_to_local_cache(design, written_model, _read_document_order_state())
+    return written_model
+
+
+def _apply_metadata_model_to_local_cache(design, model, order_state=None):
+    if not design or not isinstance(model, dict) or model.get("source") != "metadataParameter":
+        return False
+    current_state = order_state if isinstance(order_state, dict) else _read_document_order_state()
+    records = _resolve_document_order_records(design, current_state.get("parameters") or {})
+    params = design.userParameters
+    ordered_tokens = list(model.get("orderedTokens") or [])
+    order_index = {token: index for index, token in enumerate(ordered_tokens)}
+    groups_by_token = model.get("groupsByToken") if isinstance(model.get("groupsByToken"), dict) else {}
+    next_records = {}
+    for index in range(params.count):
+        parameter = params.item(index)
+        if not parameter or _is_metadata_parameter(parameter):
+            continue
+        token = _parameter_entity_token(parameter)
+        if not token:
+            continue
+        existing = records.get(token) if isinstance(records.get(token), dict) else {}
+        order_value = order_index.get(token)
+        if not isinstance(order_value, int):
+            order_value = existing.get("order") if isinstance(existing.get("order"), int) else params.count + index
+        next_records[token] = {
+            "order": order_value,
+            "name": str(parameter.name or ""),
+            "current_expression": str(existing.get("current_expression") or parameter.expression or ""),
+            "previous_expression": str(existing.get("previous_expression") or ""),
+            "current_value": str(existing.get("current_value") or _format_parameter_value(parameter, design.unitsManager)),
+            "previous_value": str(existing.get("previous_value") or ""),
+            "group": _normalize_group_name(groups_by_token.get(token) or ""),
+            METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(model.get("changedAt")),
+            METADATA_REVISION_RECORD_KEY: _metadata_revision_value(model.get("revision")),
+            METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(model.get("writerId")),
+            METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(model.get("writerVersion")),
+        }
+    next_state = {
+        "documentId": current_state.get("documentId", ""),
+        "documentName": current_state.get("documentName", ""),
+        "parameters": next_records,
+        "groupUi": _normalized_group_ui_state(model.get("groupUi")),
+        UI_STATE_RECORD_KEY: _normalized_ui_state_record(current_state.get(UI_STATE_RECORD_KEY)),
+    }
+    if current_state == next_state:
+        return False
+    _write_document_order_state(next_state)
+    return True
+
+
+def _metadata_payload_for_token(metadata_model, token, saved_record=None):
+    saved_record = saved_record if isinstance(saved_record, dict) else {}
+    if isinstance(metadata_model, dict) and metadata_model.get("source") == "metadataParameter":
+        return _normalized_metadata_payload(
+            group_name=(metadata_model.get("groupsByToken") or {}).get(token) or "",
+            metadata_changed_at=metadata_model.get("changedAt"),
+            revision=metadata_model.get("revision"),
+            writer_id=metadata_model.get("writerId"),
+            writer_version=metadata_model.get("writerVersion"),
+        )
+    return _normalized_metadata_payload(
+        group_name=saved_record.get("group") or "",
+        metadata_changed_at=saved_record.get(METADATA_CHANGED_AT_RECORD_KEY),
+        revision=saved_record.get(METADATA_REVISION_RECORD_KEY),
+        writer_id=saved_record.get(METADATA_WRITER_ID_RECORD_KEY),
+        writer_version=saved_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
+    )
 
 
 def _component_entity_token(comp):
@@ -2480,6 +3118,8 @@ def _update_parameter(data):
         parameter = design.userParameters.itemByName(name)
     if not parameter:
         raise ValueError("User parameter was not found.")
+    _reject_reserved_parameter(parameter)
+    _reject_reserved_parameter(parameter)
 
     expression_for_fusion = _normalize_expression_for_fusion(expression, str(parameter.unit or ""))
     _assign_if_changed(parameter, "expression", expression_for_fusion)
@@ -2526,6 +3166,9 @@ def _batch_update_parameters(data):
                 "name": rec_name or rec_key,
                 "message": "Parameter not found.",
             })
+            continue
+        if _is_metadata_parameter(param):
+            failed_rows.append({"name": rec_name or rec_key, "message": f'"{METADATA_PARAMETER_NAME}" is reserved for Better Parameters metadata.'})
             continue
 
         expression_for_fusion = _normalize_expression_for_fusion(expression, str(param.unit or ""))
@@ -2614,6 +3257,7 @@ def _revert_parameter(data):
         parameter = design.userParameters.itemByName(name)
     if not parameter:
         raise ValueError("User parameter was not found.")
+    _reject_reserved_parameter(parameter)
 
     order_state = _read_document_order_state()
     stored_records = _resolve_document_order_records(design, order_state.get("parameters") or {})
@@ -2636,7 +3280,7 @@ def _revert_parameter(data):
     if not isinstance(order_value, int):
         order_value = len(stored_records)
     previous_payload = _normalized_metadata_payload(
-        group_name=record.get("group") or _parameter_group_name(parameter) or "",
+        group_name=record.get("group") or "",
         metadata_changed_at=record.get(METADATA_CHANGED_AT_RECORD_KEY),
         revision=record.get(METADATA_REVISION_RECORD_KEY),
         writer_id=record.get(METADATA_WRITER_ID_RECORD_KEY),
@@ -2658,7 +3302,6 @@ def _revert_parameter(data):
         METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(next_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
         METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(next_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
     }
-    _write_parameter_group_name(parameter, next_payload.get("group") or "", metadata_changed_at, next_payload)
     _write_document_order_state(
         {
             "documentId": order_state.get("documentId", ""),
@@ -2678,6 +3321,7 @@ def _set_parameter_favorite(data):
     param = design.allParameters.itemByName(name)
     if not param:
         raise ValueError(f'Parameter "{name}" was not found.')
+    _reject_reserved_parameter(param)
 
     _assign_if_changed(param, "isFavorite", is_favorite)
 
@@ -2695,33 +3339,23 @@ def _set_parameter_group(data):
         parameter = design.userParameters.itemByName(name)
     if not parameter:
         raise ValueError("User parameter was not found.")
+    _reject_reserved_parameter(parameter)
     order_state = _read_document_order_state()
-    records = _resolve_document_order_records(design, order_state.get("parameters") or {})
+    model = _metadata_model_for_current_document(design, order_state)
     parameter_key = _parameter_entity_token(parameter)
-    existing_record = records.get(parameter_key) if isinstance(records.get(parameter_key), dict) else {}
-    previous_payload = _choose_latest_metadata(
-        _parameter_metadata_payload(parameter),
-        _normalized_metadata_payload(
-            group_name=existing_record.get("group") or "",
-            metadata_changed_at=existing_record.get(METADATA_CHANGED_AT_RECORD_KEY),
-            revision=existing_record.get(METADATA_REVISION_RECORD_KEY),
-            writer_id=existing_record.get(METADATA_WRITER_ID_RECORD_KEY),
-            writer_version=existing_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
-        ),
-    )
-    if _normalize_group_name(previous_payload.get("group") or "").casefold() == group_name.casefold():
+    groups_by_token = dict(model.get("groupsByToken") or {})
+    if _normalize_group_name(groups_by_token.get(parameter_key) or "").casefold() == group_name.casefold():
         return
-    next_payload = _next_metadata_payload(previous_payload, group_name, _now_metadata_timestamp_ms())
-    _write_parameter_group_name(parameter, group_name, next_payload.get(METADATA_CHANGED_AT_RECORD_KEY), next_payload)
-    _set_parameter_group_record(
-        design,
-        parameter,
-        group_name,
-        next_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
-        next_payload.get(METADATA_REVISION_RECORD_KEY),
-        next_payload.get(METADATA_WRITER_ID_RECORD_KEY),
-        next_payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
-    )
+    if group_name:
+        groups_by_token[parameter_key] = group_name
+    else:
+        groups_by_token.pop(parameter_key, None)
+    ordered_tokens = list(model.get("orderedTokens") or [])
+    if parameter_key and parameter_key not in ordered_tokens:
+        ordered_tokens.append(parameter_key)
+    model["groupsByToken"] = groups_by_token
+    model["orderedTokens"] = ordered_tokens
+    _write_metadata_parameter_model(design, model)
 
 
 def _rename_group(data):
@@ -2736,42 +3370,17 @@ def _rename_group(data):
     if old_group.casefold() == new_group.casefold():
         return
 
-    params = design.userParameters
-    metadata_changed_at = _now_metadata_timestamp_ms()
     order_state = _read_document_order_state()
-    records = _resolve_document_order_records(design, order_state.get("parameters") or {})
-    for index in range(params.count):
-        parameter = params.item(index)
-        if not parameter:
-            continue
-        existing_group = _parameter_group_name(parameter)
-        if not existing_group:
-            existing_group = _parameter_group_from_record(design, parameter)
-        if existing_group.casefold() != old_group.casefold():
-            continue
-        parameter_key = _parameter_entity_token(parameter)
-        existing_record = records.get(parameter_key) if isinstance(records.get(parameter_key), dict) else {}
-        previous_payload = _choose_latest_metadata(
-            _parameter_metadata_payload(parameter),
-            _normalized_metadata_payload(
-                group_name=existing_record.get("group") or "",
-                metadata_changed_at=existing_record.get(METADATA_CHANGED_AT_RECORD_KEY),
-                revision=existing_record.get(METADATA_REVISION_RECORD_KEY),
-                writer_id=existing_record.get(METADATA_WRITER_ID_RECORD_KEY),
-                writer_version=existing_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
-            ),
-        )
-        next_payload = _next_metadata_payload(previous_payload, new_group, metadata_changed_at)
-        _write_parameter_group_name(parameter, new_group, next_payload.get(METADATA_CHANGED_AT_RECORD_KEY), next_payload)
-        _set_parameter_group_record(
-            design,
-            parameter,
-            new_group,
-            next_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
-            next_payload.get(METADATA_REVISION_RECORD_KEY),
-            next_payload.get(METADATA_WRITER_ID_RECORD_KEY),
-            next_payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
-        )
+    model = _metadata_model_for_current_document(design, order_state)
+    groups_by_token = dict(model.get("groupsByToken") or {})
+    changed = False
+    for token, group in list(groups_by_token.items()):
+        if _normalize_group_name(group).casefold() == old_group.casefold():
+            groups_by_token[token] = new_group
+            changed = True
+    if changed:
+        model["groupsByToken"] = groups_by_token
+        _write_metadata_parameter_model(design, model)
 
 
 def _delete_group(data):
@@ -2780,42 +3389,17 @@ def _delete_group(data):
     if not group_name:
         raise ValueError("Ungrouped cannot be deleted.")
 
-    params = design.userParameters
-    metadata_changed_at = _now_metadata_timestamp_ms()
     order_state = _read_document_order_state()
-    records = _resolve_document_order_records(design, order_state.get("parameters") or {})
-    for index in range(params.count):
-        parameter = params.item(index)
-        if not parameter:
-            continue
-        existing_group = _parameter_group_name(parameter)
-        if not existing_group:
-            existing_group = _parameter_group_from_record(design, parameter)
-        if existing_group.casefold() != group_name.casefold():
-            continue
-        parameter_key = _parameter_entity_token(parameter)
-        existing_record = records.get(parameter_key) if isinstance(records.get(parameter_key), dict) else {}
-        previous_payload = _choose_latest_metadata(
-            _parameter_metadata_payload(parameter),
-            _normalized_metadata_payload(
-                group_name=existing_record.get("group") or "",
-                metadata_changed_at=existing_record.get(METADATA_CHANGED_AT_RECORD_KEY),
-                revision=existing_record.get(METADATA_REVISION_RECORD_KEY),
-                writer_id=existing_record.get(METADATA_WRITER_ID_RECORD_KEY),
-                writer_version=existing_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
-            ),
-        )
-        next_payload = _next_metadata_payload(previous_payload, "", metadata_changed_at)
-        _write_parameter_group_name(parameter, "", next_payload.get(METADATA_CHANGED_AT_RECORD_KEY), next_payload)
-        _set_parameter_group_record(
-            design,
-            parameter,
-            "",
-            next_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
-            next_payload.get(METADATA_REVISION_RECORD_KEY),
-            next_payload.get(METADATA_WRITER_ID_RECORD_KEY),
-            next_payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
-        )
+    model = _metadata_model_for_current_document(design, order_state)
+    groups_by_token = dict(model.get("groupsByToken") or {})
+    changed = False
+    for token, group in list(groups_by_token.items()):
+        if _normalize_group_name(group).casefold() == group_name.casefold():
+            groups_by_token.pop(token, None)
+            changed = True
+    if changed:
+        model["groupsByToken"] = groups_by_token
+        _write_metadata_parameter_model(design, model)
 
 
 def _save_parameter_order(data):
@@ -2835,6 +3419,8 @@ def _save_parameter_order(data):
 
     group_filter = _normalize_group_name(data["group"]) if "group" in data else None
     previous_state = _read_document_order_state()
+    model = _metadata_model_for_current_document(design, previous_state)
+    groups_by_token = dict(model.get("groupsByToken") or {})
 
     if group_filter is None:
         # Flat global reorder (original behaviour): keys describes the full cross-group order.
@@ -2842,7 +3428,7 @@ def _save_parameter_order(data):
         params = design.userParameters
         for index in range(params.count):
             param = params.item(index)
-            if not param:
+            if not param or _is_metadata_parameter(param):
                 continue
             current_parameters.append(
                 {
@@ -2867,11 +3453,11 @@ def _save_parameter_order(data):
         all_params = []
         for index in range(params.count):
             param = params.item(index)
-            if not param:
+            if not param or _is_metadata_parameter(param):
                 continue
             key = _parameter_entity_token(param)
             record = records.get(key) or {}
-            param_group = _normalize_group_name(record.get("group") or _parameter_group_name(param) or "")
+            param_group = _normalize_group_name(groups_by_token.get(key) or record.get("group") or "")
             sort_order = record.get("order") if isinstance(record.get("order"), int) else params.count + index
             all_params.append({
                 "key": key,
@@ -2905,30 +3491,22 @@ def _save_parameter_order(data):
             else:
                 merged.append(p)
 
-    _persist_document_order_snapshot(merged, previous_state)
-    next_state = _read_document_order_state()
-    next_state[UI_STATE_RECORD_KEY] = _bump_ui_state_record(next_state.get(UI_STATE_RECORD_KEY))
-    _write_document_order_state(next_state)
-    _write_fusion_ui_snapshot(design, _local_ui_snapshot(next_state))
+    next_order = [item.get("key") for item in merged if item.get("key")]
+    if next_order == list(model.get("orderedTokens") or []):
+        return
+    model["orderedTokens"] = next_order
+    _write_metadata_parameter_model(design, model)
 
 
 def _save_group_ui_state(data):
     design = _require_design()
     order_state = _read_document_order_state()
+    model = _metadata_model_for_current_document(design, order_state)
     next_group_ui = _normalized_group_ui_state(data.get("groupUi") if isinstance(data, dict) else {})
-    if order_state.get("groupUi") == next_group_ui:
+    if _normalized_group_ui_state(model.get("groupUi")) == next_group_ui:
         return
-    ui_state = _bump_ui_state_record(order_state.get(UI_STATE_RECORD_KEY))
-    _write_document_order_state(
-        {
-            "documentId": order_state.get("documentId", ""),
-            "documentName": order_state.get("documentName", ""),
-            "parameters": order_state.get("parameters", {}),
-            "groupUi": next_group_ui,
-            UI_STATE_RECORD_KEY: ui_state,
-        }
-    )
-    _write_fusion_ui_snapshot(design, _local_ui_snapshot(_read_document_order_state()))
+    model["groupUi"] = next_group_ui
+    _write_metadata_parameter_model(design, model)
 
 
 def _create_parameter(data):
@@ -2971,6 +3549,7 @@ def _delete_parameter(data):
         parameter = design.userParameters.itemByName(name)
     if not parameter:
         raise ValueError("User parameter was not found.")
+    _reject_reserved_parameter(parameter)
 
     try:
         parameter.deleteMe()
@@ -2991,6 +3570,7 @@ def _rename_parameter(data):
         parameter = design.userParameters.itemByName(name)
     if not parameter:
         raise ValueError("User parameter was not found.")
+    _reject_reserved_parameter(parameter)
 
     validation = _validate_parameter_name_response(new_name)
     if not validation["ok"]:
@@ -3182,6 +3762,7 @@ def _update_parameter_unit(data):
         parameter = design.userParameters.itemByName(name)
     if not parameter:
         raise ValueError("User parameter was not found.")
+    _reject_reserved_parameter(parameter)
 
     unit_result = _validate_unit_response(new_unit)
     if not unit_result["ok"]:
@@ -3200,9 +3781,10 @@ def _update_parameter_unit(data):
     old_token = _parameter_entity_token(parameter)
 
     order_state = _read_document_order_state()
+    model = _metadata_model_for_current_document(design, order_state)
     stored_records = _resolve_document_order_records(design, order_state.get("parameters") or {})
     old_record = stored_records.get(old_token) or {}
-    old_group = _normalize_group_name(old_record.get("group") or _parameter_group_name(parameter) or "")
+    old_group = _normalize_group_name((model.get("groupsByToken") or {}).get(old_token) or old_record.get("group") or "")
     old_order = old_record.get("order")
     if not isinstance(old_order, int):
         old_order = len(stored_records)
@@ -3223,19 +3805,16 @@ def _update_parameter_unit(data):
         pass
 
     new_token = _parameter_entity_token(created)
-    timestamp = _now_metadata_timestamp_ms()
-    new_payload = _next_metadata_payload(
-        _normalized_metadata_payload(
-            group_name=old_group,
-            metadata_changed_at=old_record.get(METADATA_CHANGED_AT_RECORD_KEY),
-            revision=old_record.get(METADATA_REVISION_RECORD_KEY),
-            writer_id=old_record.get(METADATA_WRITER_ID_RECORD_KEY),
-            writer_version=old_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
-        ),
-        old_group,
-        timestamp,
-    )
-    _write_parameter_group_name(created, old_group, timestamp, new_payload)
+    groups_by_token = dict(model.get("groupsByToken") or {})
+    if old_group:
+        groups_by_token[new_token] = old_group
+    groups_by_token.pop(old_token, None)
+    ordered_tokens = [new_token if token == old_token else token for token in (model.get("orderedTokens") or [])]
+    if new_token not in ordered_tokens:
+        ordered_tokens.append(new_token)
+    model["groupsByToken"] = groups_by_token
+    model["orderedTokens"] = ordered_tokens
+    written_model = _write_metadata_parameter_model(design, model)
 
     stored_records.pop(old_token, None)
     stored_records[new_token] = {
@@ -3246,10 +3825,10 @@ def _update_parameter_unit(data):
         "current_value": "",
         "previous_value": "",
         "group": old_group,
-        METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(new_payload.get(METADATA_CHANGED_AT_RECORD_KEY)),
-        METADATA_REVISION_RECORD_KEY: _metadata_revision_value(new_payload.get(METADATA_REVISION_RECORD_KEY)),
-        METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(new_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
-        METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(new_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
+        METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(written_model.get("changedAt")),
+        METADATA_REVISION_RECORD_KEY: _metadata_revision_value(written_model.get("revision")),
+        METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(written_model.get("writerId")),
+        METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(written_model.get("writerVersion")),
     }
     _write_document_order_state({
         "documentId": order_state.get("documentId", ""),
@@ -3284,6 +3863,7 @@ def _copy_parameter(data):
         parameter = design.userParameters.itemByName(name)
     if not parameter:
         raise ValueError("User parameter was not found.")
+    _reject_reserved_parameter(parameter)
 
     target_name = str(data.get("targetName") or "").strip()
     if not target_name:
@@ -3293,23 +3873,26 @@ def _copy_parameter(data):
     if not validation["ok"]:
         raise ValueError(validation["message"])
 
-    source_group = _parameter_group_name(parameter)
+    order_state = _read_document_order_state()
+    model = _metadata_model_for_current_document(design, order_state)
+    source_token = _parameter_entity_token(parameter)
+    source_group = _normalize_group_name((model.get("groupsByToken") or {}).get(source_token) or "")
     value_input = adsk.core.ValueInput.createByString(parameter.expression)
     created = design.userParameters.add(target_name, value_input, parameter.unit, parameter.comment or "")
     if not created:
         raise ValueError("Fusion could not create the parameter copy.")
 
-    # Restore group and write order record.
     new_token = _parameter_entity_token(created)
-    timestamp = _now_metadata_timestamp_ms()
-    new_payload = _next_metadata_payload(
-        _normalized_metadata_payload(group_name=source_group),
-        source_group,
-        timestamp,
-    )
-    _write_parameter_group_name(created, source_group, timestamp, new_payload)
+    groups_by_token = dict(model.get("groupsByToken") or {})
+    if source_group:
+        groups_by_token[new_token] = source_group
+    ordered_tokens = list(model.get("orderedTokens") or [])
+    if new_token not in ordered_tokens:
+        ordered_tokens.append(new_token)
+    model["groupsByToken"] = groups_by_token
+    model["orderedTokens"] = ordered_tokens
+    written_model = _write_metadata_parameter_model(design, model)
 
-    order_state = _read_document_order_state()
     stored_records = _resolve_document_order_records(design, order_state.get("parameters") or {})
     max_order = max(
         (r.get("order", 0) for r in stored_records.values() if isinstance(r.get("order"), int)),
@@ -3323,10 +3906,10 @@ def _copy_parameter(data):
         "current_value": "",
         "previous_value": "",
         "group": source_group,
-        METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(new_payload.get(METADATA_CHANGED_AT_RECORD_KEY)),
-        METADATA_REVISION_RECORD_KEY: _metadata_revision_value(new_payload.get(METADATA_REVISION_RECORD_KEY)),
-        METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(new_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
-        METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(new_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
+        METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(written_model.get("changedAt")),
+        METADATA_REVISION_RECORD_KEY: _metadata_revision_value(written_model.get("revision")),
+        METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(written_model.get("writerId")),
+        METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(written_model.get("writerVersion")),
     }
     _write_document_order_state({
         "documentId": order_state.get("documentId", ""),
@@ -3362,7 +3945,9 @@ def _delete_parameters_batch(data):
         if not token or token in seen_tokens:
             continue
         param = _find_user_parameter_by_token(design, token)
-        if param:
+        if param and _is_metadata_parameter(param):
+            failed_details.append({"key": token, "name": METADATA_PARAMETER_NAME, "message": f'"{METADATA_PARAMETER_NAME}" is reserved for Better Parameters metadata.'})
+        elif param:
             seen_tokens.add(token)
             targets.append({"param": param, "key": token, "name": str(param.name or "")})
         else:
@@ -3373,7 +3958,9 @@ def _delete_parameters_batch(data):
         if not name:
             continue
         param = design.userParameters.itemByName(name)
-        if param:
+        if param and _is_metadata_parameter(param):
+            failed_details.append({"key": _parameter_entity_token(param), "name": name, "message": f'"{METADATA_PARAMETER_NAME}" is reserved for Better Parameters metadata.'})
+        elif param:
             token = _parameter_entity_token(param)
             if token in seen_tokens:
                 continue
@@ -3503,7 +4090,7 @@ def _sort_by_timeline_order():
     params = design.userParameters
     for fusion_index in range(params.count):
         param = params.item(fusion_index)
-        if not param:
+        if not param or _is_metadata_parameter(param):
             continue
         token = _parameter_entity_token(param)
         record = stored_records.get(token)
@@ -3517,7 +4104,7 @@ def _sort_by_timeline_order():
                 "previous_expression": "",
                 "current_value": "",
                 "previous_value": "",
-                "group": _normalize_group_name(_parameter_group_name(param) or ""),
+                "group": "",
                 METADATA_CHANGED_AT_RECORD_KEY: 0,
                 METADATA_REVISION_RECORD_KEY: 0,
                 METADATA_WRITER_ID_RECORD_KEY: "",
@@ -4258,49 +4845,66 @@ def _open_package_open_dialog(file_path):
     return str(dialog.filename or "").strip()
 
 
-def _apply_package_display_order(design, order_updates, previous_state=None):
-    """Apply displayOrder indices from a bpmeta package to the current document order state.
-
-    order_updates: list of (displayOrder_int, name_str) tuples.
-    Parameters in order_updates are placed first (sorted by displayOrder),
-    followed by all other design parameters in their existing relative order.
-    """
-    if not order_updates:
+def _apply_package_metadata_updates(design, group_updates=None, order_updates=None, previous_state=None):
+    """Apply package group/order metadata with one metadata-parameter comment write."""
+    group_updates = group_updates or {}
+    order_updates = order_updates or []
+    if not group_updates and not order_updates:
         return
     if previous_state is None:
         previous_state = _read_document_order_state()
 
+    model = _metadata_model_for_current_document(design, previous_state)
     params = design.userParameters
     name_to_key = {}
     all_keys_in_order = []
     for i in range(params.count):
         param = params.item(i)
-        if not param:
+        if not param or _is_metadata_parameter(param):
             continue
         key = _parameter_entity_token(param)
         name_to_key[param.name] = key
         all_keys_in_order.append(key)
 
-    sorted_updates = sorted(order_updates, key=lambda x: x[0])
-    ordered_keys = []
-    seen_keys = set()
-    for _, name in sorted_updates:
+    changed = False
+    groups_by_token = dict(model.get("groupsByToken") or {})
+    for name, group_name in group_updates.items():
         key = name_to_key.get(name)
-        if key and key not in seen_keys:
-            ordered_keys.append(key)
-            seen_keys.add(key)
+        if not key:
+            continue
+        normalized_group = _normalize_group_name(group_name or "")
+        if normalized_group:
+            if groups_by_token.get(key) != normalized_group:
+                groups_by_token[key] = normalized_group
+                changed = True
+        elif key in groups_by_token:
+            groups_by_token.pop(key, None)
+            changed = True
+    model["groupsByToken"] = groups_by_token
 
-    remaining_keys = [k for k in all_keys_in_order if k not in seen_keys]
-    final_key_order = ordered_keys + remaining_keys
+    if order_updates:
+        sorted_updates = sorted(order_updates, key=lambda x: x[0])
+        ordered_keys = []
+        seen_keys = set()
+        for _, name in sorted_updates:
+            key = name_to_key.get(name)
+            if key and key not in seen_keys:
+                ordered_keys.append(key)
+                seen_keys.add(key)
 
-    key_to_name = {v: k for k, v in name_to_key.items()}
-    merged = [{"key": k, "name": key_to_name.get(k, "")} for k in final_key_order]
+        remaining_keys = [k for k in all_keys_in_order if k not in seen_keys]
+        final_key_order = ordered_keys + remaining_keys
+        if final_key_order != list(model.get("orderedTokens") or []):
+            model["orderedTokens"] = final_key_order
+            changed = True
 
-    _persist_document_order_snapshot(merged, previous_state)
-    next_state = _read_document_order_state()
-    next_state[UI_STATE_RECORD_KEY] = _bump_ui_state_record(next_state.get(UI_STATE_RECORD_KEY))
-    _write_document_order_state(next_state)
-    _write_fusion_ui_snapshot(design, _local_ui_snapshot(next_state))
+    if changed:
+        _write_metadata_parameter_model(design, model)
+
+
+def _apply_package_display_order(design, order_updates, previous_state=None):
+    """Apply displayOrder indices from a bpmeta package to metadata parameter order."""
+    _apply_package_metadata_updates(design, {}, order_updates, previous_state)
 
 
 def _export_parameters_package(data):
@@ -4496,6 +5100,7 @@ def _import_parameters_package(data, dry_run=False):
     updated_count = 0
     skipped_count = 0
     order_updates = []  # (displayOrder, name) pairs, collected if applyOrder is enabled
+    group_updates = {}
 
     for idx, record in enumerate(records):
         name = str(record.get("name") or "").strip()
@@ -4539,7 +5144,7 @@ def _import_parameters_package(data, dry_run=False):
                         except Exception:
                             pass
                     if apply_knobs["applyGroups"] and group:
-                        _set_parameter_group({"name": name, "group": group})
+                        group_updates[name] = group
                     updated_count += 1
                     if apply_knobs["applyOrder"] and display_order is not None:
                         order_updates.append((int(display_order), name))
@@ -4575,18 +5180,23 @@ def _import_parameters_package(data, dry_run=False):
                         except Exception:
                             pass
                     if apply_knobs["applyGroups"] and group:
-                        _set_parameter_group({"name": name, "group": group})
+                        group_updates[name] = group
                     imported_count += 1
                     if apply_knobs["applyOrder"] and display_order is not None:
                         order_updates.append((int(display_order), name))
                 except Exception as exc:
                     failed_rows.append({"row": idx + 1, "name": name, "message": str(exc)})
 
-    if not dry_run and apply_knobs["applyOrder"] and order_updates:
+    if not dry_run and ((apply_knobs["applyGroups"] and group_updates) or (apply_knobs["applyOrder"] and order_updates)):
         try:
-            _apply_package_display_order(design, order_updates, previous_state)
+            _apply_package_metadata_updates(
+                design,
+                group_updates if apply_knobs["applyGroups"] else {},
+                order_updates if apply_knobs["applyOrder"] else [],
+                previous_state,
+            )
         except Exception:
-            pass  # Order application failure is non-fatal.
+            pass  # Metadata application failure is non-fatal.
 
     failed_count = len(failed_rows)
     total_touched = imported_count + updated_count
@@ -4947,6 +5557,8 @@ def _validate_parameter_name_response(name, current_parameter_name="", current_p
     trimmed_name = (name or "").strip()
     if not trimmed_name:
         return {"ok": False, "message": "Name is required."}
+    if trimmed_name == METADATA_PARAMETER_NAME:
+        return {"ok": False, "message": f'"{METADATA_PARAMETER_NAME}" is reserved for Better Parameters metadata.'}
 
     if trimmed_name != (name or ""):
         return {"ok": False, "message": "Name cannot start or end with whitespace."}
@@ -5751,48 +6363,6 @@ def _read_document_metadata_map(design):
     return {}
 
 
-def _write_document_metadata_map(design, metadata_map):
-    payload = {}
-    for key, value in (metadata_map or {}).items():
-        if not isinstance(key, str) or not key:
-            continue
-        if not isinstance(value, dict):
-            continue
-        payload[key] = {
-            "group": _normalize_group_name(value.get("group") or ""),
-            METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(value.get(METADATA_CHANGED_AT_RECORD_KEY)),
-            METADATA_REVISION_RECORD_KEY: _metadata_revision_value(value.get(METADATA_REVISION_RECORD_KEY)),
-            METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(value.get(METADATA_WRITER_ID_RECORD_KEY)),
-            METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(value.get(METADATA_WRITER_VERSION_RECORD_KEY)),
-        }
-
-    serialized = json.dumps(payload, separators=(",", ":"), sort_keys=True)
-    for owner in _document_metadata_owner_candidates(design):
-        attributes = getattr(owner, "attributes", None)
-        if attributes is None:
-            continue
-        try:
-            attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_DOCUMENT_METADATA_MAP_NAME)
-        except Exception:
-            attribute = None
-
-        if attribute is not None:
-            try:
-                if _string_values_equal(attribute.value, serialized):
-                    return True
-                attribute.value = serialized
-                return True
-            except Exception:
-                pass
-
-        try:
-            attributes.add(ATTRIBUTE_NAMESPACE, ATTRIBUTE_DOCUMENT_METADATA_MAP_NAME, serialized)
-            return True
-        except Exception:
-            pass
-    return False
-
-
 def _read_document_metadata_state(design):
     defaults = {
         "schemaVersion": METADATA_SCHEMA_VERSION,
@@ -5840,159 +6410,10 @@ def _read_document_metadata_state(design):
     return defaults
 
 
-def _write_document_metadata_state(design, state):
-    if not design:
-        return False
-    payload = {
-        "schemaVersion": int((state or {}).get("schemaVersion") or METADATA_SCHEMA_VERSION),
-        "docMetaVersion": max(0, int((state or {}).get("docMetaVersion") or 0)),
-        "lastChangedAt": _metadata_changed_at_value((state or {}).get("lastChangedAt")),
-        "lastWriterId": _metadata_writer_id_value((state or {}).get("lastWriterId")),
-        "paramCountHint": max(0, int((state or {}).get("paramCountHint") or 0)),
-        "contentHash": str((state or {}).get("contentHash") or ""),
-        "parameterOrder": _normalized_parameter_order((state or {}).get("parameterOrder")),
-        "groupUi": _normalized_group_ui_state((state or {}).get("groupUi")),
-        UI_STATE_RECORD_KEY: _normalized_ui_state_record((state or {}).get(UI_STATE_RECORD_KEY)),
-    }
-    serialized = json.dumps(payload, separators=(",", ":"), sort_keys=True)
-    for owner in _document_metadata_owner_candidates(design):
-        attributes = getattr(owner, "attributes", None)
-        if attributes is None:
-            continue
-        try:
-            attribute = attributes.itemByName(ATTRIBUTE_NAMESPACE, ATTRIBUTE_DOCUMENT_METADATA_STATE_NAME)
-        except Exception:
-            attribute = None
-        if attribute is not None:
-            try:
-                if _string_values_equal(attribute.value, serialized):
-                    return True
-                attribute.value = serialized
-                return True
-            except Exception:
-                pass
-        try:
-            attributes.add(ATTRIBUTE_NAMESPACE, ATTRIBUTE_DOCUMENT_METADATA_STATE_NAME, serialized)
-            return True
-        except Exception:
-            pass
-    return False
-
-
-def _bump_document_metadata_state(design, metadata_payload_by_key):
-    if not design:
-        return False
-    current = _read_document_metadata_state(design)
-    content_hash = _metadata_payload_content_hash(metadata_payload_by_key)
-    changed = content_hash != str(current.get("contentHash") or "")
-    next_state = {
-        "schemaVersion": METADATA_SCHEMA_VERSION,
-        "docMetaVersion": (int(current.get("docMetaVersion") or 0) + 1) if changed else int(current.get("docMetaVersion") or 0),
-        "lastChangedAt": _now_metadata_timestamp_ms() if changed else _metadata_changed_at_value(current.get("lastChangedAt")),
-        "lastWriterId": _current_writer_id() if changed else _metadata_writer_id_value(current.get("lastWriterId")),
-        "paramCountHint": len(metadata_payload_by_key or {}),
-        "contentHash": content_hash,
-    }
-    return _write_document_metadata_state(design, next_state)
-
-
-def _ui_state_is_newer(left_state, right_state):
-    left = _normalized_ui_state_record(left_state)
-    right = _normalized_ui_state_record(right_state)
-    left_revision = _metadata_revision_value(left.get(UI_STATE_REVISION_KEY))
-    right_revision = _metadata_revision_value(right.get(UI_STATE_REVISION_KEY))
-    if left_revision != right_revision:
-        return left_revision > right_revision
-    left_changed_at = _metadata_changed_at_value(left.get(UI_STATE_CHANGED_AT_KEY))
-    right_changed_at = _metadata_changed_at_value(right.get(UI_STATE_CHANGED_AT_KEY))
-    if left_changed_at != right_changed_at:
-        return left_changed_at > right_changed_at
-    left_writer = _metadata_writer_id_value(left.get(UI_STATE_WRITER_ID_KEY))
-    right_writer = _metadata_writer_id_value(right.get(UI_STATE_WRITER_ID_KEY))
-    return left_writer > right_writer
-
-
-def _local_ui_snapshot(order_state):
-    normalized = order_state if isinstance(order_state, dict) else {}
-    records = normalized.get("parameters") if isinstance(normalized.get("parameters"), dict) else {}
-    return {
-        UI_STATE_RECORD_KEY: _normalized_ui_state_record(normalized.get(UI_STATE_RECORD_KEY)),
-        "groupUi": _normalized_group_ui_state(normalized.get("groupUi")),
-        "parameterOrder": _collect_parameter_order_from_records(records),
-    }
-
-
-def _fusion_ui_snapshot(design):
-    state = _read_document_metadata_state(design)
-    return {
-        UI_STATE_RECORD_KEY: _normalized_ui_state_record(state.get(UI_STATE_RECORD_KEY)),
-        "groupUi": _normalized_group_ui_state(state.get("groupUi")),
-        "parameterOrder": _normalized_parameter_order(state.get("parameterOrder")),
-    }
-
-
-def _write_fusion_ui_snapshot(design, ui_snapshot):
-    if not design:
-        return False
-    current = _read_document_metadata_state(design)
-    next_state = dict(current)
-    next_state["groupUi"] = _normalized_group_ui_state((ui_snapshot or {}).get("groupUi"))
-    next_state["parameterOrder"] = _normalized_parameter_order((ui_snapshot or {}).get("parameterOrder"))
-    next_state[UI_STATE_RECORD_KEY] = _normalized_ui_state_record((ui_snapshot or {}).get(UI_STATE_RECORD_KEY))
-    return _write_document_metadata_state(design, next_state)
-
-
 def _sync_ui_state_between_local_and_fusion(design, order_state):
     if not design:
         return order_state if isinstance(order_state, dict) else _read_document_order_state()
-
-    local_state = order_state if isinstance(order_state, dict) else _read_document_order_state()
-    local_snapshot = _local_ui_snapshot(local_state)
-    fusion_snapshot = _fusion_ui_snapshot(design)
-    local_ui_state = local_snapshot.get(UI_STATE_RECORD_KEY)
-    fusion_ui_state = fusion_snapshot.get(UI_STATE_RECORD_KEY)
-
-    if _ui_state_is_newer(fusion_ui_state, local_ui_state):
-        records = local_state.get("parameters") if isinstance(local_state.get("parameters"), dict) else {}
-        if not records:
-            params = design.userParameters
-            for index in range(params.count):
-                parameter = params.item(index)
-                if not parameter:
-                    continue
-                key = _parameter_entity_token(parameter)
-                if not key:
-                    continue
-                records[key] = {
-                    "order": index,
-                    "name": str(parameter.name or ""),
-                    "current_expression": str(parameter.expression or ""),
-                    "previous_expression": "",
-                    "current_value": "",
-                    "previous_value": "",
-                    "group": _normalize_group_name(_parameter_group_name(parameter) or ""),
-                    METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(_parameter_metadata_changed_at(parameter)),
-                    METADATA_REVISION_RECORD_KEY: _metadata_revision_value(_parameter_metadata_payload(parameter).get(METADATA_REVISION_RECORD_KEY)),
-                    METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(_parameter_metadata_payload(parameter).get(METADATA_WRITER_ID_RECORD_KEY)),
-                    METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(_parameter_metadata_payload(parameter).get(METADATA_WRITER_VERSION_RECORD_KEY)),
-                }
-        applied_order = _normalized_parameter_order(fusion_snapshot.get("parameterOrder"), records.keys())
-        _apply_parameter_order_to_records(records, applied_order)
-        local_state = {
-            "documentId": local_state.get("documentId", ""),
-            "documentName": local_state.get("documentName", ""),
-            "parameters": records,
-            "groupUi": _normalized_group_ui_state(fusion_snapshot.get("groupUi")),
-            UI_STATE_RECORD_KEY: _normalized_ui_state_record(fusion_ui_state),
-        }
-        _write_document_order_state(local_state)
-        return local_state
-
-    if _ui_state_is_newer(local_ui_state, fusion_ui_state):
-        # Routine state reads must not write Fusion attributes. Explicit UI
-        # persistence actions write Fusion snapshots after updating local JSON.
-        pass
-    return local_state
+    return order_state if isinstance(order_state, dict) else _read_document_order_state()
 
 
 def _document_metadata_owner_candidates(design):
@@ -6012,66 +6433,6 @@ def _document_metadata_owner_candidates(design):
     return owners
 
 
-def _owner_debug_label(owner):
-    if not owner:
-        return "None"
-    type_name = type(owner).__name__
-    object_type = ""
-    try:
-        object_type = str(getattr(owner, "objectType", "") or "")
-    except Exception:
-        object_type = ""
-    if object_type:
-        return f"{type_name}<{object_type}>"
-    return type_name
-
-
-def _write_document_attribute_with_diagnostics(owners, namespace, name, value):
-    details = {
-        "ok": False,
-        "ownerTypes": [],
-        "errors": [],
-    }
-    owner_labels = []
-    for owner in owners or []:
-        owner_label = _owner_debug_label(owner)
-        owner_labels.append(owner_label)
-        attributes = getattr(owner, "attributes", None)
-        if attributes is None:
-            details["errors"].append(f"{owner_label}: no attributes collection")
-            continue
-
-        attribute = None
-        try:
-            attribute = attributes.itemByName(namespace, name)
-        except Exception as error:
-            details["errors"].append(f"{owner_label}: itemByName failed: {error}")
-
-        if attribute is not None:
-            try:
-                if _string_values_equal(attribute.value, value):
-                    details["ok"] = True
-                    details["ownerTypes"] = owner_labels
-                    return details
-                attribute.value = value
-                details["ok"] = True
-                details["ownerTypes"] = owner_labels
-                return details
-            except Exception as error:
-                details["errors"].append(f"{owner_label}: attribute.value failed: {error}")
-
-        try:
-            attributes.add(namespace, name, value)
-            details["ok"] = True
-            details["ownerTypes"] = owner_labels
-            return details
-        except Exception as error:
-            details["errors"].append(f"{owner_label}: attributes.add failed: {error}")
-
-    details["ownerTypes"] = owner_labels
-    return details
-
-
 def _document_metadata_entry(design, parameter):
     if not design or not parameter:
         return {}
@@ -6082,145 +6443,11 @@ def _document_metadata_entry(design, parameter):
     metadata_map = _read_document_metadata_map(design)
     map_entry = metadata_map.get(parameter_key) if isinstance(metadata_map.get(parameter_key), dict) else {}
     item_entry = _read_document_metadata_item_entry(design, parameter_key)
+    if not map_entry:
+        return item_entry
+    if not item_entry:
+        return map_entry
     return _choose_latest_metadata(map_entry, item_entry)
-
-
-def _set_document_metadata_entry(
-    design,
-    parameter,
-    group_name=None,
-    metadata_changed_at=None,
-    metadata_revision=None,
-    metadata_writer_id=None,
-    metadata_writer_version=None,
-):
-    if not design or not parameter:
-        return False
-
-    parameter_key = _parameter_entity_token(parameter)
-    if not parameter_key:
-        return False
-
-    metadata_map = _read_document_metadata_map(design)
-    current_entry = metadata_map.get(parameter_key) if isinstance(metadata_map.get(parameter_key), dict) else {}
-    next_payload = _normalized_metadata_payload(
-        group_name=group_name if group_name is not None else current_entry.get("group") or "",
-        metadata_changed_at=metadata_changed_at if metadata_changed_at is not None else current_entry.get(METADATA_CHANGED_AT_RECORD_KEY),
-        revision=metadata_revision if metadata_revision is not None else current_entry.get(METADATA_REVISION_RECORD_KEY),
-        writer_id=metadata_writer_id if metadata_writer_id is not None else current_entry.get(METADATA_WRITER_ID_RECORD_KEY),
-        writer_version=metadata_writer_version if metadata_writer_version is not None else current_entry.get(METADATA_WRITER_VERSION_RECORD_KEY),
-    )
-    metadata_map[parameter_key] = {
-        "group": _normalize_group_name(next_payload.get("group") or ""),
-        METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(next_payload.get(METADATA_CHANGED_AT_RECORD_KEY)),
-        METADATA_REVISION_RECORD_KEY: _metadata_revision_value(next_payload.get(METADATA_REVISION_RECORD_KEY)),
-        METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(next_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
-        METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(next_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
-    }
-    map_ok = _write_document_metadata_map(design, metadata_map)
-    item_ok = _write_document_metadata_item_entry(
-        design,
-        parameter_key,
-        next_payload.get("group") or "",
-        next_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
-        next_payload.get(METADATA_REVISION_RECORD_KEY),
-        next_payload.get(METADATA_WRITER_ID_RECORD_KEY),
-        next_payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
-    )
-    return bool(map_ok or item_ok)
-
-
-def _set_document_metadata_entry_with_diagnostics(
-    design,
-    parameter,
-    group_name=None,
-    metadata_changed_at=None,
-    metadata_revision=None,
-    metadata_writer_id=None,
-    metadata_writer_version=None,
-):
-    details = {
-        "ok": False,
-        "mapOk": False,
-        "itemOk": False,
-        "errors": [],
-        "ownerTypes": [],
-    }
-    if not design or not parameter:
-        details["errors"].append("missing design or parameter")
-        return details
-
-    parameter_key = _parameter_entity_token(parameter)
-    if not parameter_key:
-        details["errors"].append("missing parameter entity token")
-        return details
-
-    owners = _document_metadata_owner_candidates(design)
-    details["ownerTypes"] = [_owner_debug_label(owner) for owner in owners]
-    if not owners:
-        details["errors"].append("no document metadata owner candidates")
-
-    metadata_map = _read_document_metadata_map(design)
-    current_entry = metadata_map.get(parameter_key) if isinstance(metadata_map.get(parameter_key), dict) else {}
-    next_payload = _normalized_metadata_payload(
-        group_name=group_name if group_name is not None else current_entry.get("group") or "",
-        metadata_changed_at=metadata_changed_at if metadata_changed_at is not None else current_entry.get(METADATA_CHANGED_AT_RECORD_KEY),
-        revision=metadata_revision if metadata_revision is not None else current_entry.get(METADATA_REVISION_RECORD_KEY),
-        writer_id=metadata_writer_id if metadata_writer_id is not None else current_entry.get(METADATA_WRITER_ID_RECORD_KEY),
-        writer_version=metadata_writer_version if metadata_writer_version is not None else current_entry.get(METADATA_WRITER_VERSION_RECORD_KEY),
-    )
-    metadata_map[parameter_key] = {
-        "group": _normalize_group_name(next_payload.get("group") or ""),
-        METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(next_payload.get(METADATA_CHANGED_AT_RECORD_KEY)),
-        METADATA_REVISION_RECORD_KEY: _metadata_revision_value(next_payload.get(METADATA_REVISION_RECORD_KEY)),
-        METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(next_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
-        METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(next_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
-    }
-
-    map_payload = {}
-    for key, value in (metadata_map or {}).items():
-        if not isinstance(key, str) or not key:
-            continue
-        if not isinstance(value, dict):
-            continue
-        map_payload[key] = {
-            "group": _normalize_group_name(value.get("group") or ""),
-            METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(value.get(METADATA_CHANGED_AT_RECORD_KEY)),
-        }
-    map_serialized = json.dumps(map_payload, separators=(",", ":"), sort_keys=True)
-    map_write = _write_document_attribute_with_diagnostics(
-        owners,
-        ATTRIBUTE_NAMESPACE,
-        ATTRIBUTE_DOCUMENT_METADATA_MAP_NAME,
-        map_serialized,
-    )
-    details["mapOk"] = bool(map_write.get("ok"))
-    for error in (map_write.get("errors") or []):
-        details["errors"].append(f"doc map: {error}")
-
-    item_payload = {
-        "k": str(parameter_key),
-        "g": _normalize_group_name(next_payload.get("group") or ""),
-        "t": _metadata_changed_at_value(next_payload.get(METADATA_CHANGED_AT_RECORD_KEY)),
-        "r": _metadata_revision_value(next_payload.get(METADATA_REVISION_RECORD_KEY)),
-        "w": _metadata_writer_id_value(next_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
-        "v": _metadata_writer_version_value(next_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
-    }
-    item_serialized = json.dumps(item_payload, separators=(",", ":"), sort_keys=True)
-    item_write = _write_document_attribute_with_diagnostics(
-        owners,
-        ATTRIBUTE_DOCUMENT_METADATA_ITEM_NAMESPACE,
-        _document_metadata_item_name(parameter_key),
-        item_serialized,
-    )
-    details["itemOk"] = bool(item_write.get("ok"))
-    for error in (item_write.get("errors") or []):
-        details["errors"].append(f"doc item: {error}")
-
-    details["ok"] = bool(details["mapOk"] or details["itemOk"])
-    if not details["ok"] and not details["errors"]:
-        details["errors"].append("document metadata writes returned false")
-    return details
 
 
 def _document_metadata_item_name(parameter_key):
@@ -6268,55 +6495,6 @@ def _read_document_metadata_item_entry(design, parameter_key):
         }
         best_timestamp = changed_at_value
     return best_entry
-
-
-def _write_document_metadata_item_entry(
-    design,
-    parameter_key,
-    group_name,
-    metadata_changed_at,
-    metadata_revision=None,
-    metadata_writer_id=None,
-    metadata_writer_version=None,
-):
-    if not design or not parameter_key:
-        return False
-
-    item_name = _document_metadata_item_name(parameter_key)
-    payload = {
-        "k": str(parameter_key),
-        "g": _normalize_group_name(group_name or ""),
-        "t": _metadata_changed_at_value(metadata_changed_at),
-        "r": _metadata_revision_value(metadata_revision),
-        "w": _metadata_writer_id_value(metadata_writer_id),
-        "v": _metadata_writer_version_value(metadata_writer_version),
-    }
-    serialized = json.dumps(payload, separators=(",", ":"), sort_keys=True)
-
-    for owner in _document_metadata_owner_candidates(design):
-        attributes = getattr(owner, "attributes", None)
-        if attributes is None:
-            continue
-        try:
-            attribute = attributes.itemByName(ATTRIBUTE_DOCUMENT_METADATA_ITEM_NAMESPACE, item_name)
-        except Exception:
-            attribute = None
-
-        if attribute is not None:
-            try:
-                if _string_values_equal(attribute.value, serialized):
-                    return True
-                attribute.value = serialized
-                return True
-            except Exception:
-                pass
-
-        try:
-            attributes.add(ATTRIBUTE_DOCUMENT_METADATA_ITEM_NAMESPACE, item_name, serialized)
-            return True
-        except Exception:
-            pass
-    return False
 
 
 def _normalize_group_name(value):
@@ -6433,19 +6611,9 @@ def _apply_parameter_order_to_records(records, order_list):
     return records
 
 
-def _parameter_group_name(parameter):
-    payload = _parameter_metadata_payload(parameter)
-    return _normalize_group_name(payload.get("group") or "")
-
-
-def _parameter_metadata_changed_at(parameter):
-    payload = _parameter_metadata_payload(parameter)
-    return _metadata_changed_at_value(payload.get(METADATA_CHANGED_AT_RECORD_KEY))
-
-
 def _parameter_metadata_payload(parameter):
     if not parameter:
-        return _normalized_metadata_payload()
+        return {}
 
     attributes = getattr(parameter, "attributes", None)
     attribute_payload = {}
@@ -6471,261 +6639,22 @@ def _parameter_metadata_payload(parameter):
         except Exception:
             writer_version_attribute = None
 
-        attribute_payload = _normalized_metadata_payload(
-            group_name=group_attribute.value if group_attribute is not None else "",
-            metadata_changed_at=changed_at_attribute.value if changed_at_attribute is not None else 0,
-            revision=revision_attribute.value if revision_attribute is not None else 0,
-            writer_id=writer_id_attribute.value if writer_id_attribute is not None else "",
-            writer_version=writer_version_attribute.value if writer_version_attribute is not None else "",
-        )
+        if any(item is not None for item in (group_attribute, changed_at_attribute, revision_attribute, writer_id_attribute, writer_version_attribute)):
+            attribute_payload = _normalized_metadata_payload(
+                group_name=group_attribute.value if group_attribute is not None else "",
+                metadata_changed_at=changed_at_attribute.value if changed_at_attribute is not None else 0,
+                revision=revision_attribute.value if revision_attribute is not None else 0,
+                writer_id=writer_id_attribute.value if writer_id_attribute is not None else "",
+                writer_version=writer_version_attribute.value if writer_version_attribute is not None else "",
+            )
 
     design = _design()
     document_payload = _document_metadata_entry(design, parameter)
+    if not attribute_payload:
+        return document_payload
+    if not document_payload:
+        return attribute_payload
     return _choose_latest_metadata(attribute_payload, document_payload)
-
-
-def _set_parameter_metadata_changed_at(parameter, metadata_changed_at):
-    if not parameter:
-        return False
-
-    current_payload = _parameter_metadata_payload(parameter)
-    next_payload = _next_metadata_payload(
-        current_payload,
-        current_payload.get("group") or "",
-        metadata_changed_at,
-    )
-    return _write_parameter_group_name(
-        parameter,
-        next_payload.get("group") or "",
-        next_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
-        next_payload,
-    )
-
-
-def _write_parameter_group_name_with_diagnostics(parameter, group_name, metadata_changed_at=None, metadata_payload=None):
-    details = {
-        "ok": False,
-        "parameterName": "",
-        "groupName": "",
-        "parameterAttributeOk": False,
-        "metadataChangedAtAttributeOk": False,
-        "documentMetadataOk": False,
-        "documentMapOk": False,
-        "documentItemOk": False,
-        "documentOwnerTypes": [],
-        "errors": [],
-    }
-    if not parameter:
-        details["errors"].append("missing parameter")
-        return details
-
-    normalized_group = _normalize_group_name(group_name)
-    base_payload = _parameter_metadata_payload(parameter)
-    if metadata_payload and isinstance(metadata_payload, dict):
-        requested_payload = _normalized_metadata_payload(
-            group_name=normalized_group,
-            metadata_changed_at=metadata_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
-            revision=metadata_payload.get(METADATA_REVISION_RECORD_KEY),
-            writer_id=metadata_payload.get(METADATA_WRITER_ID_RECORD_KEY),
-            writer_version=metadata_payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
-        )
-    else:
-        requested_payload = _next_metadata_payload(base_payload, normalized_group, metadata_changed_at)
-    payload = _normalized_metadata_payload(
-        group_name=normalized_group,
-        metadata_changed_at=requested_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
-        revision=requested_payload.get(METADATA_REVISION_RECORD_KEY),
-        writer_id=requested_payload.get(METADATA_WRITER_ID_RECORD_KEY),
-        writer_version=requested_payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
-    )
-
-    details["groupName"] = normalized_group
-    details["parameterName"] = str(getattr(parameter, "name", "") or "")
-    attributes = getattr(parameter, "attributes", None)
-    success = False
-
-    def _write_attribute(name, value_text):
-        if attributes is None:
-            return False
-        try:
-            attr = attributes.itemByName(ATTRIBUTE_NAMESPACE, name)
-        except Exception:
-            attr = None
-        if attr is not None:
-            try:
-                if _string_values_equal(attr.value, value_text):
-                    return True
-                attr.value = value_text
-                return True
-            except Exception:
-                return False
-        try:
-            attributes.add(ATTRIBUTE_NAMESPACE, name, value_text)
-            return True
-        except Exception:
-            return False
-
-    if attributes is None:
-        details["errors"].append("parameter has no attributes collection")
-    else:
-        group_ok = _write_attribute(ATTRIBUTE_PARAMETER_GROUP_NAME, _normalize_group_name(payload.get("group") or ""))
-        changed_ok = _write_attribute(ATTRIBUTE_METADATA_CHANGED_AT_NAME, str(_metadata_changed_at_value(payload.get(METADATA_CHANGED_AT_RECORD_KEY))))
-        revision_ok = _write_attribute(ATTRIBUTE_METADATA_REVISION_NAME, str(_metadata_revision_value(payload.get(METADATA_REVISION_RECORD_KEY))))
-        writer_id_ok = _write_attribute(ATTRIBUTE_METADATA_WRITER_ID_NAME, _metadata_writer_id_value(payload.get(METADATA_WRITER_ID_RECORD_KEY)))
-        writer_version_ok = _write_attribute(
-            ATTRIBUTE_METADATA_WRITER_VERSION_NAME,
-            _metadata_writer_version_value(payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
-        )
-        details["parameterAttributeOk"] = bool(group_ok)
-        details["metadataChangedAtAttributeOk"] = bool(changed_ok)
-        if not group_ok:
-            details["errors"].append("parameter group attribute write failed")
-        if not changed_ok:
-            details["errors"].append("parameter metadataChangedAt attribute write failed")
-        if not revision_ok:
-            details["errors"].append("parameter metadataRevision attribute write failed")
-        if not writer_id_ok:
-            details["errors"].append("parameter metadataWriterId attribute write failed")
-        if not writer_version_ok:
-            details["errors"].append("parameter metadataWriterVersion attribute write failed")
-        if group_ok and changed_ok and revision_ok and writer_id_ok and writer_version_ok:
-            success = True
-
-    design = _design()
-    doc_write = _set_document_metadata_entry_with_diagnostics(
-        design,
-        parameter,
-        payload.get("group") or "",
-        payload.get(METADATA_CHANGED_AT_RECORD_KEY),
-        payload.get(METADATA_REVISION_RECORD_KEY),
-        payload.get(METADATA_WRITER_ID_RECORD_KEY),
-        payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
-    )
-    details["documentMetadataOk"] = bool(doc_write.get("ok"))
-    details["documentMapOk"] = bool(doc_write.get("mapOk"))
-    details["documentItemOk"] = bool(doc_write.get("itemOk"))
-    details["documentOwnerTypes"] = list(doc_write.get("ownerTypes") or [])
-    for error in (doc_write.get("errors") or []):
-        details["errors"].append(f"doc: {error}")
-    if details["documentMetadataOk"]:
-        success = True
-        if design:
-            try:
-                _bump_document_metadata_state(design, _collect_document_metadata_payload_by_key(design))
-            except Exception:
-                pass
-
-    if not normalized_group and not success:
-        details["ok"] = False
-        return details
-    if not normalized_group:
-        details["ok"] = True
-        return details
-    if success:
-        details["ok"] = True
-        return details
-    details["ok"] = False
-    if not details["errors"]:
-        details["errors"].append("all metadata write paths failed")
-    return details
-
-
-def _write_parameter_group_name(parameter, group_name, metadata_changed_at=None, metadata_payload=None):
-    result = _write_parameter_group_name_with_diagnostics(parameter, group_name, metadata_changed_at, metadata_payload)
-    return bool(result.get("ok"))
-
-
-def _collect_document_metadata_payload_by_key(design):
-    payload_by_key = {}
-    if not design:
-        return payload_by_key
-    params = design.userParameters
-    for index in range(params.count):
-        parameter = params.item(index)
-        if not parameter:
-            continue
-        parameter_key = _parameter_entity_token(parameter)
-        if not parameter_key:
-            continue
-        payload_by_key[parameter_key] = _parameter_metadata_payload(parameter)
-    return payload_by_key
-
-
-def _parameter_group_from_record(design, parameter):
-    if not design or not parameter:
-        return ""
-
-    parameter_key = _parameter_entity_token(parameter)
-    if not parameter_key:
-        return ""
-
-    state = _read_document_order_state()
-    records = _resolve_document_order_records(design, state.get("parameters") or {})
-    record = records.get(parameter_key) if isinstance(records.get(parameter_key), dict) else {}
-    return _normalize_group_name(record.get("group") or "")
-
-
-def _set_parameter_group_record(
-    design,
-    parameter,
-    group_name,
-    metadata_changed_at=None,
-    metadata_revision=None,
-    metadata_writer_id=None,
-    metadata_writer_version=None,
-):
-    if not design or not parameter:
-        return
-
-    parameter_key = _parameter_entity_token(parameter)
-    if not parameter_key:
-        return
-
-    order_state = _read_document_order_state()
-    records = _resolve_document_order_records(design, order_state.get("parameters") or {})
-    existing_record = records.get(parameter_key) if isinstance(records.get(parameter_key), dict) else {}
-    order_value = existing_record.get("order")
-    if not isinstance(order_value, int):
-        order_value = len(records)
-    existing_payload = _normalized_metadata_payload(
-        group_name=existing_record.get("group") or "",
-        metadata_changed_at=existing_record.get(METADATA_CHANGED_AT_RECORD_KEY),
-        revision=existing_record.get(METADATA_REVISION_RECORD_KEY),
-        writer_id=existing_record.get(METADATA_WRITER_ID_RECORD_KEY),
-        writer_version=existing_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
-    )
-    next_payload = _normalized_metadata_payload(
-        group_name=group_name,
-        metadata_changed_at=metadata_changed_at if metadata_changed_at is not None else existing_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
-        revision=metadata_revision if metadata_revision is not None else existing_payload.get(METADATA_REVISION_RECORD_KEY),
-        writer_id=metadata_writer_id if metadata_writer_id is not None else existing_payload.get(METADATA_WRITER_ID_RECORD_KEY),
-        writer_version=metadata_writer_version if metadata_writer_version is not None else existing_payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
-    )
-
-    units_manager = design.unitsManager
-    records[parameter_key] = {
-        "order": order_value,
-        "name": str(parameter.name or ""),
-        "current_expression": str(existing_record.get("current_expression") or parameter.expression or ""),
-        "previous_expression": str(existing_record.get("previous_expression") or ""),
-        "current_value": str(existing_record.get("current_value") or _format_parameter_value(parameter, units_manager)),
-        "previous_value": str(existing_record.get("previous_value") or ""),
-        "group": _normalize_group_name(next_payload.get("group") or ""),
-        METADATA_CHANGED_AT_RECORD_KEY: _metadata_changed_at_value(next_payload.get(METADATA_CHANGED_AT_RECORD_KEY)),
-        METADATA_REVISION_RECORD_KEY: _metadata_revision_value(next_payload.get(METADATA_REVISION_RECORD_KEY)),
-        METADATA_WRITER_ID_RECORD_KEY: _metadata_writer_id_value(next_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
-        METADATA_WRITER_VERSION_RECORD_KEY: _metadata_writer_version_value(next_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
-    }
-
-    _write_document_order_state(
-        {
-            "documentId": order_state.get("documentId", ""),
-            "documentName": order_state.get("documentName", ""),
-            "parameters": records,
-            "groupUi": order_state.get("groupUi", {"order": [], "collapsed": {}}),
-            UI_STATE_RECORD_KEY: _normalized_ui_state_record(order_state.get(UI_STATE_RECORD_KEY)),
-        }
-    )
 
 
 def _collect_metadata_debug_snapshot():
@@ -6734,23 +6663,29 @@ def _collect_metadata_debug_snapshot():
         return {
             "document": _active_document_info(),
             "recordCount": 0,
+            "metadataParameter": {
+                "status": _metadata_status("none", True),
+                "exists": False,
+                "timing": {"readMs": 0.0, "processMs": 0.0, "totalMs": 0.0},
+            },
             "rows": [],
         }
 
     order_state = _read_document_order_state()
     records = _resolve_document_order_records(design, order_state.get("parameters") or {})
-    document_metadata_state = _read_document_metadata_state(design)
+    timed_read = _timed_metadata_parameter_model_read(design)
+    metadata_model = timed_read.get("model") or _empty_metadata_model()
+    groups_by_token = metadata_model.get("groupsByToken") if isinstance(metadata_model.get("groupsByToken"), dict) else {}
+    order_index = {token: index for index, token in enumerate(metadata_model.get("orderedTokens") or [])}
     rows = []
     params = design.userParameters
     for index in range(params.count):
         parameter = params.item(index)
-        if not parameter:
+        if not parameter or _is_metadata_parameter(parameter):
             continue
 
         key = _parameter_entity_token(parameter)
         record = records.get(key) if isinstance(records.get(key), dict) else {}
-        fusion_payload = _parameter_metadata_payload(parameter)
-        doc_entry = _document_metadata_entry(design, parameter)
         json_payload = _normalized_metadata_payload(
             group_name=record.get("group") or "",
             metadata_changed_at=record.get(METADATA_CHANGED_AT_RECORD_KEY),
@@ -6759,30 +6694,34 @@ def _collect_metadata_debug_snapshot():
             writer_version=record.get(METADATA_WRITER_VERSION_RECORD_KEY),
         )
 
-        fusion_group = _normalize_group_name(fusion_payload.get("group") or "")
-        fusion_changed_at = _metadata_changed_at_value(fusion_payload.get(METADATA_CHANGED_AT_RECORD_KEY))
+        metadata_payload = _normalized_metadata_payload(
+            group_name=groups_by_token.get(key) or "",
+            metadata_changed_at=metadata_model.get("changedAt"),
+            revision=metadata_model.get("revision"),
+            writer_id=metadata_model.get("writerId"),
+            writer_version=metadata_model.get("writerVersion"),
+        )
+        metadata_group = _normalize_group_name(metadata_payload.get("group") or "")
+        metadata_changed_at = _metadata_changed_at_value(metadata_payload.get(METADATA_CHANGED_AT_RECORD_KEY))
         json_group = _normalize_group_name(json_payload.get("group") or "")
         json_changed_at = _metadata_changed_at_value(json_payload.get(METADATA_CHANGED_AT_RECORD_KEY))
 
         latest_source = "equal"
-        if _is_metadata_newer(fusion_payload, json_payload):
-            latest_source = "fusion"
-        elif _is_metadata_newer(json_payload, fusion_payload):
+        if metadata_model.get("source") == "metadataParameter" and _is_metadata_newer(metadata_payload, json_payload):
+            latest_source = "metadataParameter"
+        elif _is_metadata_newer(json_payload, metadata_payload):
             latest_source = "json"
 
         rows.append(
             {
                 "name": str(parameter.name or ""),
                 "key": key,
-                "fusionGroup": fusion_group,
-                "fusionMetadataChangedAt": fusion_changed_at,
-                "fusionMetadataRevision": _metadata_revision_value(fusion_payload.get(METADATA_REVISION_RECORD_KEY)),
-                "fusionMetadataWriterId": _metadata_writer_id_value(fusion_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
-                "fusionMetadataWriterVersion": _metadata_writer_version_value(fusion_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
-                "fusionParameterGroup": _normalize_group_name(fusion_payload.get("group") or ""),
-                "fusionParameterMetadataChangedAt": _metadata_changed_at_value(fusion_payload.get(METADATA_CHANGED_AT_RECORD_KEY)),
-                "fusionDocumentGroup": _normalize_group_name(doc_entry.get("group") or ""),
-                "fusionDocumentMetadataChangedAt": _metadata_changed_at_value(doc_entry.get(METADATA_CHANGED_AT_RECORD_KEY)),
+                "metadataGroup": metadata_group,
+                "metadataChangedAt": metadata_changed_at,
+                "metadataRevision": _metadata_revision_value(metadata_payload.get(METADATA_REVISION_RECORD_KEY)),
+                "metadataWriterId": _metadata_writer_id_value(metadata_payload.get(METADATA_WRITER_ID_RECORD_KEY)),
+                "metadataWriterVersion": _metadata_writer_version_value(metadata_payload.get(METADATA_WRITER_VERSION_RECORD_KEY)),
+                "metadataOrder": order_index.get(key, -1),
                 "jsonGroup": json_group,
                 "jsonMetadataChangedAt": json_changed_at,
                 "jsonMetadataRevision": _metadata_revision_value(json_payload.get(METADATA_REVISION_RECORD_KEY)),
@@ -6796,7 +6735,13 @@ def _collect_metadata_debug_snapshot():
     return {
         "document": _active_document_info(),
         "recordCount": len(records),
-        "docMeta": document_metadata_state,
+        "metadataParameter": {
+            "exists": bool(timed_read.get("parameterExists")),
+            "status": timed_read.get("status") or _metadata_status("none", True),
+            "groupCount": len(set(groups_by_token.values())),
+            "parameterRecordCount": len(metadata_model.get("orderedTokens") or []),
+            "timing": timed_read.get("timing") or {"readMs": 0.0, "processMs": 0.0, "totalMs": 0.0},
+        },
         "rows": rows,
     }
 
@@ -6804,218 +6749,74 @@ def _collect_metadata_debug_snapshot():
 def _sync_metadata_json_to_fusion():
     design = _require_design()
     order_state = _read_document_order_state()
-    records = _resolve_document_order_records(design, order_state.get("parameters") or {})
-    params = design.userParameters
-    updated = 0
-    skipped = 0
-    failed = 0
-    failed_names = []
-    failed_details = []
-
-    for index in range(params.count):
-        parameter = params.item(index)
-        if not parameter:
-            continue
-
-        key = _parameter_entity_token(parameter)
-        record = records.get(key) if isinstance(records.get(key), dict) else None
-        if not record:
-            skipped += 1
-            continue
-
-        json_payload = _normalized_metadata_payload(
-            group_name=record.get("group") or "",
-            metadata_changed_at=record.get(METADATA_CHANGED_AT_RECORD_KEY),
-            revision=record.get(METADATA_REVISION_RECORD_KEY),
-            writer_id=record.get(METADATA_WRITER_ID_RECORD_KEY),
-            writer_version=record.get(METADATA_WRITER_VERSION_RECORD_KEY),
-        )
-        fusion_payload = _parameter_metadata_payload(parameter)
-        if not _is_metadata_newer(json_payload, fusion_payload):
-            skipped += 1
-            continue
-
-        write_result = _write_parameter_group_name_with_diagnostics(
-            parameter,
-            json_payload.get("group") or "",
-            json_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
-            json_payload,
-        )
-        if write_result.get("ok"):
-            updated += 1
-        else:
-            failed += 1
-            failed_names.append(str(parameter.name or key or ""))
-            if len(failed_details) < 10:
-                errors = write_result.get("errors") or []
-                failed_details.append(
-                    {
-                        "name": str(parameter.name or key or ""),
-                        "group": json_payload.get("group") or "",
-                        "errors": errors[:5],
-                        "documentOwnerTypes": write_result.get("documentOwnerTypes") or [],
-                        "parameterAttributeOk": bool(write_result.get("parameterAttributeOk")),
-                        "metadataChangedAtAttributeOk": bool(write_result.get("metadataChangedAtAttributeOk")),
-                        "documentMapOk": bool(write_result.get("documentMapOk")),
-                        "documentItemOk": bool(write_result.get("documentItemOk")),
-                    }
-                )
-
-    if updated or failed:
-        _write_document_order_state(
-            {
-                "documentId": order_state.get("documentId", ""),
-                "documentName": order_state.get("documentName", ""),
-                "parameters": records,
-                "groupUi": order_state.get("groupUi", {"order": [], "collapsed": {}}),
-                UI_STATE_RECORD_KEY: _normalized_ui_state_record(order_state.get(UI_STATE_RECORD_KEY)),
-            }
-        )
-    _bump_document_metadata_state(design, _collect_document_metadata_payload_by_key(design))
+    model = _metadata_model_from_local_json(design, order_state)
+    timing = {}
+    written_model = _write_metadata_parameter_model(design, model, timing=timing, allow_overwrite_corrupt=True)
+    group_count = len(set((written_model.get("groupsByToken") or {}).values()))
+    record_count = len(written_model.get("orderedTokens") or [])
 
     return {
-        "direction": "json_to_fusion",
-        "updatedCount": updated,
-        "skippedCount": skipped,
-        "failedCount": failed,
-        "failedNames": failed_names[:20],
-        "failedDetails": failed_details,
+        "direction": "json_to_metadata_parameter",
+        "updatedCount": record_count,
+        "skippedCount": 0,
+        "failedCount": 0,
+        "groupCount": group_count,
+        "recordCount": record_count,
+        "writeTiming": timing,
     }
 
 
 def _sync_metadata_fusion_to_json():
     design = _require_design()
     order_state = _read_document_order_state()
-    records = _resolve_document_order_records(design, order_state.get("parameters") or {})
-    params = design.userParameters
-    updated = 0
-    skipped = 0
-
-    for index in range(params.count):
-        parameter = params.item(index)
-        if not parameter:
-            continue
-
-        parameter_key = _parameter_entity_token(parameter)
-        json_record = records.get(parameter_key) if isinstance(records.get(parameter_key), dict) else {}
-        json_payload = _normalized_metadata_payload(
-            group_name=json_record.get("group") or "",
-            metadata_changed_at=json_record.get(METADATA_CHANGED_AT_RECORD_KEY),
-            revision=json_record.get(METADATA_REVISION_RECORD_KEY),
-            writer_id=json_record.get(METADATA_WRITER_ID_RECORD_KEY),
-            writer_version=json_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
-        )
-        fusion_payload = _parameter_metadata_payload(parameter)
-        if not _is_metadata_newer(fusion_payload, json_payload):
-            skipped += 1
-            continue
-        _set_parameter_group_record(
-            design,
-            parameter,
-            fusion_payload.get("group") or "",
-            fusion_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
-            fusion_payload.get(METADATA_REVISION_RECORD_KEY),
-            fusion_payload.get(METADATA_WRITER_ID_RECORD_KEY),
-            fusion_payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
-        )
-        updated += 1
+    timed_read = _timed_metadata_parameter_model_read(design)
+    if not timed_read.get("ok"):
+        status = timed_read.get("status") or {}
+        raise ValueError(f"Metadata parameter could not be read: {status.get('error') or 'missing/invalid payload'}")
+    model = timed_read.get("model") or _empty_metadata_model()
+    changed = _apply_metadata_model_to_local_cache(design, model, order_state)
+    record_count = len(model.get("orderedTokens") or [])
 
     return {
-        "direction": "fusion_to_json",
-        "updatedCount": updated,
-        "skippedCount": skipped,
+        "direction": "metadata_parameter_to_json",
+        "updatedCount": record_count if changed else 0,
+        "skippedCount": 0 if changed else record_count,
+        "failedCount": 0,
+        "recordCount": record_count,
+        "readTiming": timed_read.get("timing") or {},
     }
 
 
 def _repair_metadata():
     design = _require_design()
     order_state = _read_document_order_state()
-    records = _resolve_document_order_records(design, order_state.get("parameters") or {})
-    params = design.userParameters
-
-    updated_fusion = 0
-    updated_json = 0
-    healed = 0
-    conflicts = 0
-    failed = 0
-    failed_names = []
-
-    for index in range(params.count):
-        parameter = params.item(index)
-        if not parameter:
-            continue
-        key = _parameter_entity_token(parameter)
-        if not key:
-            continue
-
-        json_record = records.get(key) if isinstance(records.get(key), dict) else {}
-        json_payload = _normalized_metadata_payload(
-            group_name=json_record.get("group") or "",
-            metadata_changed_at=json_record.get(METADATA_CHANGED_AT_RECORD_KEY),
-            revision=json_record.get(METADATA_REVISION_RECORD_KEY),
-            writer_id=json_record.get(METADATA_WRITER_ID_RECORD_KEY),
-            writer_version=json_record.get(METADATA_WRITER_VERSION_RECORD_KEY),
-        )
-        fusion_payload = _parameter_metadata_payload(parameter)
-
-        json_missing = not json_record
-        fusion_missing = not _normalize_group_name(fusion_payload.get("group") or "")
-        winner_payload = _choose_latest_metadata(fusion_payload, json_payload)
-
-        if json_missing or fusion_missing:
-            healed += 1
-        if _is_metadata_newer(fusion_payload, json_payload) and _is_metadata_newer(json_payload, fusion_payload):
-            conflicts += 1
-
-        if _is_metadata_newer(winner_payload, fusion_payload):
-            write_result = _write_parameter_group_name_with_diagnostics(
-                parameter,
-                winner_payload.get("group") or "",
-                winner_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
-                winner_payload,
-            )
-            if write_result.get("ok"):
-                updated_fusion += 1
-            else:
-                failed += 1
-                failed_names.append(str(parameter.name or key or ""))
-
-        if _is_metadata_newer(winner_payload, json_payload) or json_missing:
-            _set_parameter_group_record(
-                design,
-                parameter,
-                winner_payload.get("group") or "",
-                winner_payload.get(METADATA_CHANGED_AT_RECORD_KEY),
-                winner_payload.get(METADATA_REVISION_RECORD_KEY),
-                winner_payload.get(METADATA_WRITER_ID_RECORD_KEY),
-                winner_payload.get(METADATA_WRITER_VERSION_RECORD_KEY),
-            )
-            updated_json += 1
-
-    if updated_json:
-        order_state = _read_document_order_state()
-        records = _resolve_document_order_records(design, order_state.get("parameters") or {})
-        _write_document_order_state(
-            {
-                "documentId": order_state.get("documentId", ""),
-                "documentName": order_state.get("documentName", ""),
-                "parameters": records,
-                "groupUi": order_state.get("groupUi", {"order": [], "collapsed": {}}),
-                UI_STATE_RECORD_KEY: _normalized_ui_state_record(order_state.get(UI_STATE_RECORD_KEY)),
-            }
-        )
-    _bump_document_metadata_state(design, _collect_document_metadata_payload_by_key(design))
+    read_before = _timed_metadata_parameter_model_read(design)
+    source = "metadataParameter"
+    if read_before.get("ok"):
+        model = read_before.get("model") or _empty_metadata_model()
+    else:
+        source = "legacyFusion/localJson"
+        model = _metadata_model_from_legacy_fusion_metadata(design, order_state) if _legacy_fusion_metadata_exists(design) else _metadata_model_from_local_json(design, order_state)
+    timing = {}
+    written_model = _write_metadata_parameter_model(design, model, timing=timing, allow_overwrite_corrupt=True)
+    _apply_metadata_model_to_local_cache(design, written_model, order_state)
+    group_count = len(set((written_model.get("groupsByToken") or {}).values()))
+    record_count = len(written_model.get("orderedTokens") or [])
 
     return {
         "direction": "repair",
-        "updatedFusionCount": updated_fusion,
-        "updatedJsonCount": updated_json,
-        "healedCount": healed,
-        "conflictCount": conflicts,
-        "failedCount": failed,
-        "failedNames": failed_names[:20],
-        "updatedCount": updated_fusion + updated_json,
+        "source": source,
+        "updatedFusionCount": record_count,
+        "updatedJsonCount": record_count,
+        "healedCount": 0 if read_before.get("ok") else record_count,
+        "conflictCount": 0,
+        "failedCount": 0,
+        "updatedCount": record_count,
         "skippedCount": 0,
+        "groupCount": group_count,
+        "recordCount": record_count,
+        "readTiming": read_before.get("timing") or {},
+        "writeTiming": timing,
     }
 
 

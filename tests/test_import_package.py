@@ -26,7 +26,7 @@ def do_import(tmp_path, records, existing_params=None, conflict_policy="skip",
     file_path = write_package(tmp_path, records, **pkg_kwargs)
     mock_design = design_override or make_mock_design(existing_params or [])
 
-    # Stub out helpers that write to disk / Fusion attributes
+    # Stub out helpers that write to disk / metadata parameter
     data = {
         "filePath": file_path,
         "conflictPolicy": conflict_policy,
@@ -43,10 +43,8 @@ def do_import(tmp_path, records, existing_params=None, conflict_policy="skip",
                 with patch.object(bp, "_read_document_order_state", return_value={}):
                     with patch.object(bp, "_persist_document_order_snapshot", return_value=None):
                         with patch.object(bp, "_write_document_order_state", return_value=None):
-                            with patch.object(bp, "_write_fusion_ui_snapshot", return_value=None):
-                                with patch.object(bp, "_local_ui_snapshot", return_value={}):
-                                    with patch.object(bp, "_bump_ui_state_record", return_value={}):
-                                        return bp._import_parameters_package(data)
+                            with patch.object(bp, "_bump_ui_state_record", return_value={}):
+                                return bp._import_parameters_package(data)
 
 
 # ---------------------------------------------------------------------------
