@@ -93,6 +93,23 @@ def test_apply_all_and_discard_all_controls_present(browser_page):
     assert ready_page.locator("#timelineSortButton").count() == 1
 
 
+def test_tiny_width_header_controls_remain_visible(browser_page):
+    page = browser_page
+    page.set_viewport_size({"width": 340, "height": 820})
+    page.goto(_harness_url("render-large"))
+    _wait_palette_ready(page)
+
+    for selector in ("#updatePill", "#copySelectedButton", "#deleteSelectedButton", "#timelineSortButton"):
+        assert page.locator(selector).is_visible()
+
+    page.locator("#parameterRows tr.parameter-row[data-parameter-key]").first.click()
+    chip = page.locator("#selectionCountChip")
+    assert chip.is_visible()
+    assert (chip.text_content() or "").strip() == "1"
+
+    page.set_viewport_size({"width": 796, "height": 820})
+
+
 def test_timeline_sort_disabled_when_row_dirty(browser_page):
     page = browser_page
     page.goto(_harness_url())

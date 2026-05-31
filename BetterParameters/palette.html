@@ -3070,29 +3070,24 @@
           min-width: 0;
         }
 
-        #updatePill {
-          display: none !important;
-        }
-
         .parameter-rail {
           gap: 4px;
           padding: 3px 5px;
         }
 
         .native-search {
-          min-width: 84px;
+          min-width: 72px;
         }
 
         .rail-actions {
-          min-width: 72px;
+          min-width: 0;
           gap: 2px;
         }
 
-        #selectionCountChip,
-        #copySelectedButton,
-        #deleteSelectedButton,
-        #timelineSortButton {
-          display: none !important;
+        #selectionCountChip {
+          max-width: 32px;
+          min-width: 16px;
+          text-align: center;
         }
       }
     </style>
@@ -3730,6 +3725,7 @@
       };
       const NARROW_NAME_EXPRESSION_ONLY_PX = 520;
       const NARROW_LAYOUT_HYSTERESIS_PX = 18;
+      const TINY_HEADER_CONTROLS_PX = 360;
 
       // Maps new column key names â†’ old names stored before the rename.
       // Used in migrateColumnWidths to upgrade persisted settings transparently.
@@ -7822,7 +7818,8 @@
         }
         const selectedCount = getSelectedParameterKeys().length;
         chip.hidden = selectedCount <= 0;
-        chip.textContent = `${selectedCount} selected`;
+        const tinyHeaderControls = window.innerWidth <= TINY_HEADER_CONTROLS_PX;
+        chip.textContent = tinyHeaderControls ? String(selectedCount) : `${selectedCount} selected`;
         renderSelectedActionButtons();
       }
 
@@ -17368,6 +17365,7 @@
             applyColumnWidths();
           });
         }
+        renderSelectionCountChip();
         scheduleLayoutDebugPanelUpdate();
       });
 
