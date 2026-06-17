@@ -55,3 +55,9 @@ def test_palette_has_stable_root_component_group_identity():
     assert 'const ROOT_COMPONENT_ID = "root";' in text
     assert "function isRootComponentModelValue(value)" in text
     assert "value?.isRootComponent === true" in text
+
+
+def test_palette_import_response_helpers_present():
+    text = _read(PALETTE_PATH)
+    assert 'function readResponseCountField(response, fieldName, contextLabel = "Response")' in text
+    assert 'function readResponseArrayField(response, fieldName, contextLabel = "Response")' in text

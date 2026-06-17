@@ -113,3 +113,31 @@ def test_dry_run_flag_propagated_in_import_parameters_result(tmp_path):
     # We just verify the helper returns ok=True with importedCount.
     assert result["ok"]
     assert result["importedCount"] == 1
+
+
+def test_handle_palette_action_data_panel_import_includes_pass_counts():
+    helper_result = {
+        "ok": True,
+        "message": "Import complete.",
+        "selectionToken": "sel-1",
+        "sourceFileName": "Example.f3d",
+        "sourceFileId": "file-1",
+        "sourceWasAlreadyOpen": False,
+        "sourceOpenedTemporarily": True,
+        "importedCount": 3,
+        "skippedCount": 1,
+        "failedCount": 0,
+        "failedRows": [],
+        "passCount": 2,
+        "importedOnRetryCount": 1,
+    }
+    with patch.object(BP, "_import_parameters_from_data_panel", return_value=helper_result), \
+         patch.object(BP, "_current_state_payload", return_value={"parameters": []}):
+        response = BP._handle_palette_action("importParametersFromDataPanel", {
+            "selectionToken": "sel-1",
+            "conflictPolicy": "skip",
+            "dryRun": False,
+        })
+    assert response["ok"] is True
+    assert response["passCount"] == 2
+    assert response["importedOnRetryCount"] == 1

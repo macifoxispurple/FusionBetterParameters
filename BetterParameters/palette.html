@@ -13237,6 +13237,26 @@
         return lines;
       }
 
+      function readResponseCountField(response, fieldName, contextLabel = "Response") {
+        const value = response?.[fieldName];
+        if (Number.isFinite(value)) {
+          return Number(value);
+        }
+        const coerced = Number(value);
+        if (Number.isFinite(coerced)) {
+          return coerced;
+        }
+        throw new Error(`${contextLabel} is missing numeric "${fieldName}".`);
+      }
+
+      function readResponseArrayField(response, fieldName, contextLabel = "Response") {
+        const value = response?.[fieldName];
+        if (Array.isArray(value)) {
+          return value;
+        }
+        throw new Error(`${contextLabel} is missing array "${fieldName}".`);
+      }
+
       function flushQueuedRenderPushIfReady(force = false) {
         if (!state.pendingRenderPushEnvelope) {
           return;

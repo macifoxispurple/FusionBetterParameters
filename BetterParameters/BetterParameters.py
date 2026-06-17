@@ -822,6 +822,8 @@ def _handle_palette_action(action, data):
             "skippedCount": result["skippedCount"],
             "failedCount": result["failedCount"],
             "failedRows": result["failedRows"],
+            "passCount": result.get("passCount", 1),
+            "importedOnRetryCount": result.get("importedOnRetryCount", 0),
             "dryRun": dry_run,
         }
 

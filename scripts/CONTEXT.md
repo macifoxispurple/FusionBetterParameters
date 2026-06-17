@@ -5,9 +5,28 @@ Canonical location: `scripts/CONTEXT.md` (repo root copies are deprecated/remove
 
 ## Current Task
 
-- Active implementation complete: first-run palette startup writes an initial left-docked settings file.
-  - Source of truth docs read first this session: `scripts/HANDOFF.md`, `scripts/CONTEXT.md`, `scripts/METADATA_PARAMETER_SPEC.md`; `scripts/PUSHNOTES.md` read for earlier patch ship.
-  - User tested the transient-default approach and saw the palette floating at upper-left; real working settings were inspected and used to refine the first-run path.
+- Active bugfix: import flows were failing in the palette with `readResponseCountField is not defined`.
+  - Source of truth doc re-read this session: `scripts/HANDOFF.md` in full before live-sync work.
+  - Root cause found in `palette.html`: CSV/Data Panel import handlers called `readResponseCountField(...)` and `readResponseArrayField(...)`, but helper defs were missing.
+  - Added both helper defs back and a baseline regression presence check in `tests/test_fe_current_baseline.py`.
+  - Live add-in sync completed with verify success for `BetterParameters.py` and `palette.html`; ready for user Fusion-side import retest.
+
+## Session Updates (2026-06-16)
+
+- Fixed import workflow frontend helper regression:
+  - Restored `readResponseCountField(...)` and `readResponseArrayField(...)` in `BetterParameters/palette.html`.
+  - This unblocks both CSV import and Fusion-file import paths, plus their retry/report flows, because all share the same response-field readers.
+  - Added a baseline test presence check in `tests/test_fe_current_baseline.py` so future FE refactors do not silently drop the helpers again.
+  - Validation:
+    - focused pytest not run in this Windows session because no local `python`/`pytest` runner was available on PATH or in the bundled runtime with pytest installed.
+    - live add-in sync: `C:\Users\Maci\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe BetterParameters\update_helper.py BetterParameters "C:\Users\Maci\AppData\Roaming\Autodesk\Autodesk Fusion 360\API\AddIns\BetterParameters" ... --verify` -> `Done: 10 copied, 4 skipped, 0 error(s)`; `VERIFY OK` for `BetterParameters.py` and `palette.html`.
+
+- Fixed Data Panel import response envelope count omission:
+  - User retest showed import itself succeeded, but the palette then raised `Data Panel import is missing numeric "passCount".`
+  - Root cause: backend `_handle_import_from_data_panel(...)` omitted `passCount` and `importedOnRetryCount` from the response envelope, while the retry path already included them and the frontend expects both.
+  - Added both fields to the normal Data Panel import response envelope and added a dispatch-level regression in `tests/test_dry_run.py`.
+  - Validation:
+    - live add-in sync: `C:\Users\Maci\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe BetterParameters\update_helper.py BetterParameters "C:\Users\Maci\AppData\Roaming\Autodesk\Autodesk Fusion 360\API\AddIns\BetterParameters" ... --verify` -> `Done: 10 copied, 4 skipped, 0 error(s)`; `VERIFY OK` for `BetterParameters.py` and `palette.html`.
 
 ## Session Updates (2026-05-31)
 
