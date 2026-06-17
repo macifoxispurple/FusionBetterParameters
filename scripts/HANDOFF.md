@@ -308,6 +308,7 @@ Preflight includes `git`, `gh`, `python`, `git ls-remote --heads origin`, `gh au
 ### Release notes rules
 
 - Draft notes first from real diff/history
+- Before every production ship, review and update `scripts/release_notes_pending.md` to reflect the actual user-facing fixes/features being released, unless you are explicitly providing a different curated `--notes-file`
 - If history is low-signal or changes are substantial, use curated `--notes-file`
 - Required style:
   - dense, high-level, end-user readable
@@ -319,7 +320,7 @@ Preflight includes `git`, `gh`, `python`, `git ls-remote --heads origin`, `gh au
 - If `--notes-file` is omitted:
   - ship auto-generates notes since previous tag
   - preflight fails if generated notes are low-signal
-  - `scripts/release_notes_pending.md` is used automatically if present
+  - `scripts/release_notes_pending.md` is used automatically if present, so its contents should be kept current before shipping
   - `scripts/release_notes_template.md` may contain `{{AUTO_HIGHLIGHTS}}`
   - legacy placeholders are auto-replaced
 - `gh release view <tag>` not-found is treated as normal; missing release is auto-created
