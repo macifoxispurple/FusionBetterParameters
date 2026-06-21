@@ -61,3 +61,20 @@ def test_palette_import_response_helpers_present():
     text = _read(PALETTE_PATH)
     assert 'function readResponseCountField(response, fieldName, contextLabel = "Response")' in text
     assert 'function readResponseArrayField(response, fieldName, contextLabel = "Response")' in text
+
+
+def test_new_parameter_enter_accepts_expression_suggestion_before_submit():
+    text = _read(PALETTE_PATH)
+    expected = '''if (event.key === "Enter") {
+          event.preventDefault();
+          const { flatItems, highlightedIndex, activeInputId } = state.expressionAutocomplete;
+          if (flatItems.length && activeInputId === event.currentTarget.id) {
+            applyExpressionSuggestion(flatItems[highlightedIndex]);
+            return;
+          }
+          closeExpressionSuggestions();
+          closeFunctionHelper();
+          document.getElementById("createForm")?.requestSubmit();
+          return;
+        }'''
+    assert expected in text

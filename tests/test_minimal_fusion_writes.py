@@ -116,6 +116,12 @@ def _design_with_user_params(params):
     return design
 
 
+def _reset_parameter_mutation_ledger():
+    BP._active_external_command_id = ""
+    BP._recent_parameter_mutations_by_doc.clear()
+    BP._parameter_mutation_sequence = 0
+
+
 def test_update_parameter_skips_unchanged_expression_and_comment():
     param = CountingParameter(expression="10 mm", comment="same")
     design = MagicMock()
@@ -325,6 +331,66 @@ def test_fusion_command_terminated_ignores_bp_palette_command():
         handler.notify(SimpleNamespace(commandId=BP.CMD_ID))
 
     push_if_changed.assert_not_called()
+
+
+def test_create_parameter_during_external_command_is_recreated_after_cancel():
+    _reset_parameter_mutation_ledger()
+    design = _design_with_user_params([])
+    palette = SimpleNamespace(isVisible=True)
+
+    with patch.object(BP, "_active_document_info", return_value={"id": "doc-active-tool", "name": "Doc"}), \
+         patch.object(BP, "_design", return_value=design), \
+         patch.object(BP, "_require_design", return_value=design), \
+         patch.object(BP, "_validate_expression_response", return_value={"ok": True, "message": ""}), \
+         patch.object(BP, "_validate_unit_response", return_value={"ok": True, "unit": "mm"}), \
+         patch.object(BP, "_palette", return_value=palette), \
+         patch.object(BP, "_push_parameter_list") as push_full:
+        BP.FusionCommandStartingHandler().notify(SimpleNamespace(commandId="SketchLineCommand"))
+        BP._create_parameter({"name": "tool_width", "expression": "7 mm", "unit": "mm", "comment": "from bp"})
+
+        assert design.userParameters.itemByName("tool_width") is not None
+        design.userParameters._params.clear()
+
+        restored_count = BP._reconcile_parameter_mutation_ledger("SketchLineCommand")
+
+        restored = design.userParameters.itemByName("tool_width")
+        assert restored_count == 1
+        assert restored is not None
+        assert restored.unit == "mm"
+        assert restored.comment == "from bp"
+        assert not BP._recent_parameter_mutations_by_doc
+
+        BP.FusionCommandStartingHandler().notify(SimpleNamespace(commandId="SketchLineCommand"))
+        BP._create_parameter({"name": "tool_depth", "expression": "3 mm", "unit": "mm", "comment": ""})
+        design.userParameters._params = [p for p in design.userParameters._params if p.name != "tool_depth"]
+        BP.FusionCommandTerminatedHandler().notify(SimpleNamespace(commandId="SketchLineCommand"))
+
+    assert design.userParameters.itemByName("tool_depth") is not None
+    push_full.assert_called_once_with()
+    _reset_parameter_mutation_ledger()
+
+
+def test_update_parameter_during_external_command_is_reapplied_after_cancel():
+    _reset_parameter_mutation_ledger()
+    param = CountingParameter(name="width", expression="10 mm", comment="old")
+    design = _design_with_user_params([param])
+
+    with patch.object(BP, "_active_document_info", return_value={"id": "doc-active-tool", "name": "Doc"}), \
+         patch.object(BP, "_design", return_value=design), \
+         patch.object(BP, "_require_design", return_value=design), \
+         patch.object(BP, "_find_user_parameter_by_token", return_value=param):
+        BP.FusionCommandStartingHandler().notify(SimpleNamespace(commandId="ExtrudeCommand"))
+        BP._update_parameter({"key": "tok_width", "name": "width", "expression": "12 mm", "comment": "new"})
+
+        param.expression = "10 mm"
+        param.comment = "old"
+        restored_count = BP._reconcile_parameter_mutation_ledger("ExtrudeCommand")
+
+    assert restored_count == 1
+    assert param.expression == "12 mm"
+    assert param.comment == "new"
+    assert not BP._recent_parameter_mutations_by_doc
+    _reset_parameter_mutation_ledger()
 
 
 def test_metadata_comment_encode_decode_round_trip():

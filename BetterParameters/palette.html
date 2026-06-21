@@ -16197,6 +16197,11 @@
       document.getElementById("newExpression").addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
+          const { flatItems, highlightedIndex, activeInputId } = state.expressionAutocomplete;
+          if (flatItems.length && activeInputId === event.currentTarget.id) {
+            applyExpressionSuggestion(flatItems[highlightedIndex]);
+            return;
+          }
           closeExpressionSuggestions();
           closeFunctionHelper();
           document.getElementById("createForm")?.requestSubmit();

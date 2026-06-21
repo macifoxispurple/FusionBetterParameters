@@ -5,6 +5,28 @@ Canonical location: `scripts/CONTEXT.md` (repo root copies are deprecated/remove
 
 ## Current Task
 
+- Active bugfix: New Parameter expression autocomplete does not commit highlighted parameter suggestion on Enter.
+  - User repro: typing `dep` shows `Depth` as first dropdown item, but Return closes suggestions and leaves raw `dep`, causing case-sensitive unknown-parameter validation.
+  - Root cause: New Parameter `newExpression` Enter handler submitted the form before applying the active expression suggestion; row expression inputs already handled this correctly.
+  - Fixed `BetterParameters/palette.html` so Enter first applies the highlighted autocomplete item when suggestions are active for `newExpression`, and only submits when no suggestion is active.
+  - Added static regression in `tests/test_fe_current_baseline.py`.
+  - Validation:
+    - `py_compile` passed for `tests/test_fe_current_baseline.py`.
+    - Direct static regression invocation passed with bundled Python.
+    - Live add-in sync completed with verify success for `BetterParameters.py` and `palette.html`.
+  - Need user Fusion smoke: New Parameter modal, type partial parameter name such as `dep`, press Enter, confirm expression becomes `Depth ` rather than submitting/validating raw `dep`.
+
+- Active bugfix: Fusion active-tool cancel can roll back BetterParameters user-parameter mutations.
+  - Suspected Fusion behavior change: BP creates/updates params while another tool is active; cancelling that tool can delete/revert the BP param unexpectedly.
+  - Implemented mitigation: backend mutation ledger for BP-created/updated user params while an external Fusion command is active, reconciled on Fusion `commandTerminated` after non-BP commands so missing/reverted params are restored after the active tool exits.
+  - Covered create/update rollback with regression tests in `tests/test_minimal_fusion_writes.py`.
+  - Validation this session:
+    - `python -m pytest ...` unavailable: no PATH Python and bundled runtime has no pytest installed.
+    - `py_compile` passed for `BetterParameters/BetterParameters.py` and `tests/test_minimal_fusion_writes.py`.
+    - Direct stub smokes passed for active-command create deletion restore and update rollback restore.
+    - Live add-in sync completed with verify success for `BetterParameters.py` and `palette.html`.
+  - Need user Fusion smoke: start tool, create/update BP param while tool active, use param in tool if desired, cancel tool, confirm BP restores/keeps parameter after cancel.
+
 - Active bugfix: import flows were failing in the palette with `readResponseCountField is not defined`.
   - Source of truth doc re-read this session: `scripts/HANDOFF.md` in full before live-sync work.
   - Root cause found in `palette.html`: CSV/Data Panel import handlers called `readResponseCountField(...)` and `readResponseArrayField(...)`, but helper defs were missing.

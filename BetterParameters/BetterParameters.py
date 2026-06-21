@@ -307,6 +307,9 @@ command_handler_registered = False
 restore_window_position_command_handler_registered = False
 _updated_runtime_module = None
 _last_pushed_parameter_signature = None
+_active_external_command_id = ""
+_recent_parameter_mutations_by_doc = {}
+_parameter_mutation_sequence = 0
 
 
 def run(context):
@@ -392,6 +395,10 @@ def _register_application_events():
     on_document_activated = DocumentActivatedHandler()
     app.documentActivated.add(on_document_activated)
     handlers.append(on_document_activated)
+    if ui and hasattr(ui, "commandStarting"):
+        on_command_starting = FusionCommandStartingHandler()
+        ui.commandStarting.add(on_command_starting)
+        handlers.append(on_command_starting)
     if ui and hasattr(ui, "commandTerminated"):
         on_command_terminated = FusionCommandTerminatedHandler()
         ui.commandTerminated.add(on_command_terminated)
@@ -462,18 +469,43 @@ class DocumentActivatedHandler(adsk.core.DocumentEventHandler):
                 app.log(f"Better Parameters documentActivated refresh failed:\n{traceback.format_exc()}")
 
 
+class FusionCommandStartingHandler(adsk.core.ApplicationCommandEventHandler):
+    def __init__(self):
+        super().__init__()
+
+    def notify(self, args):
+        global _active_external_command_id
+        try:
+            command_id = str(getattr(args, "commandId", "") or "")
+            if command_id in {CMD_ID, RESTORE_WINDOW_POSITION_CMD_ID}:
+                _active_external_command_id = ""
+                return
+            _active_external_command_id = command_id
+        except Exception:
+            _active_external_command_id = ""
+            if app:
+                app.log(f"Better Parameters commandStarting tracking failed:\n{traceback.format_exc()}")
+
+
 class FusionCommandTerminatedHandler(adsk.core.ApplicationCommandEventHandler):
     def __init__(self):
         super().__init__()
 
     def notify(self, args):
+        global _active_external_command_id
         try:
             command_id = str(getattr(args, "commandId", "") or "")
             if command_id in {CMD_ID, RESTORE_WINDOW_POSITION_CMD_ID}:
                 return
+            restored_count = _reconcile_parameter_mutation_ledger(command_id)
+            if _active_external_command_id == command_id:
+                _active_external_command_id = ""
             palette = _palette()
             if palette and palette.isVisible:
-                _push_parameter_list_if_changed()
+                if restored_count:
+                    _push_parameter_list()
+                else:
+                    _push_parameter_list_if_changed()
         except Exception:
             if app:
                 app.log(f"Better Parameters commandTerminated refresh failed:\n{traceback.format_exc()}")
@@ -642,6 +674,167 @@ def _assign_if_changed(obj, attr_name, next_value):
         return False
     setattr(obj, attr_name, next_value)
     return True
+
+
+def _document_mutation_ledger_key():
+    info = _active_document_info()
+    return _document_order_storage_key(info.get("id", ""), info.get("name", ""))
+
+
+def _external_command_id_for_mutation():
+    if _active_external_command_id:
+        return _active_external_command_id
+    if not ui:
+        return ""
+    try:
+        command_id = str(getattr(ui, "activeCommand", "") or "")
+    except Exception:
+        command_id = ""
+    if not command_id or command_id in {CMD_ID, RESTORE_WINDOW_POSITION_CMD_ID}:
+        return ""
+    return command_id
+
+
+def _parameter_mutation_log_key(name, token=""):
+    name_key = str(name or "").strip().casefold()
+    token_key = str(token or "").strip()
+    return name_key or token_key
+
+
+def _remember_parameter_mutation(parameter, expression=None, unit=None, comment=None, group=None, command_id=None):
+    global _parameter_mutation_sequence
+    if not parameter or _is_metadata_parameter(parameter):
+        return
+    command_id = str(command_id if command_id is not None else _external_command_id_for_mutation() or "")
+    if not command_id:
+        return
+    name = str(getattr(parameter, "name", "") or "").strip()
+    if not name:
+        return
+    token = _parameter_entity_token(parameter)
+    _parameter_mutation_sequence += 1
+    doc_key = _document_mutation_ledger_key()
+    ledger = _recent_parameter_mutations_by_doc.setdefault(doc_key, {})
+    ledger[_parameter_mutation_log_key(name, token)] = {
+        "sequence": _parameter_mutation_sequence,
+        "commandId": command_id,
+        "key": token,
+        "name": name,
+        "expression": str(expression if expression is not None else getattr(parameter, "expression", "") or ""),
+        "unit": str(unit if unit is not None else getattr(parameter, "unit", "") or ""),
+        "comment": str(comment if comment is not None else getattr(parameter, "comment", "") or ""),
+        "isFavorite": bool(getattr(parameter, "isFavorite", False)),
+        "group": _normalize_group_name(group or ""),
+    }
+
+
+def _forget_parameter_mutation(name="", token=""):
+    doc_key = _document_mutation_ledger_key()
+    ledger = _recent_parameter_mutations_by_doc.get(doc_key)
+    if not ledger:
+        return
+    remove_keys = set()
+    name_key = str(name or "").strip().casefold()
+    token_key = str(token or "").strip()
+    for ledger_key, spec in ledger.items():
+        if name_key and str(spec.get("name") or "").strip().casefold() == name_key:
+            remove_keys.add(ledger_key)
+        if token_key and str(spec.get("key") or "").strip() == token_key:
+            remove_keys.add(ledger_key)
+    if not remove_keys and (name_key or token_key):
+        remove_keys.add(_parameter_mutation_log_key(name_key, token_key))
+    for key in remove_keys:
+        ledger.pop(key, None)
+    if not ledger:
+        _recent_parameter_mutations_by_doc.pop(doc_key, None)
+
+
+def _resolve_user_parameter_from_spec(design, spec):
+    token = str(spec.get("key") or "").strip()
+    name = str(spec.get("name") or "").strip()
+    parameter = _find_user_parameter_by_token(design, token) if token else None
+    if not parameter and name:
+        parameter = design.userParameters.itemByName(name)
+    return parameter
+
+
+def _restore_parameter_mutation_spec(design, spec):
+    name = str(spec.get("name") or "").strip()
+    if not name:
+        return False
+    expression = str(spec.get("expression") or "")
+    unit = str(spec.get("unit") or "")
+    comment = str(spec.get("comment") or "")
+    changed = False
+
+    parameter = _resolve_user_parameter_from_spec(design, spec)
+    if not parameter:
+        value_input = adsk.core.ValueInput.createByString(expression)
+        parameter = design.userParameters.add(name, value_input, unit, comment)
+        if not parameter:
+            return False
+        changed = True
+    else:
+        current_name = str(getattr(parameter, "name", "") or "")
+        if current_name != name and not design.userParameters.itemByName(name):
+            try:
+                parameter.name = name
+                changed = True
+            except Exception:
+                pass
+        changed = _assign_if_changed(parameter, "expression", expression) or changed
+        changed = _assign_if_changed(parameter, "comment", comment) or changed
+
+    try:
+        changed = _assign_if_changed(parameter, "isFavorite", bool(spec.get("isFavorite"))) or changed
+    except Exception:
+        pass
+
+    group = _normalize_group_name(spec.get("group") or "")
+    if group:
+        try:
+            _set_parameter_group({"name": name, "group": group})
+            changed = True
+        except Exception:
+            pass
+
+    spec["key"] = _parameter_entity_token(parameter)
+    return changed
+
+
+def _reconcile_parameter_mutation_ledger(command_id=""):
+    command_id = str(command_id or "").strip()
+    design = _design()
+    if not design:
+        return 0
+    doc_key = _document_mutation_ledger_key()
+    ledger = _recent_parameter_mutations_by_doc.get(doc_key)
+    if not ledger:
+        return 0
+    matching = [
+        spec for spec in ledger.values()
+        if not command_id or str(spec.get("commandId") or "") == command_id
+    ]
+    if not matching:
+        return 0
+    restored_count = 0
+    for spec in sorted(matching, key=lambda item: int(item.get("sequence") or 0)):
+        try:
+            if _restore_parameter_mutation_spec(design, spec):
+                restored_count += 1
+        except Exception:
+            if app:
+                app.log(
+                    "Better Parameters could not restore parameter "
+                    f"{spec.get('name') or spec.get('key') or '<unknown>'} after command cancel:\n"
+                    f"{traceback.format_exc()}"
+                )
+    for key, spec in list(ledger.items()):
+        if spec in matching:
+            ledger.pop(key, None)
+    if not ledger:
+        _recent_parameter_mutations_by_doc.pop(doc_key, None)
+    return restored_count
 
 
 def _build_user_parameter_row_patch(token_or_name):
@@ -3208,6 +3401,7 @@ def _update_parameter(data):
     expression_for_fusion = _normalize_expression_for_fusion(expression, str(parameter.unit or ""))
     _assign_if_changed(parameter, "expression", expression_for_fusion)
     _assign_if_changed(parameter, "comment", comment)
+    _remember_parameter_mutation(parameter, expression=expression_for_fusion, comment=comment)
 
 
 def _batch_update_parameters(data):
@@ -3233,7 +3427,7 @@ def _batch_update_parameters(data):
     # --- Phase 1: resolve all parameters and build Fusion input arrays -------
     params_list = []
     values_list = []
-    comment_pairs = []   # (param, comment_str_or_None)
+    comment_pairs = []   # (param, expression_for_fusion, comment_str_or_None)
     failed_rows = []
 
     for record in updates:
@@ -3264,7 +3458,7 @@ def _batch_update_parameters(data):
 
         params_list.append(param)
         values_list.append(value_input)
-        comment_pairs.append((param, comment))
+        comment_pairs.append((param, expression_for_fusion, comment))
 
     if failed_rows:
         return {
@@ -3314,12 +3508,17 @@ def _batch_update_parameters(data):
             }
 
     # --- Phase 3: apply comments (no recompute triggered) --------------------
-    for param, comment in comment_pairs:
+    for param, expression_for_fusion, comment in comment_pairs:
         if comment is not None:
             try:
                 _assign_if_changed(param, "comment", str(comment))
             except Exception:
                 pass  # comment failure is non-fatal
+        _remember_parameter_mutation(
+            param,
+            expression=expression_for_fusion,
+            comment=str(comment) if comment is not None else None,
+        )
 
     return {
         "ok": True,
@@ -3408,6 +3607,7 @@ def _set_parameter_favorite(data):
     _reject_reserved_parameter(param)
 
     _assign_if_changed(param, "isFavorite", is_favorite)
+    _remember_parameter_mutation(param)
 
 
 def _set_parameter_group(data):
@@ -3619,6 +3819,7 @@ def _create_parameter(data):
     created = design.userParameters.add(name, value_input, unit_value, comment)
     if not created:
         raise ValueError("Fusion rejected the new parameter.")
+    _remember_parameter_mutation(created, expression=expression_for_fusion, unit=unit_value, comment=comment)
 
 
 def _delete_parameter(data):
@@ -3634,11 +3835,14 @@ def _delete_parameter(data):
     if not parameter:
         raise ValueError("User parameter was not found.")
     _reject_reserved_parameter(parameter)
+    old_token = _parameter_entity_token(parameter)
+    old_name = str(getattr(parameter, "name", "") or name)
 
     try:
         parameter.deleteMe()
     except Exception as exc:
         raise ValueError(f"Fusion could not delete this parameter: {exc}")
+    _forget_parameter_mutation(name=old_name, token=old_token)
 
 
 def _rename_parameter(data):
@@ -3655,6 +3859,8 @@ def _rename_parameter(data):
     if not parameter:
         raise ValueError("User parameter was not found.")
     _reject_reserved_parameter(parameter)
+    old_token = _parameter_entity_token(parameter)
+    old_name = str(getattr(parameter, "name", "") or name)
 
     validation = _validate_parameter_name_response(new_name)
     if not validation["ok"]:
@@ -3664,6 +3870,8 @@ def _rename_parameter(data):
         parameter.name = new_name
     except Exception as exc:
         raise ValueError(f"Fusion could not rename this parameter: {exc}")
+    _forget_parameter_mutation(name=old_name, token=old_token)
+    _remember_parameter_mutation(parameter)
 
 
 def _update_model_parameter(data):
@@ -3762,6 +3970,7 @@ def _promote_model_parameter_to_user_parameter(data):
         raise ValueError(f"Fusion could not create user parameter '{new_name}': {exc}")
     if not created:
         raise ValueError("Fusion rejected the promoted user parameter.")
+    _remember_parameter_mutation(created, expression=source_expression, unit=source_unit, comment=source_comment, group=promote_group)
 
     if promote_group:
         try:
@@ -3882,6 +4091,8 @@ def _update_parameter_unit(data):
     created = design.userParameters.add(param_name, value_input, normalized_unit, param_comment)
     if not created:
         raise ValueError("Fusion could not recreate the parameter with the new unit.")
+    _forget_parameter_mutation(name=param_name, token=old_token)
+    _remember_parameter_mutation(created, expression=expression_for_fusion, unit=normalized_unit, comment=param_comment, group=old_group)
 
     try:
         _assign_if_changed(created, "isFavorite", param_favorite)
@@ -3965,6 +4176,7 @@ def _copy_parameter(data):
     created = design.userParameters.add(target_name, value_input, parameter.unit, parameter.comment or "")
     if not created:
         raise ValueError("Fusion could not create the parameter copy.")
+    _remember_parameter_mutation(created, expression=parameter.expression, unit=parameter.unit, comment=parameter.comment or "", group=source_group)
 
     new_token = _parameter_entity_token(created)
     groups_by_token = dict(model.get("groupsByToken") or {})
@@ -4116,6 +4328,7 @@ def _delete_parameters_batch(data):
         for target in remaining:
             try:
                 target["param"].deleteMe()
+                _forget_parameter_mutation(name=target.get("name") or "", token=target.get("key") or "")
                 deleted_count += 1
                 progress = True
             except Exception as exc:
@@ -4573,6 +4786,12 @@ def _import_parameter_rows_into_design(rows, design, conflict_policy="skip", dry
                         _assign_if_changed(existing, "comment", comment)
                     if group:
                         _set_parameter_group({"name": name, "group": group})
+                    _remember_parameter_mutation(
+                        existing,
+                        expression=existing_expression_for_fusion,
+                        comment=comment if comment else None,
+                        group=group,
+                    )
                     imported_count += 1
                 except Exception as exc:
                     failed_rows.append({"row": row_number, "name": name, "message": str(exc), **row_payload})
@@ -4601,6 +4820,13 @@ def _import_parameter_rows_into_design(rows, design, conflict_policy="skip", dry
                     raise ValueError("Fusion rejected the parameter.")
                 if group:
                     _set_parameter_group({"name": name, "group": group})
+                _remember_parameter_mutation(
+                    created,
+                    expression=expression_for_fusion,
+                    unit=normalized_unit,
+                    comment=comment,
+                    group=group,
+                )
                 imported_count += 1
             except Exception as exc:
                 failed_rows.append({"row": row_number, "name": name, "message": str(exc), **row_payload})
